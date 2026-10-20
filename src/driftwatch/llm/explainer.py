@@ -19,6 +19,7 @@ from langchain_core.runnables import Runnable
 from driftwatch.core.models import TRANSPORT_KINDS, Change, Explanation
 from driftwatch.core.paths import PathSyntaxError, Segment, format_path, parse_path
 from driftwatch.core.shape import Shape
+from driftwatch.errors import DriftwatchError
 from driftwatch.llm.prompts import SYSTEM_PROMPT, render_request
 
 if TYPE_CHECKING:
@@ -27,7 +28,7 @@ if TYPE_CHECKING:
 MAX_AFFECTED_OBJECTS: Final = 8
 
 
-class ExplanationError(Exception):
+class ExplanationError(DriftwatchError):
     """The model could not produce a usable explanation."""
 
 
