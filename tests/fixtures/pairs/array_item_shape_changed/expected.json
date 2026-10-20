@@ -1,0 +1,7 @@
+[
+  {
+    "path": "$.items[*].tags[*]",
+    "kind": "type_changed",
+    "severity": "breaking"
+  }
+]

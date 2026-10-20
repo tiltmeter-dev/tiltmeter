@@ -1,0 +1,7 @@
+[
+  {
+    "path": "$.nickname",
+    "kind": "field_added",
+    "severity": "info"
+  }
+]

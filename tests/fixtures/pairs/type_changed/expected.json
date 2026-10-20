@@ -1,0 +1,12 @@
+[
+  {
+    "path": "$.amount",
+    "kind": "type_changed",
+    "severity": "breaking"
+  },
+  {
+    "path": "$.id",
+    "kind": "type_changed",
+    "severity": "breaking"
+  }
+]

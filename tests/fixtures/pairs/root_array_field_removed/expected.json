@@ -1,0 +1,7 @@
+[
+  {
+    "path": "$[*].name",
+    "kind": "field_removed",
+    "severity": "breaking"
+  }
+]

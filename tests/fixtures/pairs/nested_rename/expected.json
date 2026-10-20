@@ -1,0 +1,14 @@
+[
+  {
+    "path": "$.user.profile.phone",
+    "kind": "field_removed",
+    "severity": "breaking",
+    "hint": "possibly renamed to $.user.profile.phone_number"
+  },
+  {
+    "path": "$.user.profile.phone_number",
+    "kind": "field_added",
+    "severity": "info",
+    "hint": "possibly replaces $.user.profile.phone"
+  }
+]

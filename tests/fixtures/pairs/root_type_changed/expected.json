@@ -1,0 +1,7 @@
+[
+  {
+    "path": "$",
+    "kind": "type_changed",
+    "severity": "breaking"
+  }
+]

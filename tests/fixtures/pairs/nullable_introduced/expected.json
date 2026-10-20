@@ -1,0 +1,7 @@
+[
+  {
+    "path": "$.user.phone",
+    "kind": "nullable_introduced",
+    "severity": "breaking"
+  }
+]

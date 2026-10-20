@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+build/
+dist/
+
+# Tooling caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# driftwatch runtime state (baselines, history)
+.driftwatch/
+
+# Editors / OS
+.idea/
+.vscode/
+.DS_Store

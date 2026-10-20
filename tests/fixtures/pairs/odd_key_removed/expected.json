@@ -1,0 +1,7 @@
+[
+  {
+    "path": "$[\"content-type\"]",
+    "kind": "field_removed",
+    "severity": "breaking"
+  }
+]

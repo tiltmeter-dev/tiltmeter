@@ -1,0 +1,119 @@
+[project]
+name = "driftwatch"
+version = "0.1.0"
+description = "Catch API schema drift before your AI agents do. CLI, CI gate and MCP server."
+readme = "README.md"
+requires-python = ">=3.12"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Agustin Torres" }]
+keywords = [
+    "api",
+    "schema-drift",
+    "json-schema",
+    "contract-testing",
+    "monitoring",
+    "mcp",
+    "ai-agents",
+    "langgraph",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Software Development :: Quality Assurance",
+    "Topic :: Software Development :: Testing",
+    "Topic :: System :: Monitoring",
+    "Typing :: Typed",
+]
+dependencies = [
+    "httpx>=0.27,<1",
+    "langchain-anthropic>=1.7,<2",
+    "langchain-core>=1.0,<2",
+    "langgraph>=1.0,<2",
+    "langsmith>=0.3.0",
+    "mcp>=2.3,<3",
+    "pydantic>=2.7,<3",
+    "pyyaml>=6.0",
+    "rich>=13",
+    "typer>=0.12",
+]
+
+[project.scripts]
+driftwatch = "driftwatch.cli:main"
+
+[dependency-groups]
+dev = [
+    "mypy>=1.10",
+    "pytest>=8",
+    "pytest-asyncio>=0.24",
+    "pytest-cov>=5",
+    "respx>=0.21",
+    "ruff>=0.6",
+    "types-PyYAML>=6",
+]
+
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/driftwatch"]
+
+[tool.hatch.build.targets.sdist]
+include = ["/src", "/tests", "/examples", "/README.md", "/CHANGELOG.md", "/LICENSE"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "B", "UP", "SIM", "C4", "RUF", "PT", "RET", "ASYNC"]
+# Box-drawing and arrow characters are intentional in CLI output.
+ignore = ["RUF001", "RUF002", "RUF003"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["driftwatch"]
+
+[tool.mypy]
+python_version = "3.12"
+files = ["src/driftwatch"]
+mypy_path = "src"
+warn_unused_configs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_return_any = true
+check_untyped_defs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+no_implicit_optional = true
+strict_equality = true
+
+[[tool.mypy.overrides]]
+module = ["driftwatch.core.*"]
+strict = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+addopts = "-ra --strict-markers -m 'not integration'"
+markers = [
+    "integration: calls real external services and needs API keys (run with -m integration)",
+]
+
+[tool.coverage.run]
+source = ["driftwatch"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+exclude_also = ["if TYPE_CHECKING:", "raise NotImplementedError", "^\\s*\\.\\.\\.$"]

@@ -1,0 +1,7 @@
+[
+  {
+    "path": "$.data[*].email",
+    "kind": "field_now_optional",
+    "severity": "breaking"
+  }
+]

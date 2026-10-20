@@ -1,0 +1,7 @@
+[
+  {
+    "path": "$.price",
+    "kind": "type_changed",
+    "severity": "breaking"
+  }
+]

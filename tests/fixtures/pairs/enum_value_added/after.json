@@ -1,0 +1,12 @@
+{
+  "data": [
+    {
+      "id": 100,
+      "status": "active"
+    },
+    {
+      "id": 101,
+      "status": "suspended"
+    }
+  ]
+}

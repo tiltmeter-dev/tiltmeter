@@ -1,0 +1,7 @@
+[
+  {
+    "path": "$.email",
+    "kind": "field_removed",
+    "severity": "breaking"
+  }
+]

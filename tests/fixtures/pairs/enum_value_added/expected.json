@@ -1,0 +1,7 @@
+[
+  {
+    "path": "$.data[*].status",
+    "kind": "enum_value_added",
+    "severity": "warning"
+  }
+]
