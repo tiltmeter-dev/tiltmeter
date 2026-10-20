@@ -2,6 +2,8 @@
 
 **Catch API schema drift before your AI agents do.**
 
+![driftwatch catching a renamed field and a type change](docs/demo.svg)
+
 Agents call third-party APIs all day. When a vendor renames a field, starts returning `null`
 or turns a number into a string, typed code crashes loudly. An agent doesn't: it reads the
 new response, fills the gap with a guess, or retries until the budget is gone.
@@ -276,6 +278,7 @@ uv sync
 uv run pytest                    # offline unit tests
 uv run pytest -m integration     # also calls Claude; needs ANTHROPIC_API_KEY
 uv run ruff check src tests && uv run ruff format --check src tests && uv run mypy
+uv run python scripts/demo.py    # re-renders docs/demo.svg; add ANTHROPIC_API_KEY for a real explanation
 ```
 
 | Package | Contents |
