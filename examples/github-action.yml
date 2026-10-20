@@ -1,0 +1,41 @@
+# Check your APIs every hour and fail the job on breaking drift.
+# Copy this file to .github/workflows/driftwatch.yml in the repository that holds
+# driftwatch.yaml, and add the secrets your endpoints reference.
+name: API drift
+
+on:
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+
+jobs:
+  driftwatch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+
+      # The baseline lives in .driftwatch/. Restore the newest copy...
+      - uses: actions/cache/restore@v4
+        with:
+          path: .driftwatch
+          key: driftwatch-${{ github.run_id }}
+          restore-keys: driftwatch-
+
+      # Exit codes: 0 clean, 1 warning, 2 breaking, 3 a check failed, 4 bad config.
+      # driftwatch is not on PyPI yet: install it from its repository
+      # (replace OWNER/driftwatch with wherever you host it).
+      - name: Check APIs
+        run: uvx --from "git+https://github.com/OWNER/driftwatch" driftwatch check
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          STRIPE_API_KEY: ${{ secrets.STRIPE_API_KEY }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+      # ...and save the new one even when the job fails, so each change is reported once.
+      - uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: .driftwatch
+          key: driftwatch-${{ github.run_id }}

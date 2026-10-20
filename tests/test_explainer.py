@@ -160,3 +160,28 @@ async def test_real_claude_explains_a_rename() -> None:
     renamed = {(r.before_path, r.after_path) for r in result.probable_renames}
     assert ("$.data[*].phone", "$.data[*].phone_number") in renamed
     assert explainer_module.MAX_AFFECTED_OBJECTS == MAX_AFFECTED_OBJECTS
+
+
+def test_wire_payload_matches_the_messages_api() -> None:
+    """Lock in what ChatAnthropic sends: structured outputs, adaptive thinking, no sampling."""
+    from langchain_anthropic import ChatAnthropic
+    from langchain_anthropic.chat_models import _convert_to_anthropic_output_config_format
+
+    chat = ChatAnthropic(  # type: ignore[call-arg]
+        model="claude-haiku-5-5",
+        max_tokens=2048,
+        effort="low",
+        thinking={"type": "adaptive"},
+        api_key="sk-ant-offline",
+    )
+    payload = chat._get_request_payload(
+        build_messages(rename_request()),
+        output_config={"format": _convert_to_anthropic_output_config_format(Explanation)},
+    )
+    assert payload["model"] == "claude-haiku-5-5"
+    assert payload["thinking"] == {"type": "adaptive"}
+    assert payload["output_config"]["effort"] == "low"
+    assert payload["output_config"]["format"]["type"] == "json_schema"
+    assert "tool_choice" not in payload
+    assert "temperature" not in payload
+    assert payload["system"] == SYSTEM_PROMPT
