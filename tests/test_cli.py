@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -30,9 +31,12 @@ def invoke(*args: str) -> Any:
     return runner.invoke(app, list(args))
 
 
+ANSI = re.compile(r"\x1b\[[0-9;]*m")
+
+
 def flat(text: str) -> str:
-    """Collapse the line wrapping rich applies at 80 columns."""
-    return " ".join(text.split())
+    """Drop colour codes (CI sets FORCE_COLOR) and collapse rich's line wrapping."""
+    return " ".join(ANSI.sub("", text).split())
 
 
 def result(severity: Severity | None = None, error: str | None = None) -> CheckResult:
