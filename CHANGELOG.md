@@ -1,16 +1,25 @@
 # Changelog
 
-## 0.1.0 (unreleased)
+All notable changes to Tiltmeter are documented in this file.
 
-First version.
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
+project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Until 1.0,
+a minor release may include breaking changes.
 
-- Learn the shape of JSON responses from real traffic and diff it against a rolling baseline.
-- Severity rules for removed, newly optional, retyped and newly nullable fields, new enum
-  values, status and content-type changes, and latency regressions, plus rename hints.
-- CLI: `init`, `check`, `watch`, `history`, `show`, `schema`, `explain` and `serve`, with
-  exit codes for CI.
-- MCP server with `has_drifted`, `get_schema`, `get_changes`, `list_endpoints`, `check_api`
-  and `check_all`.
-- Optional drift explanations written by Claude through LangChain, using structured outputs.
-- Slack and generic webhook notifications.
-- Local SQLite history with content-addressed shapes.
+## [Unreleased]
+
+### Added
+
+- Learn the shape of JSON responses from real traffic and compare every check with a
+  rolling baseline of recent responses, with no spec required.
+- Classify changes as breaking, warning or info: removed, newly optional, retyped and newly
+  nullable fields, new enum values, status and content-type changes, latency regressions
+  and new fields, with hints for probable renames.
+- The `tiltmeter` command with `init`, `check`, `watch`, `history`, `show`, `schema`,
+  `explain` and `serve`, and exit codes for CI.
+- An MCP server with `has_drifted`, `get_schema`, `get_changes`, `list_endpoints`,
+  `check_api` and `check_all`, plus endpoint and schema resources.
+- Optional drift explanations written by Claude through LangChain, using structured
+  outputs.
+- Slack and webhook notifications.
+- A local SQLite history with content-addressed shapes and retention.

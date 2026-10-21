@@ -1,0 +1,5 @@
+* text=auto eol=lf
+
+# Generated files: collapsed in pull request diffs and left out of language stats.
+uv.lock linguist-generated=true
+docs/demo.svg linguist-generated=true

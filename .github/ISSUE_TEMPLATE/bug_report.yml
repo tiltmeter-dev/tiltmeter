@@ -1,0 +1,58 @@
+name: Bug report
+description: Something does not work as documented, or Tiltmeter reported drift that isn't there.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time. Please remove secrets from anything you paste: configs
+        often reference API keys. Report security problems privately, as SECURITY.md
+        describes, not here.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you run, what did you expect, and what happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: How can we reproduce it?
+      description: The smallest config, and the API responses before and after if it is about drift.
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: Output
+      description: The command output. `--json` often helps.
+      render: shell
+  - type: dropdown
+    id: area
+    attributes:
+      label: Where does it happen?
+      options:
+        - Drift detection
+        - CLI
+        - MCP server
+        - Explanations (LLM)
+        - Notifications
+        - Documentation
+        - Something else
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Tiltmeter version
+      placeholder: output of `tiltmeter --version`
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Python version and operating system
+      placeholder: Python 3.13 on macOS 15
+    validations:
+      required: true
