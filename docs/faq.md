@@ -40,6 +40,13 @@ They only run when a check finds drift at `llm.min_severity` or worse, and a req
 carries the changes and some field names, not response bodies. With the default
 `claude-haiku-5-5` model, one explanation costs a small fraction of a cent.
 
+### How much does a fix cost?
+
+It depends on how many files the agent reads. On a small service, a fix takes about five
+model calls and 30,000 input tokens with `claude-sonnet-5-5`, which is two or three cents.
+`fix.max_model_calls` caps a run, and with LangSmith tracing on, each `tiltmeter.fix` run
+shows its tokens.
+
 ## Noise
 
 ### I get `field_now_optional` or `nullable_introduced` on a list endpoint
@@ -115,7 +122,9 @@ another popular developer tool.
 The requests to the APIs you configure, notifications to the targets you configure, and,
 only when `ANTHROPIC_API_KEY` is set and drift is found, an explanation request to
 Anthropic with the changes and the field names and types of the affected objects. With
-LangSmith tracing turned on, traces go to LangSmith. Nothing else.
+LangSmith tracing turned on, traces go to LangSmith. `tiltmeter fix` also sends the change
+list and the files its agent reads to Anthropic (see the [fix guide](fix.md#what-leaves-your-machine)).
+Nothing else.
 
 ### What is stored?
 

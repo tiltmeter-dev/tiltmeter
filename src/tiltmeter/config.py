@@ -21,6 +21,8 @@ from tiltmeter.errors import ConfigError, UnknownEndpointError
 
 DEFAULT_CONFIG_FILE = "tiltmeter.yaml"
 DEFAULT_MODEL = "claude-haiku-5-5"
+DEFAULT_FIX_MODEL = "claude-sonnet-5-5"
+DEFAULT_FIX_IGNORE = (".env*", "*.pem", "*.key", "secrets*", ".tiltmeter")
 
 type HttpMethod = Literal["GET", "POST", "PUT", "PATCH", "DELETE"]
 type Effort = Literal["low", "medium", "high", "xhigh", "max"]
@@ -132,6 +134,37 @@ class LLMConfig(_Model):
     include_samples: bool = False
 
 
+class FixConfig(_Model):
+    """``tiltmeter fix``: the agent that adapts your code to drift."""
+
+    model: str = DEFAULT_FIX_MODEL
+    effort: Effort | None = "medium"
+    max_tokens: int = Field(default=16_000, ge=1_024, le=64_000)
+    timeout: float = Field(default=120.0, gt=0, le=600)
+    max_model_calls: int = Field(default=40, ge=1, le=500)
+    branch_prefix: str = Field(
+        default="tiltmeter/fix",
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9._\-]*(/[A-Za-z0-9][A-Za-z0-9._\-]*)*$",
+    )
+    ignore: list[str] = Field(default_factory=lambda: list(DEFAULT_FIX_IGNORE))
+
+    @field_validator("branch_prefix")
+    @classmethod
+    def _check_branch_prefix(cls, value: str) -> str:
+        if ".." in value or value.endswith(".lock"):
+            raise ValueError("must be a valid git branch name")
+        return value
+
+    @field_validator("ignore")
+    @classmethod
+    def _check_ignore(cls, value: list[str]) -> list[str]:
+        for pattern in value:
+            parts = pattern.strip("/").split("/")
+            if not pattern.strip("/") or ".." in parts or pattern.startswith("~"):
+                raise ValueError(f"{pattern!r} must be a path pattern inside the repository")
+        return value
+
+
 class Config(_Model):
     """The whole configuration file."""
 
@@ -141,6 +174,7 @@ class Config(_Model):
     keep_checks: int = Field(default=500, ge=10, le=100_000)
     severity_overrides: dict[ChangeKind, Severity] = Field(default_factory=dict)
     llm: LLMConfig = Field(default_factory=LLMConfig)
+    fix: FixConfig = Field(default_factory=FixConfig)
     notify: list[NotifierConfig] = Field(default_factory=list)
     endpoints: list[EndpointConfig] = Field(min_length=1)
 
@@ -234,6 +268,12 @@ endpoints:
 llm:
   enabled: true
   model: claude-haiku-5-5
+
+# `tiltmeter fix <check id>` lets an agent adapt your code to drift and open a pull
+# request (needs ANTHROPIC_API_KEY and `pip install "tiltmeter[fix]"`).
+# fix:
+#   model: claude-sonnet-5-5
+#   ignore: [".env*", "*.pem", "*.key", "secrets*", ".tiltmeter"]
 
 # Where to send alerts.
 notify: []

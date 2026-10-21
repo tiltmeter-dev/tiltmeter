@@ -51,6 +51,9 @@ Changelog = "https://github.com/tiltmeter-dev/tiltmeter/blob/main/CHANGELOG.md"
 Issues = "https://github.com/tiltmeter-dev/tiltmeter/issues"
 Source = "https://github.com/tiltmeter-dev/tiltmeter"
 
+[project.optional-dependencies]
+fix = ["deepagents>=0.7.29,<0.8", "langchain>=1.4.6,<2"]
+
 [project.scripts]
 tiltmeter = "tiltmeter.cli:main"
 
@@ -62,6 +65,7 @@ dev = [
     "pytest-cov>=5",
     "respx>=0.21",
     "ruff>=0.6",
+    "tiltmeter[fix]",
     "types-PyYAML>=6",
 ]
 

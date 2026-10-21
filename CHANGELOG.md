@@ -10,6 +10,10 @@ a minor release may include breaking changes.
 
 ### Added
 
+- `tiltmeter fix <check-id>`: a LangChain Deep Agent adapts the code that reads a drifted
+  API in a separate git worktree, shows the diff, and on approval commits, pushes and opens
+  a pull request with `gh`. It needs the new `fix` extra (`pip install "tiltmeter[fix]"`)
+  and `ANTHROPIC_API_KEY`, and is configured in the new `fix` section of `tiltmeter.yaml`.
 - A GitHub Action, [tiltmeter-dev/tiltmeter-action](https://github.com/tiltmeter-dev/tiltmeter-action),
   that keeps the baseline in the Actions cache and reports drift in the job summary.
 

@@ -13,6 +13,7 @@ from collections import defaultdict
 from collections.abc import Sequence
 from dataclasses import replace
 from difflib import SequenceMatcher
+from typing import Final
 
 from tiltmeter.core.models import ChangeKind, RawChange
 from tiltmeter.core.paths import ITEMS, PathMatcher, Segment, format_path
@@ -20,6 +21,11 @@ from tiltmeter.core.shape import MAX_TRACKED_VALUES, Shape, core_types
 
 _MAX_LISTED_VALUES = 8
 _RENAME_SIMILARITY = 0.7
+
+RENAMED_TO: Final = "possibly renamed to "
+"""Hint prefix on a removed field that probably lives on under the path that follows."""
+REPLACES: Final = "possibly replaces "
+"""Hint prefix on an added field that probably replaces the path that follows."""
 
 
 def diff_shapes(
@@ -204,8 +210,8 @@ def annotate_renames(changes: Sequence[RawChange]) -> list[RawChange]:
             continue
         used.add(best)
         replacement = changes[best]
-        result[i] = replace(gone, hint=f"possibly renamed to {replacement.path}")
-        result[best] = replace(replacement, hint=f"possibly replaces {gone.path}")
+        result[i] = replace(gone, hint=f"{RENAMED_TO}{replacement.path}")
+        result[best] = replace(replacement, hint=f"{REPLACES}{gone.path}")
     return result
 
 

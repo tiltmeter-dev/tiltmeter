@@ -7,12 +7,17 @@ Exit codes, so CI can gate on drift:
 * 2: breaking drift
 * 3: a check could not run (network error, bad status, invalid JSON) and nothing broke
 * 4: usage or configuration error
+
+``tiltmeter fix`` reuses them: 0 when the edits were committed, discarded on
+purpose or not needed, 1 when the agent left work for a human, 3 when the agent
+or a git step failed, 4 for usage errors.
 """
 
 from __future__ import annotations
 
 import asyncio
 import json
+import os
 import sys
 from collections.abc import Coroutine, Iterator, Sequence
 from contextlib import contextmanager
@@ -21,6 +26,7 @@ from typing import TYPE_CHECKING, Annotated, Any, Final, NoReturn
 
 import typer
 from rich.console import Console
+from rich.markup import escape
 
 from tiltmeter import __version__
 from tiltmeter.config import DEFAULT_CONFIG_FILE, EXAMPLE_CONFIG
@@ -28,6 +34,8 @@ from tiltmeter.core.models import CheckResult, Severity, max_severity
 from tiltmeter.errors import TiltmeterError
 
 if TYPE_CHECKING:
+    from tiltmeter.fix.models import FixOutcome, FixPreview
+    from tiltmeter.fix.runner import FixSession
     from tiltmeter.service import DriftService
 
 EXIT_OK: Final = 0
@@ -76,7 +84,7 @@ def exit_code_for(results: Sequence[CheckResult]) -> int:
 
 
 def _fail(message: str, code: int = EXIT_USAGE) -> NoReturn:
-    err.print(f"[bold red]error:[/] {message}", markup=True, highlight=False)
+    err.print(f"[bold red]error:[/] {escape(message)}", markup=True, highlight=False)
     raise typer.Exit(code)
 
 
@@ -300,6 +308,147 @@ def explain(
         from tiltmeter.console import render_result
 
         render_result(out, result, show_id=True)
+
+
+def fix_exit_code(outcome: FixOutcome) -> int:
+    """A failed step beats work left for a human, which beats success."""
+    if outcome.error:
+        return EXIT_CHECK_FAILED
+    if outcome.status == "blocked":
+        return EXIT_WARNING
+    if outcome.status == "unchanged" and outcome.preview and outcome.preview.report.unresolved:
+        return EXIT_WARNING
+    return EXIT_OK
+
+
+def _decide(
+    session: FixSession,
+    preview: FixPreview,
+    *,
+    model_name: str,
+    yes: bool,
+    no_pr: bool,
+    dry_run: bool,
+    as_json: bool,
+) -> FixOutcome:
+    """Commit, push and open the pull request, or throw the edits away."""
+    from tiltmeter.fix.git import GhCli
+
+    if preview.ignored:
+        return session.outcome("blocked", preview)
+    if preview.empty:
+        return session.outcome("unchanged", preview)
+    if dry_run:
+        return session.outcome("discarded", preview, notes=["--dry-run: nothing was committed"])
+    if not yes:
+        if as_json:
+            note = "pass --yes to commit when printing JSON"
+            return session.outcome("discarded", preview, notes=[note])
+        question = "Commit to a local branch?" if no_pr else "Commit, push and open a pull request?"
+        try:
+            approved = typer.confirm(question, default=False)
+        except typer.Abort:
+            approved = False
+        if not approved:
+            return session.outcome("discarded", preview)
+    return session.deliver(
+        preview, push=not no_pr, github=None if no_pr else GhCli(), model_name=model_name
+    )
+
+
+@app.command()
+def fix(
+    check_id: Annotated[int, typer.Argument(help="Check id, as listed by `history`.")],
+    repo: Annotated[
+        Path, typer.Option("--repo", "-r", help="The git repository whose code reads the API.")
+    ] = Path("."),
+    config: ConfigOption = Path(DEFAULT_CONFIG_FILE),
+    branch: Annotated[str | None, typer.Option("--branch", help="Name of the new branch.")] = None,
+    base: Annotated[
+        str | None,
+        typer.Option("--base", help="Branch the pull request targets (default: the current one)."),
+    ] = None,
+    yes: Annotated[
+        bool, typer.Option("--yes", "-y", help="Commit and open the pull request without asking.")
+    ] = False,
+    no_pr: Annotated[
+        bool, typer.Option("--no-pr", help="Commit to a local branch only; push nothing.")
+    ] = False,
+    dry_run: Annotated[
+        bool, typer.Option("--dry-run", help="Show the agent's edits, then discard them.")
+    ] = False,
+    as_json: JsonOption = False,
+) -> None:
+    """Let an agent adapt your code to the drift a check found, in a pull request.
+
+    Needs ANTHROPIC_API_KEY and the fix extra: pip install "tiltmeter\\[fix]".
+    """
+    from tiltmeter.console import render_fix_outcome, render_fix_preview, render_result
+    from tiltmeter.fix.agent import DeepFixAgent
+    from tiltmeter.fix.models import FixOutcome
+    from tiltmeter.fix.runner import FixSession
+    from tiltmeter.llm.explainer import has_credentials
+
+    with _opened(config) as service:
+        check = service.get_check(check_id)
+        try:
+            request = service.fix_request(check_id)
+        except TiltmeterError as exc:
+            _fail(str(exc))
+        if check is None or not request.targets:
+            note = f"check #{check_id} found no changes that code has to follow"
+            outcome = FixOutcome(
+                status="unchanged", check_id=check_id, endpoint_id=request.endpoint_id, notes=[note]
+            )
+        else:
+            settings = service.config.fix
+            if not has_credentials(os.environ.get):
+                _fail("set ANTHROPIC_API_KEY: the fix agent runs on Claude")
+            try:
+                agent = DeepFixAgent.from_config(settings)
+                session = FixSession.open(
+                    repo, request, branch=branch, prefix=settings.branch_prefix, base=base
+                )
+            except TiltmeterError as exc:
+                _fail(str(exc))
+            with session:
+                if not as_json:
+                    render_result(out, check, show_id=True)
+                    start = f"{session.base} at " if session.base else ""
+                    out.print(
+                        f"Working on a new branch, [bold]{session.branch}[/], "
+                        f"from {start}{session.repo.head()}."
+                    )
+                    if session.repo.has_uncommitted_changes():
+                        out.print("[dim]note: uncommitted changes in your checkout are left out[/]")
+                try:
+                    with err.status(f"{agent.model_name} is adapting the code..."):
+                        report = asyncio.run(agent.run(request, session.root))
+                except Exception as exc:  # API, agent or git errors: no traceback for users
+                    _fail(f"fix failed: {exc}", EXIT_CHECK_FAILED)
+                try:
+                    preview = session.review(report, ignore=settings.ignore)
+                    if not as_json:
+                        render_fix_preview(out, preview)
+                    outcome = _decide(
+                        session,
+                        preview,
+                        model_name=agent.model_name,
+                        yes=yes,
+                        no_pr=no_pr,
+                        dry_run=dry_run,
+                        as_json=as_json,
+                    )
+                except TiltmeterError as exc:
+                    _fail(f"fix failed: {exc}", EXIT_CHECK_FAILED)
+            if outcome.pr_url or outcome.branch:
+                where = f"pull request {outcome.pr_url}" if outcome.pr_url else outcome.branch
+                service.store.append_notes(check_id, [f"fix: {where}"])
+    if as_json:
+        _print_json(outcome.model_dump(mode="json"))
+    else:
+        render_fix_outcome(out, outcome)
+    raise typer.Exit(fix_exit_code(outcome))
 
 
 @app.command()

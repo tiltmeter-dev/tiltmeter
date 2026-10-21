@@ -189,6 +189,27 @@ always parses into `summary`, `likely_cause`, `impact`, `suggested_action`,
 because explanations only run when drift is found. A refusal, a truncated reply or an API
 error becomes a note on the check, never a failed check.
 
+## Fixing
+
+`tiltmeter fix <check-id>` turns a check into a pull request. It is separate from the
+check pipeline and only runs when you ask:
+
+1. The check's removed, renamed, retyped, optional and nullable fields become *targets*.
+   Renames come from the diff's hint, or from Claude's `probable_renames` when the diff had
+   none.
+2. A new branch is checked out from HEAD as a git worktree in a temporary folder, so the
+   user's checkout is never touched.
+3. A [LangChain Deep Agent](https://github.com/langchain-ai/deepagents) works in that
+   worktree with file tools only (list, read, glob, grep, edit, write). The shell,
+   subagent and delete tools are removed, and `.git` plus the `fix.ignore` paths are denied.
+   Files the harness writes for itself, such as offloaded tool results, go to memory
+   instead of the worktree. The agent ends with a structured report: summary, files
+   changed, what is left for a human, and confidence.
+4. Tiltmeter stages the edits, refuses any diff that touches an ignored path, and shows
+   the diff. On approval it commits, pushes and opens the pull request with `gh`.
+
+The [fix guide](fix.md) has the flags and the review checklist.
+
 ## Privacy by design
 
 - **Secrets** are expanded only inside the request code, then scrubbed from error messages
@@ -199,6 +220,9 @@ error becomes a note on the check, never a failed check.
   `llm.include_samples`.
 - **Agents** can only check endpoints declared in the config. The MCP tools take an
   endpoint id, never a URL.
+- **Fixes** send the change list and the files the agent reads to Anthropic, never response
+  values or `${VAR}` values. The agent works in a fresh worktree, which holds no untracked
+  files such as `.env`, and the `fix.ignore` paths are denied to its file tools.
 
 ## Limitations
 
@@ -212,3 +236,5 @@ error becomes a note on the check, never a failed check.
   returns a single value will not alert when a second one appears for the first time.
 - Only the first 500 items of each array and the first 32 levels of nesting are
   examined.
+- `tiltmeter fix` works from types, not values, so it leaves format and unit questions to
+  a human. It finds code by name and does not run your tests.

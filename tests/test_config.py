@@ -30,6 +30,24 @@ def test_example_config_is_valid(tmp_path: Path) -> None:
     assert config.endpoint_ids == ["github_repo"]
     assert config.llm.model == "claude-haiku-5-5"
     assert config.notify == []
+    assert config.fix.model == "claude-sonnet-5-5"
+
+
+def test_fix_defaults_and_overrides(tmp_path: Path) -> None:
+    config = load_config(
+        write(
+            tmp_path,
+            "fix:\n  model: claude-opus-5-5\n  branch_prefix: bots/api\n  ignore: [vendor]\n"
+            "endpoints:\n  - {id: a, url: https://x.test}\n",
+        )
+    )
+    assert config.fix.model == "claude-opus-5-5"
+    assert config.fix.branch_prefix == "bots/api"
+    assert config.fix.ignore == ["vendor"]
+    assert config.fix.effort == "medium"
+    defaults = make_config().fix
+    assert defaults.ignore == [".env*", "*.pem", "*.key", "secrets*", ".tiltmeter"]
+    assert defaults.max_model_calls == 40
 
 
 @pytest.mark.skipif(not EXAMPLES.exists(), reason="examples folder not present")
@@ -77,6 +95,10 @@ def test_defaults_and_coercion() -> None:
             "endpoints:\n  - {id: a, url: https://x.test, severity_overrides: {nope: info}}",
             "severity_overrides",
         ),
+        ("fix: {branch_prefix: 'a..b'}\nendpoints:\n  - {id: a, url: https://x.test}", "fix"),
+        ("fix: {branch_prefix: '/x'}\nendpoints:\n  - {id: a, url: https://x.test}", "fix"),
+        ("fix: {ignore: ['../up']}\nendpoints:\n  - {id: a, url: https://x.test}", "inside"),
+        ("fix: {max_model_calls: 0}\nendpoints:\n  - {id: a, url: https://x.test}", "fix"),
     ],
 )
 def test_invalid_configs_have_readable_errors(tmp_path: Path, text: str, message: str) -> None:

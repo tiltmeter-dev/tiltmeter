@@ -3,15 +3,21 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import Final
+from typing import TYPE_CHECKING, Final
 
 from rich.console import Console
 from rich.padding import Padding
 from rich.panel import Panel
+from rich.syntax import Syntax
 from rich.table import Table
 from rich.text import Text
 
 from tiltmeter.core.models import Change, CheckResult, Severity
+
+if TYPE_CHECKING:
+    from tiltmeter.fix.models import FixOutcome, FixPreview
+
+MAX_DIFF_LINES: Final = 400
 
 SEVERITY_STYLE: Final = {
     Severity.BREAKING: "bold red",
@@ -149,3 +155,63 @@ def history_table(checks: Sequence[CheckResult]) -> Table:
             Text(words, style=style),
         )
     return table
+
+
+def render_fix_preview(console: Console, preview: FixPreview) -> None:
+    """The agent's edits as a coloured diff, with its own summary underneath."""
+    if not preview.empty:
+        count = len(preview.files)
+        console.print(
+            Text.assemble(
+                (f"{count} file{'' if count == 1 else 's'} changed", "bold"),
+                "  ",
+                (f"+{preview.additions}", "green"),
+                " ",
+                (f"-{preview.deletions}", "red"),
+            )
+        )
+        lines = preview.diff.splitlines()
+        shown = "\n".join(lines[:MAX_DIFF_LINES])
+        console.print(Syntax(shown, "diff", theme="ansi_dark", background_color="default"))
+        if len(lines) > MAX_DIFF_LINES:
+            console.print(Text(f"... {len(lines) - MAX_DIFF_LINES} more diff lines", style="dim"))
+    report = preview.report
+    body = Text(report.summary + "\n")
+    if report.unresolved:
+        body.append("Left for a human:\n", style="bold yellow")
+        for item in report.unresolved:
+            body.append(f"  - {item}\n", style="yellow")
+    body.append(f"confidence {report.confidence}", style="dim")
+    console.print(Panel(body, title="agent", title_align="left", border_style="dim", expand=False))
+
+
+def render_fix_outcome(console: Console, outcome: FixOutcome) -> None:
+    """One line on how the fix ended, then whatever is left to do by hand."""
+    preview = outcome.preview
+    match outcome.status:
+        case "opened":
+            line = Text.assemble(
+                ("✓ ", "green"), ("opened ", "green"), (outcome.pr_url or "", "bold")
+            )
+        case "pushed":
+            line = Text.assemble(("✓ ", "green"), f"pushed branch {outcome.branch}")
+        case "committed":
+            line = Text.assemble(("✓ ", "green"), f"committed to branch {outcome.branch}")
+        case "discarded":
+            line = Text("discarded the edits; nothing was committed", style="dim")
+        case "unchanged" if preview is None:
+            line = Text("nothing to fix", style="green")
+        case "unchanged":
+            line = Text("the agent changed nothing", style="yellow")
+        case _:
+            ignored = ", ".join(preview.ignored) if preview else ""
+            line = Text(f"✗ the agent touched protected files ({ignored}); discarded", style="red")
+    console.print(line)
+    for note in outcome.notes:
+        console.print(Padding(Text(f"note: {note}", style="dim"), (0, 0, 0, 2)))
+    if outcome.error:
+        console.print(Padding(Text(f"error: {outcome.error}", style="red"), (0, 0, 0, 2)))
+    if outcome.commands:
+        console.print(Padding(Text("to finish by hand:", style="dim"), (0, 0, 0, 2)))
+        for command in outcome.commands:
+            console.print(Padding(Text(command, style="bold"), (0, 0, 0, 4)))
