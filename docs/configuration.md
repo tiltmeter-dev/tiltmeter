@@ -94,6 +94,7 @@ notify:
 | `keep_checks` | `500` | Checks kept per endpoint, from 10 to 100,000. Never fewer than that endpoint's `baseline_window`. |
 | `severity_overrides` | none | Severity per change kind for every endpoint. See [severity overrides](#severity-overrides). |
 | `llm` | see below | [LLM explanations](#llm-explanations). |
+| `fix` | see below | The agent behind [`tiltmeter fix`](#fix). |
 | `notify` | none | A list of [notifications](#notifications). |
 | `endpoints` | required | At least one [endpoint](#endpoints). Ids must be unique. |
 
@@ -218,6 +219,22 @@ carries on.
 past check. If the model refuses, runs out of tokens or the API fails, the check still
 succeeds and the problem is recorded as a note.
 
+## Fix
+
+`tiltmeter fix <check-id>` hands the drift a check found to an agent that adapts your code
+and opens a pull request. It needs `ANTHROPIC_API_KEY` and the `fix` extra
+(`pip install "tiltmeter[fix]"`). The [fix guide](fix.md) explains the whole flow.
+
+| Option | Default | Description |
+|---|---|---|
+| `model` | `claude-sonnet-5-5` | The Claude model the agent runs on. |
+| `effort` | `medium` | `low`, `medium`, `high`, `xhigh` or `max`, with adaptive thinking. Use `null` for models without adaptive thinking. |
+| `max_tokens` | `16000` | Output budget per model call, from 1,024 to 64,000. |
+| `timeout` | `120` | Seconds per model call, up to 600. |
+| `max_model_calls` | `40` | Model calls per fix, from 1 to 500. The run fails when the agent needs more; raise it for large repositories. |
+| `branch_prefix` | `tiltmeter/fix` | Branches are named `<prefix>-<endpoint>-<check id>` unless `--branch` is given. |
+| `ignore` | `.env*`, `*.pem`, `*.key`, `secrets*`, `.tiltmeter` | Paths the agent can never read or write. A pattern without a slash matches a name at any depth; one with a slash matches from the repository root. `.git` is always blocked. |
+
 ## Notifications
 
 Each entry in `notify` gets the results at or above its `min_severity`. Notifications are
@@ -293,8 +310,8 @@ Tiltmeter sends a `POST` with this JSON body. `event` is `drift.detected` or
 | Variable | Used for |
 |---|---|
 | `TILTMETER_CONFIG` | Default config file path. |
-| `ANTHROPIC_API_KEY` | Turns on LLM explanations. |
-| `LANGSMITH_TRACING`, `LANGSMITH_API_KEY`, `LANGSMITH_PROJECT` | Optional LangSmith tracing of every check and explanation. |
+| `ANTHROPIC_API_KEY` | Turns on LLM explanations. Required by `tiltmeter fix`. |
+| `LANGSMITH_TRACING`, `LANGSMITH_API_KEY`, `LANGSMITH_PROJECT` | Optional LangSmith tracing of every check, explanation and fix. |
 | Anything your config references | Expanded into `${...}` placeholders. |
 
 ## Files on disk

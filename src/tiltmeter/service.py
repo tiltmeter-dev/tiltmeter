@@ -32,6 +32,8 @@ from tiltmeter.core.shape import to_json_schema
 from tiltmeter.core.store import Store
 from tiltmeter.core.timeutil import parse_since, to_iso, utcnow
 from tiltmeter.errors import TiltmeterError
+from tiltmeter.fix.models import FixRequest
+from tiltmeter.fix.request import build_fix_request
 from tiltmeter.graph import DriftContext, build_graph
 from tiltmeter.llm.explainer import Explainer, build_request, has_credentials
 from tiltmeter.notify import Notifier, build_notifiers
@@ -189,6 +191,21 @@ class DriftService:
         self.store.update_explanation(check_id, explanation, explainer.model_name)
         return check.model_copy(
             update={"explanation": explanation, "explanation_model": explainer.model_name}
+        )
+
+    # -- fixes ----------------------------------------------------------------
+
+    def fix_request(self, check_id: int) -> FixRequest:
+        """What the fix agent needs to know about the changes a stored check found."""
+        check = self.store.get_check(check_id)
+        if check is None:
+            raise TiltmeterError(f"no check with id {check_id}")
+        endpoint = self.config.endpoint(check.endpoint_id)
+        baseline = self.store.load_baseline(
+            endpoint.id, window=endpoint.baseline_window, before_check_id=check_id
+        )
+        return build_fix_request(
+            endpoint, check, baseline=baseline.shape, observed=self.store.check_shape(check_id)
         )
 
     # -- questions ------------------------------------------------------------

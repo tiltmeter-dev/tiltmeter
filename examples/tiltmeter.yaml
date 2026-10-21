@@ -50,6 +50,13 @@ llm:
   model: claude-haiku-5-5
   effort: low
 
+# `tiltmeter fix <check id> --repo <path>` lets an agent adapt your code and open a pull
+# request. Needs ANTHROPIC_API_KEY and `pip install "tiltmeter[fix]"`.
+# fix:
+#   model: claude-sonnet-5-5
+#   max_model_calls: 40
+#   ignore: [".env*", "*.pem", "*.key", "secrets*", ".tiltmeter"]
+
 notify: []
 #  - type: slack
 #    webhook_url: ${SLACK_WEBHOOK_URL}

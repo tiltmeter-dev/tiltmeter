@@ -30,6 +30,8 @@ fill the gaps with guesses, or retry until the budget is gone.
   or info, and a removed field next to a similar new one is flagged as a probable rename.
 - **Explanations on demand.** With an Anthropic API key, Claude explains what changed,
   the likely cause and what to do about it.
+- **Fixes, too.** `tiltmeter fix` hands the drift to a LangChain Deep Agent that adapts the
+  code reading that API, shows you the diff and opens a pull request.
 - **A CI gate with alerts.** Exit codes fail the build on breaking drift. Slack and
   webhook alerts take one line of config.
 - **Local and private.** One SQLite file and no account. Credentials are expanded at
@@ -83,6 +85,36 @@ Then add a line like this to your agent's instructions:
 
 Setups for Cursor, Claude Desktop and LangChain agents are in the
 [agents guide](docs/agents.md).
+
+## Let it fix your code
+
+When a check finds drift, `tiltmeter fix` hands it to an agent that finds the code reading
+that API, adapts it, shows you the diff and opens a pull request:
+
+```console
+$ pip install "tiltmeter[fix]"
+$ tiltmeter fix 2 --repo ~/code/billing-service
+✗ billing_customer  #2  200 · 10 ms  BREAKING · 3 changes
+Working on a new branch, tiltmeter/fix-billing-customer-2, from main at 162dadd.
+3 files changed  +5 -5
+diff --git a/billing/client.py b/billing/client.py
+-    return f"{customer['name']} <{customer['phone']}>"
++    return f"{customer['name']} <{customer['phone_number']}>"
+...
+Commit, push and open a pull request? [y/N]: y
+✓ opened https://github.com/acme/billing-service/pull/41
+```
+
+- **Your checkout is never touched.** The agent works in a temporary git worktree on a new
+  branch, and nothing is committed until you approve the diff or pass `--yes`.
+- **It can only edit files.** No shell, no network access, no subagents. Only tracked files
+  are there to read, and `.env` files, keys and `.git` are blocked.
+- **It says what it could not do.** Tiltmeter sees types, not values. When a number turns
+  into a string, the agent updates the types and leaves the format question to a human in
+  the pull request instead of guessing a conversion.
+
+`--dry-run` shows the diff and throws it away, and `--no-pr` commits to a local branch. The
+[fix guide](docs/fix.md) covers the flags, what the model sees and how to review the result.
 
 ## What counts as drift
 
@@ -193,13 +225,18 @@ Every option is described in the [configuration reference](docs/configuration.md
   unless you set `store_samples: true`.
 - Agents can only check the endpoints in your config. They cannot make Tiltmeter call an
   arbitrary URL.
+- `tiltmeter fix` sends the change list and the files the agent opens to Anthropic. It
+  never sees response values, `${VAR}` values or untracked files such as `.env`, and paths
+  matching `fix.ignore` are blocked.
 
 [SECURITY.md](SECURITY.md) has the full threat model and how to report a vulnerability.
 
 ## Roadmap
 
-- **Auto-fix pull requests.** When a vendor ships a breaking change, an agent built on
-  LangChain Deep Agents finds the affected code in your repository and opens a PR.
+- **Fixes in CI and over MCP.** Run `tiltmeter fix` from the GitHub Action when a scheduled
+  check finds drift, and let agents request a fix through an MCP tool.
+- **Provider mode.** API vendors announce a change once and every customer gets the pull
+  request.
 - **Spec and changelog awareness.** Diff vendor OpenAPI specs and changelogs next to
   observed responses.
 - **Hosted checks** and a team dashboard.
@@ -210,6 +247,7 @@ Every option is described in the [configuration reference](docs/configuration.md
 - [Configuration reference](docs/configuration.md): every option, placeholders and ignore patterns.
 - [Agents and MCP](docs/agents.md): Claude Code, Cursor, Claude Desktop and LangChain.
 - [CI and scheduling](docs/ci.md): GitHub Actions, GitLab CI and cron.
+- [Fixing code](docs/fix.md): `tiltmeter fix`, the agent and how to review its pull requests.
 - [How it works](docs/how-it-works.md): shapes, baselines, the diff rules and the pipeline.
 - [FAQ and troubleshooting](docs/faq.md).
 

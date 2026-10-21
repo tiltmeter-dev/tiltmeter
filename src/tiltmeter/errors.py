@@ -25,3 +25,7 @@ class MissingVariableError(TiltmeterError):
     def __init__(self, name: str) -> None:
         self.name = name
         super().__init__(f"environment variable {name} is not set")
+
+
+class FixError(TiltmeterError):
+    """``tiltmeter fix`` cannot go on: no repository, no credentials, a git failure."""

@@ -6,6 +6,7 @@
 | [Configuration reference](configuration.md) | Look up every option, placeholders, ignore patterns and notifications. |
 | [Agents and MCP](agents.md) | Connect Claude Code, Cursor, Claude Desktop or a LangChain agent. |
 | [CI and scheduling](ci.md) | Run checks from GitHub Actions, GitLab CI, cron or systemd. |
+| [Fixing code](fix.md) | Let an agent adapt your code to drift and open a pull request. |
 | [How it works](how-it-works.md) | Understand shapes, baselines, the diff rules and the pipeline. |
 | [FAQ and troubleshooting](faq.md) | Fix noisy alerts and common errors. |
 

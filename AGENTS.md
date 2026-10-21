@@ -22,6 +22,9 @@ money.
   `mypy --strict`. Drift logic lives there.
 - Never expand, log, persist or send `${VAR}` secrets outside `core/fetch.py` and the
   notifiers. Never print from library code; `tiltmeter serve` uses stdout for MCP.
+- The fix agent (`src/tiltmeter/fix`) gets file tools on a fresh worktree only: never a
+  shell backend, never the user's checkout. Import `deepagents` and `langchain` lazily;
+  they come with the optional `fix` extra.
 - Behaviour changes need a test. Diff changes usually need a golden case in
   `tests/fixtures/pairs/<case>/` with `before.json`, `after.json` and `expected.json`.
 - Keep the docs in sync: option or change-kind tables live in `README.md`,
@@ -33,6 +36,6 @@ money.
 ## Layout
 
 `core/` (diff, shapes, store, fetch), `graph/` (LangGraph pipeline), `llm/` (Claude
-explainer), `notify/` (Slack, webhook), `mcp_server/` (MCP tools), `service.py` (shared by
-CLI and MCP), `cli.py` and `console.py` (Typer and rich), `scripts/` (demo and release
+explainer), `fix/` (`tiltmeter fix`: Deep Agent, worktree, pull request), `notify/` (Slack,
+webhook), `mcp_server/` (MCP tools), `service.py` (shared by CLI and MCP), `cli.py` and `console.py` (Typer and rich), `scripts/` (demo and release
 helpers), `tests/` (mirrors `src/`).
