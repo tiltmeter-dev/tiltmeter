@@ -8,6 +8,10 @@ a minor release may include breaking changes.
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-10-21
+
+First public release, with the same features as 0.1.0rc1.
+
 ## [0.1.0rc1] - 2026-10-21
 
 First release candidate, published to TestPyPI only.
