@@ -1,8 +1,8 @@
 # Getting started
 
 This tour runs a full drift cycle on your machine: a fake billing API, a baseline, a vendor
-change, an alert, and an agent that can ask about it. It takes about five minutes and
-needs Python 3.12 or newer.
+change, an alert, an agent that can ask about it, and one that fixes the code. It takes
+about five minutes and needs Python 3.12 or newer.
 
 ## 1. Install
 
@@ -135,11 +135,57 @@ Then ask Claude Code something like *"Has the billing_customers API drifted? Wha
 change in my client?"*. It calls `has_drifted` and `get_schema` and answers from the same
 history you just built. Other clients are covered in the [agents guide](agents.md).
 
+## 9. Let an agent fix the code
+
+Somewhere, code still reads `phone`. Create a tiny client that does, in its own git
+repository:
+
+```bash
+mkdir billing-client
+cat > billing-client/client.py <<'PY'
+import httpx
+
+
+def contact_lines() -> list[str]:
+    customers = httpx.get("http://localhost:8765/customers.json").json()["data"]
+    return [f"{c['email']} <{c['phone']}>" for c in customers]
+PY
+git -C billing-client init -q && git -C billing-client add . && git -C billing-client commit -qm "Billing client"
+```
+
+Then hand check 3 to an agent. With [Claude Code](https://code.claude.com) installed and
+logged in, nothing else is needed:
+
+```bash
+tiltmeter fix 3 --repo billing-client --agent claude-code --dry-run
+```
+
+```console
+Working on a new branch, tiltmeter/fix-billing-customers-3, from main at b3593b4.
+1 file changed  +1 -1
+diff --git a/client.py b/client.py
+-    return [f"{c['email']} <{c['phone']}>" for c in customers]
++    return [f"{c['email']} <{c['phone_number']}>" for c in customers]
+╭─ agent ─────────────────────────────────────────────────────────────────────────╮
+│ Renamed the customer field read from `phone` to `phone_number` in client.py.    │
+│ Nothing in the repository reads `balance`, so that type change needed no edit.  │
+│ confidence high                                                                 │
+╰─────────────────────────────────────────────────────────────────────────────────╯
+discarded the edits; nothing was committed
+```
+
+Without Claude Code, use the built-in agent: `pip install "tiltmeter[fix]"`, set
+`ANTHROPIC_API_KEY` and drop `--agent claude-code`. Either way the agent works in a
+temporary copy of the repository with file tools only. `--dry-run` shows the diff and
+throws it away. Without it, Tiltmeter asks before it commits, pushes and opens a pull
+request. The [fix guide](fix.md) has the details.
+
 ## Next steps
 
 - Point Tiltmeter at the APIs you actually depend on: [configuration reference](configuration.md).
 - Run it on a schedule and fail builds on breaking drift: [CI guide](ci.md).
 - Get alerts in Slack: see `notify` in the [configuration reference](configuration.md#notifications).
+- Fix code in your real repositories, and review the pull requests: [fix guide](fix.md).
 - Understand what is and is not reported: [how it works](how-it-works.md).
 
 When you are done, stop the server with Ctrl+C. Everything Tiltmeter learned lives in

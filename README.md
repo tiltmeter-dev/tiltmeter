@@ -95,7 +95,7 @@ When a check finds drift, `tiltmeter fix` hands it to an agent that finds the co
 that API, adapts it, shows you the diff and opens a pull request:
 
 ```console
-$ pip install "tiltmeter[fix]"
+$ pip install "tiltmeter[fix]"            # or plain tiltmeter, then --agent claude-code
 $ tiltmeter fix 2 --repo ~/code/billing-service
 ✗ billing_customer  #2  200 · 10 ms  BREAKING · 3 changes
 Working on a new branch, tiltmeter/fix-billing-customer-2, from main at 162dadd.
