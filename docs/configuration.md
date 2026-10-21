@@ -272,7 +272,7 @@ Tiltmeter sends a `POST` with this JSON body. `event` is `drift.detected` or
 ```json
 {
   "event": "drift.detected",
-  "tiltmeter_version": "0.1.0",
+  "tiltmeter_version": "0.2.0",
   "result": {
     "endpoint_id": "billing_customers",
     "check_id": 2,
