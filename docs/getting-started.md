@@ -46,7 +46,8 @@ EOF
 ```
 
 `tiltmeter init` writes a longer starter file with commented examples. This one is all
-the tour needs.
+the tour needs. For a real web app, `tiltmeter init --from-har` builds the file from a
+browser export instead; see [Configuration](configuration.md#from-a-har-file).
 
 ## 4. Record the baseline
 

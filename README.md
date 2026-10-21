@@ -49,6 +49,14 @@ tiltmeter init               # writes tiltmeter.yaml with a public example API
 tiltmeter check              # the first check records the baseline
 ```
 
+Already calling an API from a web app? Export a HAR from your browser's DevTools (Network
+tab, "Export HAR") and let Tiltmeter write the config from the JSON calls the page made.
+Tokens and cookies become `${VAR}` placeholders:
+
+```bash
+tiltmeter init --from-har session.har --host api.example.com
+```
+
 Run `tiltmeter check` again from cron or CI, or leave `tiltmeter watch` running. This is
 what you get when a vendor renames `phone` and turns `balance` into a string:
 

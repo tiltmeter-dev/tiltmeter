@@ -30,7 +30,8 @@ from rich.markup import escape
 from tiltmeter import __version__
 from tiltmeter.config import DEFAULT_CONFIG_FILE, EXAMPLE_CONFIG, FixAgentKind
 from tiltmeter.core.models import CheckResult, Severity, max_severity
-from tiltmeter.errors import TiltmeterError
+from tiltmeter.errors import HarError, TiltmeterError
+from tiltmeter.har import ImportResult, endpoints_from_har, load_har, render_config
 
 if TYPE_CHECKING:
     from tiltmeter.fix.models import FixOutcome, FixPreview
@@ -155,13 +156,84 @@ def init(
         DEFAULT_CONFIG_FILE
     ),
     force: Annotated[bool, typer.Option("--force", help="Overwrite an existing file.")] = False,
+    from_har: Annotated[
+        Path | None,
+        typer.Option(
+            "--from-har",
+            exists=True,
+            dir_okay=False,
+            help="Build the endpoints from a HAR file exported from the browser's Network tab.",
+        ),
+    ] = None,
+    host: Annotated[
+        list[str] | None,
+        typer.Option("--host", help="With --from-har: only this host and its subdomains."),
+    ] = None,
+    include_writes: Annotated[
+        bool,
+        typer.Option(
+            "--include-writes",
+            help="With --from-har: keep POST, PUT, PATCH and DELETE requests too.",
+        ),
+    ] = False,
 ) -> None:
-    """Write a starter tiltmeter.yaml."""
+    """Write a starter tiltmeter.yaml, or build one from a browser HAR export."""
+    if from_har is None and (host or include_writes):
+        _fail("--host and --include-writes need --from-har")
     if path.exists() and not force:
         _fail(f"{path} already exists (use --force to overwrite it)")
+    imported = None
+    text = EXAMPLE_CONFIG
+    if from_har is not None:
+        imported = _import_har(from_har, host or [], include_writes)
+        text = render_config(imported, from_har.name)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(EXAMPLE_CONFIG, encoding="utf-8")
-    out.print(f"[green]✓[/] wrote {path}")
+    path.write_text(text, encoding="utf-8")
+    out.print(f"[green]✓[/] wrote {escape(str(path))}")
+    if imported is not None:
+        _report_import(imported)
+    _ignore_state_dir(path)
+    if imported is None:
+        out.print("Next: edit the endpoints, then run [bold]tiltmeter check[/].")
+        return
+    if imported.variables:
+        out.print("Credentials were replaced by placeholders. Set these before checking:")
+        for name in imported.variables:
+            out.print(f"  {name}")
+    out.print("Next: review the endpoints, then run [bold]tiltmeter check[/].")
+
+
+def _import_har(source: Path, hosts: Sequence[str], include_writes: bool) -> ImportResult:
+    try:
+        imported = endpoints_from_har(load_har(source), hosts, include_writes=include_writes)
+    except HarError as exc:
+        _fail(str(exc))
+    if not imported.endpoints:
+        hint = "drop --host or " if hosts else ""
+        _fail(
+            f"no JSON API calls found in {source} ({hint}record the HAR while the page loads"
+            " the data you care about)"
+        )
+    return imported
+
+
+def _report_import(imported: ImportResult) -> None:
+    """Counts and host names only: never a header, parameter or body value."""
+    count = len(imported.endpoints)
+    out.print(f"  {count} endpoint{'' if count == 1 else 's'} from {imported.requests} requests")
+    hosts = ", ".join(f"{name} ({n})" for name, n in imported.hosts.items())
+    out.print(f"  hosts: {escape(hosts)}")
+    if imported.other_hosts:
+        out.print(f"  left out {imported.other_hosts} requests to other hosts")
+    if imported.writes:
+        out.print(
+            f"  left out {imported.writes} POST/PUT/PATCH/DELETE requests, which a monitor"
+            " would replay on every check (keep them with --include-writes)"
+        )
+
+
+def _ignore_state_dir(path: Path) -> None:
+    """Add the state folder to the .gitignore next to the config, inside a repository."""
     gitignore = path.parent / ".gitignore"
     if gitignore.exists() or (path.parent / ".git").exists():
         existing = gitignore.read_text(encoding="utf-8") if gitignore.exists() else ""
@@ -170,7 +242,6 @@ def init(
             with gitignore.open("a", encoding="utf-8") as handle:
                 handle.write(f"{prefix}{STATE_IGNORE_LINE}\n")
             out.print(f"[green]✓[/] added {STATE_IGNORE_LINE} to {gitignore}")
-    out.print("Next: edit the endpoints, then run [bold]tiltmeter check[/].")
 
 
 @app.command()

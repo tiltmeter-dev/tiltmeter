@@ -4,7 +4,7 @@ Tiltmeter reads one YAML file, `tiltmeter.yaml` by default. Every key is validat
 file is loaded, and unknown keys are rejected, so a typo fails loudly instead of being
 ignored.
 
-- [Finding the file](#finding-the-file)
+- [Finding the file](#finding-the-file) (and [building it from a HAR file](#from-a-har-file))
 - [A complete example](#a-complete-example)
 - [Top-level options](#top-level-options)
 - [Endpoints](#endpoints)
@@ -27,6 +27,38 @@ TILTMETER_CONFIG=ops/apis.yaml tiltmeter watch
 ```
 
 `tiltmeter init [PATH]` writes a starter file with commented examples.
+
+### From a HAR file
+
+If a web app already calls the API, let the browser describe it. Open DevTools, go to the
+Network tab, load the pages you care about, then export everything as HAR ("Export HAR" in
+Chrome and Edge, "Save All As HAR" in Firefox):
+
+```bash
+tiltmeter init --from-har session.har                        # every JSON API the page called
+tiltmeter init --from-har session.har --host api.example.com # only this host and its subdomains
+```
+
+Tiltmeter keeps the requests that got a 2xx JSON response, one endpoint per method, host
+and path (GraphQL requests are told apart by operation). It drops headers the HTTP client
+sets itself or that only mean something in a browser (`User-Agent`, `Referer`, `sec-*`,
+`If-*` and the like) and the user info in URLs.
+
+| What | Becomes |
+|---|---|
+| `Authorization: Bearer abc…` | `Authorization: Bearer ${API_EXAMPLE_COM_AUTHORIZATION}` |
+| `Cookie`, `X-Api-Key`, any header whose name mentions a token, key, secret, session, auth or password | `${API_EXAMPLE_COM_<NAME>}` |
+| Query parameters with such names (`access_token`, `api_key`, `sig`…) | `${API_EXAMPLE_COM_<NAME>}` |
+| JSON body fields with such names, at any depth | `${API_EXAMPLE_COM_<NAME>}` |
+
+The original values are never written to the file or printed. `init` lists the variables
+to set before the first `tiltmeter check`. Session cookies expire, so prefer an API token
+when the service offers one, and delete headers the API works without.
+
+Requests that may change data (POST, PUT, PATCH and DELETE) are left out, because the
+monitor would replay them on every check. GraphQL queries count as reads. Add
+`--include-writes` for APIs that read through POST, such as search endpoints, and review
+each one. Form and file uploads are always skipped: only JSON bodies can be replayed.
 
 ## A complete example
 
