@@ -25,7 +25,7 @@ jobs:
       # config. See https://github.com/tiltmeter-dev/tiltmeter-action for every input.
       - uses: tiltmeter-dev/tiltmeter-action@v1
         with:
-          version: "0.4.0"    # the Tiltmeter release this job runs
+          version: "0.5.0"    # the Tiltmeter release this job runs
           fail-on: warning    # or "breaking", or "never" to only report
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}

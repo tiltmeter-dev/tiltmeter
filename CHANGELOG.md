@@ -8,6 +8,8 @@ a minor release may include breaking changes.
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-21
+
 ### Added
 
 - `tiltmeter fix --agent codex` (or `fix.agent: codex`) runs the fix with Codex on your own
