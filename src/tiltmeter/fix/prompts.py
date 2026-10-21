@@ -15,6 +15,12 @@ CLAUDE_CODE_WORKSPACE: Final = (
     "Use Glob and Grep to find candidate files. The repository is your working directory: "
     "use paths relative to it. You only have file tools: there is no shell."
 )
+CODEX_WORKSPACE: Final = (
+    "Use rg or grep to find candidate files and read them with sed or cat; edit with "
+    "apply_patch. The repository is your working directory: use paths relative to it. "
+    "Commands run in a sandbox without network access: do not install packages, run the "
+    "project's tests or use git."
+)
 
 _SYSTEM_PROMPT_TEMPLATE: Final = """\
 You are Tiltmeter's fixer. A third-party HTTP API that this repository calls has \

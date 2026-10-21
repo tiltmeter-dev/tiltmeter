@@ -57,7 +57,7 @@ and on macOS and Windows with Python 3.13. It also builds the package and checks
 | `tiltmeter/graph` | The LangGraph pipeline that sequences one check. |
 | `tiltmeter/llm` | The Claude explainer and its prompt. |
 | `tiltmeter/notify` | Slack and webhook notifiers. |
-| `tiltmeter/fix` | `tiltmeter fix`: the fix request, the agents (Deep Agents, Claude Code), the git worktree and the pull request. |
+| `tiltmeter/fix` | `tiltmeter fix`: the fix request, the agents (Deep Agents, Claude Code, Codex), the git worktree and the pull request. |
 | `tiltmeter/mcp_server` | The MCP server. |
 | `tiltmeter/service.py` | The service the CLI and the MCP server share. |
 | `tiltmeter/cli.py`, `console.py` | The command line and its rich output. |
@@ -78,7 +78,10 @@ A few rules keep it that way:
   at a fresh worktree, never a shell backend, and `deepagents` and `langchain` are imported
   lazily so the base install works without the `fix` extra. An agent CLI such as Claude Code
   runs through `fix/_proc.py`, without a shell, in the worktree, with its own shell tools
-  turned off and `fix.ignore` denied. A new backend implements the `FixAgent` protocol in
+  turned off and `fix.ignore` denied. The one exception is Codex, which can only read files
+  through its shell: it keeps the shell inside its OS sandbox, with a permission profile
+  that denies reads outside the worktree, writes outside it, the network and `fix.ignore`.
+  Any other CLI that needs a shell must be held to the same standard. A new backend implements the `FixAgent` protocol in
   `fix/agent.py` and is picked in `build_fix_agent`. Git and `gh` run the same way, and
   only on the worktree's branch.
 

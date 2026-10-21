@@ -7,8 +7,9 @@ offloaded tool results or conversation summaries, stay in memory, so the diff
 only ever shows real edits.
 
 ``deepagents`` and ``langchain`` come with the ``fix`` extra and are only imported
-when an agent is built. :func:`build_fix_agent` picks this agent or the Claude Code
-one (:mod:`tiltmeter.fix.claude_code`), as ``fix.agent`` says.
+when an agent is built. :func:`build_fix_agent` picks this agent, the Claude Code one
+(:mod:`tiltmeter.fix.claude_code`) or the Codex one (:mod:`tiltmeter.fix.codex`), as
+``fix.agent`` says.
 """
 
 from __future__ import annotations
@@ -35,7 +36,7 @@ if TYPE_CHECKING:
 INSTALL_HINT: Final = 'the fix agent needs the "fix" extra: pip install "tiltmeter[fix]"'
 NO_API_KEY: Final = (
     "set ANTHROPIC_API_KEY: the fix agent runs on Claude "
-    "(or pass --agent claude-code to use your Claude Code login)"
+    "(or pass --agent claude-code or --agent codex to use your Claude Code or Codex login)"
 )
 SCRATCH: Final = "/.tiltmeter-agent/"
 HIDDEN_TOOLS: Final = frozenset({"task", "execute", "delete", "write_todos"})
@@ -56,6 +57,10 @@ def build_fix_agent(config: FixConfig, *, environ: Mapping[str, str] = os.enviro
         from tiltmeter.fix.claude_code import ClaudeCodeFixAgent
 
         return ClaudeCodeFixAgent.from_config(config, environ=environ)
+    if config.agent == "codex":
+        from tiltmeter.fix.codex import CodexFixAgent
+
+        return CodexFixAgent.from_config(config, environ=environ)
     if not environ.get("ANTHROPIC_API_KEY"):
         raise FixError(NO_API_KEY)
     return DeepFixAgent.from_config(config)

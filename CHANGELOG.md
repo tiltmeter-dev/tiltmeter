@@ -8,6 +8,16 @@ a minor release may include breaking changes.
 
 ## [Unreleased]
 
+### Added
+
+- `tiltmeter fix --agent codex` (or `fix.agent: codex`) runs the fix with Codex on your own
+  login, with no API key and no extra install. Codex reads files through its shell, so the
+  shell stays, inside Codex's OS sandbox with a permission profile passed on the command
+  line: nothing readable outside the worktree except system paths and Codex itself, writes
+  only inside it, `.git` and `fix.ignore` denied, no network, a core set of environment
+  variables, and web search, apps, plugins and the browser turned off. Your Codex config
+  and rules are not loaded and the session is not saved.
+
 ## [0.4.0] - 2026-10-21
 
 ### Added

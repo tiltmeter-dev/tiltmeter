@@ -81,7 +81,7 @@ def claude_settings(ignore: Iterable[str]) -> dict[str, Any]:
     }
 
 
-def _report_in_text(text: object) -> dict[str, Any] | None:
+def report_in_text(text: object) -> dict[str, Any] | None:
     """A report written as JSON in the final message, when structured output is missing."""
     if not isinstance(text, str):
         return None
@@ -117,7 +117,7 @@ def parse_result(completed: subprocess.CompletedProcess[str], *, max_turns: int)
         raise FixError(f"Claude Code failed: {'; '.join(str(error) for error in errors)}")
     report = data.get("structured_output")
     if not isinstance(report, Mapping):
-        report = _report_in_text(data.get("result"))
+        report = report_in_text(data.get("result"))
     if report is None:
         raise FixError("the agent stopped without reporting what it changed")
     try:

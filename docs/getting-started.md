@@ -175,9 +175,9 @@ diff --git a/client.py b/client.py
 discarded the edits; nothing was committed
 ```
 
-Without Claude Code, use the built-in agent: `pip install "tiltmeter[fix]"`, set
-`ANTHROPIC_API_KEY` and drop `--agent claude-code`. Either way the agent works in a
-temporary copy of the repository with file tools only. `--dry-run` shows the diff and
+With Codex, use `--agent codex` instead. Without either, use the built-in agent:
+`pip install "tiltmeter[fix]"`, set `ANTHROPIC_API_KEY` and drop `--agent`. Whichever you
+pick, the agent works in a temporary copy of the repository and nothing outside it. `--dry-run` shows the diff and
 throws it away. Without it, Tiltmeter asks before it commits, pushes and opens a pull
 request. The [fix guide](fix.md) has the details.
 
