@@ -44,11 +44,12 @@ def test_keeps_one_endpoint_per_json_api() -> None:
 
 def test_leaves_out_writes_unless_asked() -> None:
     assert endpoints_from_har(entries()).writes == 2  # POST /v1/orders and the mutation
-    endpoints = by_id(include_writes=True)
+    result = endpoints_from_har(entries(), include_writes=True)
+    endpoints = {endpoint.id: endpoint for endpoint in result.endpoints}
     assert endpoints["post_orders"].method == "POST"
     assert endpoints["post_graphql_update_user"].body["query"].startswith("mutation")
     # A form post can't be replayed as JSON, so it is skipped either way.
-    assert not any("auth.example.com" in e.url for e in endpoints.values())
+    assert "auth.example.com" not in result.hosts
 
 
 def test_host_filter_matches_subdomains() -> None:
