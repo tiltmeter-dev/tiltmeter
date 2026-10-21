@@ -8,6 +8,8 @@ a minor release may include breaking changes.
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-21
+
 ### Added
 
 - `tiltmeter fix <check-id>`: a LangChain Deep Agent adapts the code that reads a drifted
