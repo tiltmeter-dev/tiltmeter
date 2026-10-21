@@ -4,17 +4,19 @@
 [![Python](https://img.shields.io/badge/python-3.12%20%7C%203.13%20%7C%203.14-blue.svg)](pyproject.toml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-**An early-warning system for the third-party APIs your AI agents depend on.** · [tiltmeter.dev](https://tiltmeter.dev)
+**An early-warning system for the third-party APIs your AI agents depend on, with the fix as a pull request.** · [tiltmeter.dev](https://tiltmeter.dev)
 
 <!-- pypi-skip-image -->
-![Tiltmeter catching a renamed field and a type change](docs/demo.svg)
+![Tiltmeter catching a renamed field and a type change, then an agent adapting the code in a pull request](docs/demo.svg)
 <!-- /pypi-skip-image -->
 
 Volcanologists bolt tiltmeters to the ground to sense tiny deformations long before an
 eruption. Tiltmeter does the same for the APIs under your agents. It learns the shape of
 their JSON responses from real traffic, notices when a vendor renames a field, starts
 sending `null` or turns a number into a string, and tells you, your CI and the agents
-themselves before anything goes on tilt.
+themselves before anything goes on tilt. Then `tiltmeter fix` hands the change to an agent
+that adapts the code reading that API and opens the pull request, leaving what it cannot
+know for a human.
 
 Typed code crashes loudly when an API changes. Agents don't. They read the new response,
 fill the gaps with guesses, or retry until the budget is gone.

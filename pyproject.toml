@@ -1,7 +1,7 @@
 [project]
 name = "tiltmeter"
 dynamic = ["version", "readme"]
-description = "An early-warning system for the third-party APIs your AI agents depend on: CLI, CI gate and MCP server."
+description = "An early-warning system for the third-party APIs your AI agents depend on: CLI, CI gate, MCP server and fix pull requests."
 requires-python = ">=3.12"
 license = "MIT"
 license-files = ["LICENSE"]
