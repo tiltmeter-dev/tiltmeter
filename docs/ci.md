@@ -91,7 +91,7 @@ Run the command yourself and keep the baseline with `actions/cache`. Restoring w
           key: tiltmeter-${{ github.run_id }}
           restore-keys: tiltmeter-
       - name: Check APIs
-        run: uvx tiltmeter@0.3.0 check
+        run: uvx tiltmeter@0.4.0 check
         env:
           STRIPE_API_KEY: ${{ secrets.STRIPE_API_KEY }}
       - uses: actions/cache/save@v6
@@ -108,7 +108,7 @@ without the action, keep the code and decide yourself:
       - name: Check APIs
         run: |
           tiltmeter_status=0
-          uvx tiltmeter@0.3.0 check || tiltmeter_status=$?
+          uvx tiltmeter@0.4.0 check || tiltmeter_status=$?
           case "$tiltmeter_status" in
             2|4) exit "$tiltmeter_status" ;;  # breaking drift or a broken config
             *)   exit 0 ;;                    # clean, warnings, or a check that could not run
@@ -128,7 +128,7 @@ api-drift:
       - .tiltmeter/
     when: always
   script:
-    - uvx tiltmeter@0.3.0 check
+    - uvx tiltmeter@0.4.0 check
 ```
 
 Create the schedule under **Build > Pipeline schedules**, and add the variables your config

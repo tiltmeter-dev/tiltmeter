@@ -8,6 +8,8 @@ a minor release may include breaking changes.
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-21
+
 ### Added
 
 - `tiltmeter init --from-har session.har` writes the config from a HAR file exported from
