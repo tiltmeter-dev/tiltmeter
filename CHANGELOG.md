@@ -8,6 +8,10 @@ a minor release may include breaking changes.
 
 ## [Unreleased]
 
+## [0.1.0rc1] - 2026-10-21
+
+First release candidate, published to TestPyPI only.
+
 ### Added
 
 - Learn the shape of JSON responses from real traffic and compare every check with a
