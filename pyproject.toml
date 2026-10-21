@@ -45,11 +45,11 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/OWNER/tiltmeter"
-Documentation = "https://github.com/OWNER/tiltmeter/tree/main/docs"
-Changelog = "https://github.com/OWNER/tiltmeter/blob/main/CHANGELOG.md"
-Issues = "https://github.com/OWNER/tiltmeter/issues"
-Source = "https://github.com/OWNER/tiltmeter"
+Homepage = "https://github.com/tiltmeter/tiltmeter"
+Documentation = "https://github.com/tiltmeter/tiltmeter/tree/main/docs"
+Changelog = "https://github.com/tiltmeter/tiltmeter/blob/main/CHANGELOG.md"
+Issues = "https://github.com/tiltmeter/tiltmeter/issues"
+Source = "https://github.com/tiltmeter/tiltmeter"
 
 [project.scripts]
 tiltmeter = "tiltmeter.cli:main"
@@ -106,7 +106,7 @@ start-after = "<!-- /pypi-skip-diagram -->"
 
 [[tool.hatch.metadata.hooks.fancy-pypi-readme.substitutions]]
 pattern = '\]\((?!https?://|#|mailto:)([^)\s]+)\)'
-replacement = '](https://github.com/OWNER/tiltmeter/blob/main/\1)'
+replacement = '](https://github.com/tiltmeter/tiltmeter/blob/main/\1)'
 
 [tool.ruff]
 line-length = 100

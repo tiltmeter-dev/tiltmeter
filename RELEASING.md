@@ -7,10 +7,10 @@ a laptop, and there is no PyPI token to leak.
 
 ## One-time setup
 
-1. **Repository URLs.** In `pyproject.toml`, replace `OWNER` with the GitHub owner of the
-   repository, both in `[project.urls]` and in the README link rewrite under
-   `[tool.hatch.metadata.hooks.fancy-pypi-readme]`. The release workflow refuses to
-   publish while the placeholder is there.
+1. **Repository URLs.** `pyproject.toml` points at `github.com/tiltmeter/tiltmeter`, both
+   in `[project.urls]` and in the README link rewrite under
+   `[tool.hatch.metadata.hooks.fancy-pypi-readme]`. If the repository ever moves, update
+   both. The release workflow refuses to publish while an `OWNER` placeholder is left.
 2. **Code of conduct contact.** Replace `[INSERT CONTACT METHOD]` in CODE_OF_CONDUCT.md
    with an address that reaches the maintainers.
 3. **GitHub environments.** Under *Settings > Environments*, create `pypi` and `testpypi`.
