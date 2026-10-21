@@ -43,7 +43,7 @@ uv run pytest -m integration           # also calls Claude; needs ANTHROPIC_API_
 uv run ruff check src tests scripts    # lint
 uv run ruff format src tests scripts   # format
 uv run mypy                            # type-check
-uv run python scripts/demo.py          # re-render docs/demo.svg
+uv run python scripts/demo.py          # re-render docs/demo.svg (needs ANTHROPIC_API_KEY)
 ```
 
 CI runs the same lint, type and test commands on Linux with Python 3.12, 3.13 and 3.14,
