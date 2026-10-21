@@ -7,7 +7,7 @@ a laptop, and there is no PyPI token to leak.
 
 ## One-time setup
 
-1. **Repository URLs.** `pyproject.toml` points at `github.com/tiltmeter/tiltmeter`, both
+1. **Repository URLs.** `pyproject.toml` points at `github.com/tiltmeter-dev/tiltmeter`, both
    in `[project.urls]` and in the README link rewrite under
    `[tool.hatch.metadata.hooks.fancy-pypi-readme]`. If the repository ever moves, update
    both. The release workflow refuses to publish while an `OWNER` placeholder is left.
