@@ -38,5 +38,5 @@ money.
 
 `core/` (diff, shapes, store, fetch), `graph/` (LangGraph pipeline), `llm/` (Claude
 explainer), `fix/` (`tiltmeter fix`: Deep Agent or Claude Code, worktree, pull request), `notify/` (Slack,
-webhook), `mcp_server/` (MCP tools), `service.py` (shared by CLI and MCP), `cli.py` and `console.py` (Typer and rich), `scripts/` (demo and release
+webhook), `mcp_server/` (MCP tools), `har.py` (`init --from-har`), `service.py` (shared by CLI and MCP), `cli.py` and `console.py` (Typer and rich), `scripts/` (demo and release
 helpers), `tests/` (mirrors `src/`).

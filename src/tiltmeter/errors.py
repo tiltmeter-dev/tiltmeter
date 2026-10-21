@@ -29,3 +29,7 @@ class MissingVariableError(TiltmeterError):
 
 class FixError(TiltmeterError):
     """``tiltmeter fix`` cannot go on: no repository, no credentials, a git failure."""
+
+
+class HarError(TiltmeterError):
+    """A file that ``tiltmeter init --from-har`` cannot read as a HAR export."""

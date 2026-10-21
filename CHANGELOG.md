@@ -8,6 +8,14 @@ a minor release may include breaking changes.
 
 ## [Unreleased]
 
+### Added
+
+- `tiltmeter init --from-har session.har` writes the config from a HAR file exported from
+  the browser's Network tab: one endpoint per JSON API the page called. Tokens, cookies,
+  API keys and password fields become `${VAR}` placeholders and are never written or
+  printed. `--host` keeps one host and its subdomains; POST, PUT, PATCH and DELETE requests
+  are left out unless you pass `--include-writes` (GraphQL queries count as reads).
+
 ## [0.3.0] - 2026-10-21
 
 ### Added

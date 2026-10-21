@@ -79,6 +79,58 @@ def test_init(tmp_path: Path) -> None:
     assert (repo / ".gitignore").read_text() == ".tiltmeter/\n"
 
 
+SAMPLE_HAR = Path(__file__).parent / "fixtures" / "har" / "sample.har"
+
+
+def test_init_from_har(tmp_path: Path) -> None:
+    target = tmp_path / "tiltmeter.yaml"
+    (tmp_path / ".git").mkdir()
+    outcome = invoke("init", str(target), "--from-har", str(SAMPLE_HAR))
+    assert outcome.exit_code == 0, outcome.output
+    output = flat(outcome.output)
+    assert "7 endpoints from 14 requests" in output
+    assert "api.example.com (5)" in output
+    assert "left out 2 POST/PUT/PATCH/DELETE requests" in output
+    assert "API_EXAMPLE_COM_AUTHORIZATION" in output
+    assert "SECRET-" not in output
+    text = target.read_text(encoding="utf-8")
+    assert "built from sample.har" in text
+    assert "SECRET-" not in text
+    assert (tmp_path / ".gitignore").read_text() == ".tiltmeter/\n"
+
+    again = invoke("init", str(target), "--from-har", str(SAMPLE_HAR))
+    assert again.exit_code == 4
+    assert "already exists" in flat(again.output)
+
+
+def test_init_from_har_options(tmp_path: Path) -> None:
+    target = tmp_path / "tiltmeter.yaml"
+    only = invoke("init", str(target), "--from-har", str(SAMPLE_HAR), "--host", "localhost")
+    assert only.exit_code == 0, only.output
+    output = flat(only.output)
+    assert "1 endpoint from 14 requests" in output
+    assert "left out 9 requests to other hosts" in output
+    assert "placeholders" not in output
+
+    writes = invoke(
+        "init", str(target), "--force", "--from-har", str(SAMPLE_HAR), "--include-writes"
+    )
+    assert writes.exit_code == 0, writes.output
+    assert "id: post_orders" in target.read_text(encoding="utf-8")
+
+    nothing = invoke(
+        "init", str(target), "--force", "--from-har", str(SAMPLE_HAR), "--host", "x.io"
+    )
+    assert nothing.exit_code == 4
+    assert "no JSON API calls found" in flat(nothing.output)
+
+    broken = tmp_path / "broken.har"
+    broken.write_text("[]", encoding="utf-8")
+    assert invoke("init", str(target), "--force", "--from-har", str(broken)).exit_code == 4
+    assert invoke("init", str(target), "--from-har", str(tmp_path / "missing.har")).exit_code == 2
+    assert invoke("init", str(target), "--force", "--host", "x.io").exit_code == 4
+
+
 @respx.mock
 def test_check_exit_codes_and_output(tmp_path: Path) -> None:
     config = write_config(tmp_path)

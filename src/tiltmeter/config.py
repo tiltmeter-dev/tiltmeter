@@ -243,7 +243,7 @@ def resolve_state_dir(config: Config, config_path: Path) -> Path:
     return state_dir
 
 
-EXAMPLE_CONFIG = """\
+_EXAMPLE_ENDPOINTS = """\
 # tiltmeter configuration. Docs: see README.md
 version: 1
 
@@ -267,6 +267,10 @@ endpoints:
   #   severity_overrides:
   #     field_now_optional: warning
 
+"""
+
+# Everything after the endpoints; `tiltmeter init --from-har` reuses it.
+EXAMPLE_SETTINGS = """\
 # Explanations written by Claude when drift is detected (needs ANTHROPIC_API_KEY).
 llm:
   enabled: true
@@ -289,3 +293,5 @@ notify: []
 #    url: https://example.com/hooks/tiltmeter
 #    min_severity: breaking
 """
+
+EXAMPLE_CONFIG = _EXAMPLE_ENDPOINTS + EXAMPLE_SETTINGS
