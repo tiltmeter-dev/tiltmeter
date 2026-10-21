@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from driftwatch.core.analyze import Rules, analyze
-from driftwatch.core.models import Baseline, ChangeKind, Observation, Severity
-from driftwatch.core.paths import PathMatcher
-from driftwatch.core.shape import Shape
+from tiltmeter.core.analyze import Rules, analyze
+from tiltmeter.core.models import Baseline, ChangeKind, Observation, Severity
+from tiltmeter.core.paths import PathMatcher
+from tiltmeter.core.shape import Shape
 
 JSON = "application/json"
 

@@ -5,10 +5,10 @@ from pathlib import Path
 
 import pytest
 
-from driftwatch.core.models import Change, ChangeKind, CheckResult, Severity
-from driftwatch.core.shape import Shape
-from driftwatch.core.store import Store, StoreError
 from tests.helpers import explanation
+from tiltmeter.core.models import Change, ChangeKind, CheckResult, Severity
+from tiltmeter.core.shape import Shape
+from tiltmeter.core.store import Store, StoreError
 
 
 def result(
@@ -159,18 +159,18 @@ def test_notes_and_explanations_can_be_added_later(store: Store) -> None:
 
 
 def test_file_store_creates_its_folder_and_reopens(tmp_path: Path) -> None:
-    path = tmp_path / "state" / "nested" / "driftwatch.db"
+    path = tmp_path / "state" / "nested" / "tiltmeter.db"
     with Store(path) as db:
         db.save_check(result())
     with Store(path) as db:
         assert len(db.list_checks()) == 1
-    assert Store.in_dir(tmp_path / "x").path.endswith("driftwatch.db")
+    assert Store.in_dir(tmp_path / "x").path.endswith("tiltmeter.db")
 
 
 def test_refuses_a_newer_schema(tmp_path: Path) -> None:
-    path = tmp_path / "driftwatch.db"
+    path = tmp_path / "tiltmeter.db"
     connection = sqlite3.connect(path)
     connection.execute("PRAGMA user_version = 99")
     connection.close()
-    with pytest.raises(StoreError, match="newer driftwatch"):
+    with pytest.raises(StoreError, match="newer Tiltmeter"):
         Store(path)

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from driftwatch.core.classify import DEFAULT_SEVERITY, classify, default_severity
-from driftwatch.core.models import ChangeKind, RawChange, Severity
+from tiltmeter.core.classify import DEFAULT_SEVERITY, classify, default_severity
+from tiltmeter.core.models import ChangeKind, RawChange, Severity
 
 
 def raw(kind: ChangeKind, before: str | None = None, after: str | None = None) -> RawChange:

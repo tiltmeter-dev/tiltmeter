@@ -8,9 +8,9 @@ import pytest
 import respx
 from mcp import Client, StdioServerParameters
 
-from driftwatch.mcp_server.server import create_server
 from tests.helpers import API, FakeClock, FakeExplainer
 from tests.service_kit import make_service
+from tiltmeter.mcp_server.server import create_server
 
 URL = f"{API}/v1/items"
 TOOLS = {"list_endpoints", "has_drifted", "get_schema", "get_changes", "check_api", "check_all"}
@@ -71,9 +71,9 @@ async def test_agent_workflow() -> None:
         assert everything.structured_content is not None
         assert len(everything.structured_content["result"]) == 1
 
-        listing = await client.read_resource("driftwatch://endpoints")
+        listing = await client.read_resource("tiltmeter://endpoints")
         assert '"id": "items"' in listing.contents[0].text  # type: ignore[union-attr]
-        learned = await client.read_resource("driftwatch://schema/items")
+        learned = await client.read_resource("tiltmeter://schema/items")
         assert '"$schema"' in learned.contents[0].text  # type: ignore[union-attr]
 
 
@@ -91,9 +91,9 @@ async def test_errors_are_readable() -> None:
         probe = await client.call_tool("check_api", {"endpoint_id": "ghost"})
         assert probe.is_error
         with pytest.raises(Exception, match="no baseline"):
-            await client.read_resource("driftwatch://schema/items")
+            await client.read_resource("tiltmeter://schema/items")
         with pytest.raises(Exception, match="unknown endpoint"):
-            await client.read_resource("driftwatch://schema/ghost")
+            await client.read_resource("tiltmeter://schema/ghost")
 
 
 async def test_lifespan_closes_the_service_when_asked() -> None:
@@ -110,10 +110,10 @@ async def test_lifespan_closes_the_service_when_asked() -> None:
 
 
 async def test_stdio_server_end_to_end(tmp_path: Path) -> None:
-    config = tmp_path / "driftwatch.yaml"
+    config = tmp_path / "tiltmeter.yaml"
     config.write_text("endpoints:\n  - id: local\n    url: http://127.0.0.1:9/never\n")
     parameters = StdioServerParameters(
-        command=sys.executable, args=["-m", "driftwatch", "serve", "-c", str(config)]
+        command=sys.executable, args=["-m", "tiltmeter", "serve", "-c", str(config)]
     )
     async with Client(parameters) as client:
         tools = {tool.name for tool in (await client.list_tools()).tools}

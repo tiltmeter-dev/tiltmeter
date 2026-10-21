@@ -6,11 +6,11 @@ from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
-from driftwatch.config import Config, EndpointConfig
-from driftwatch.core.models import CheckResult, Explanation, RenameHint, Severity
+from tiltmeter.config import Config, EndpointConfig
+from tiltmeter.core.models import CheckResult, Explanation, RenameHint, Severity
 
 if TYPE_CHECKING:
-    from driftwatch.llm.explainer import ExplanationRequest
+    from tiltmeter.llm.explainer import ExplanationRequest
 
 API = "https://api.test"
 

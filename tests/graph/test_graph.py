@@ -5,9 +5,9 @@ import json
 import httpx
 import respx
 
-from driftwatch.core.store import Store
-from driftwatch.graph import DriftContext, build_graph
 from tests.helpers import API, FakeClock, env_of, make_config, make_endpoint, no_sleep
+from tiltmeter.core.store import Store
+from tiltmeter.graph import DriftContext, build_graph
 
 URL = f"{API}/v1/items"
 

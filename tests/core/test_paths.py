@@ -4,7 +4,7 @@ import pickle
 
 import pytest
 
-from driftwatch.core.paths import (
+from tiltmeter.core.paths import (
     ITEMS,
     PathMatcher,
     PathPattern,

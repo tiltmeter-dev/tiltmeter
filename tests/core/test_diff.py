@@ -6,11 +6,11 @@ from typing import Any
 
 import pytest
 
-from driftwatch.core.analyze import analyze
-from driftwatch.core.diff import diff_shapes
-from driftwatch.core.models import Baseline, ChangeKind, Observation
-from driftwatch.core.paths import PathMatcher
-from driftwatch.core.shape import Shape
+from tiltmeter.core.analyze import analyze
+from tiltmeter.core.diff import diff_shapes
+from tiltmeter.core.models import Baseline, ChangeKind, Observation
+from tiltmeter.core.paths import PathMatcher
+from tiltmeter.core.shape import Shape
 
 PAIRS = Path(__file__).parent.parent / "fixtures" / "pairs"
 

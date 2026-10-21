@@ -6,9 +6,6 @@ from typing import Any
 
 import httpx
 
-from driftwatch.config import Config, EndpointConfig
-from driftwatch.core.store import Store
-from driftwatch.service import DriftService
 from tests.helpers import (
     FakeClock,
     FakeExplainer,
@@ -18,6 +15,9 @@ from tests.helpers import (
     make_endpoint,
     no_sleep,
 )
+from tiltmeter.config import Config, EndpointConfig
+from tiltmeter.core.store import Store
+from tiltmeter.service import DriftService
 
 
 def make_service(

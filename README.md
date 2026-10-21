@@ -1,14 +1,14 @@
-# driftwatch
+# tiltmeter
 
 **Catch API schema drift before your AI agents do.**
 
-![driftwatch catching a renamed field and a type change](docs/demo.svg)
+![tiltmeter catching a renamed field and a type change](docs/demo.svg)
 
 Agents call third-party APIs all day. When a vendor renames a field, starts returning `null`
 or turns a number into a string, typed code crashes loudly. An agent doesn't: it reads the
 new response, fills the gap with a guess, or retries until the budget is gone.
 
-driftwatch watches the APIs you depend on. It learns the shape of their JSON responses from
+tiltmeter watches the APIs you depend on. It learns the shape of their JSON responses from
 real traffic, flags the changes that matter, explains them with Claude, and answers one
 question for your agents over MCP: *has this API drifted?*
 
@@ -26,20 +26,20 @@ question for your agents over MCP: *has this API drifted?*
 
 ## Quickstart
 
-driftwatch is not on PyPI yet, so install it from a checkout:
+tiltmeter is not on PyPI yet, so install it from a checkout:
 
 ```bash
-git clone <this repository> driftwatch && cd driftwatch
-uv tool install .        # puts the `driftwatch` command on your PATH
-driftwatch init          # writes driftwatch.yaml with a public example API
-driftwatch check         # the first run records the baseline
+git clone <this repository> tiltmeter && cd tiltmeter
+uv tool install .        # puts the `tiltmeter` command on your PATH
+tiltmeter init          # writes tiltmeter.yaml with a public example API
+tiltmeter check         # the first run records the baseline
 ```
 
-Run `driftwatch check` again from cron or CI, or keep `driftwatch watch` running. Here is
+Run `tiltmeter check` again from cron or CI, or keep `tiltmeter watch` running. Here is
 what it prints when a vendor renames `phone` and turns `balance` into a string:
 
 ```console
-$ driftwatch check
+$ tiltmeter check
 ✗ billing_customers  200 · 13 ms  BREAKING · 3 changes
     breaking  type_changed   $.data[*].balance       integer → string
     breaking  field_removed  $.data[*].phone         string → (absent)  possibly renamed to $.data[*].phone_number
@@ -77,14 +77,14 @@ Change any of them globally or per endpoint with `severity_overrides`.
    are never recorded.
 2. **Compare.** The baseline is the merge of the shapes from the last `baseline_window`
    successful checks (20 by default). A field is required when it appeared in every object
-   in that window. driftwatch reports only what *contradicts* the baseline: a missing
+   in that window. tiltmeter reports only what *contradicts* the baseline: a missing
    optional field, or a response with no nulls this time, is not a change. A `null` where
    there never was one is.
 3. **Report once.** The new shape joins the baseline, so the check that sees a change
    reports it, and from then on it is the new normal.
 
 The pipeline is a small [LangGraph](https://github.com/langchain-ai/langgraph) graph.
-LangGraph only sequences the steps. The diff itself is plain Python in `driftwatch/core`,
+LangGraph only sequences the steps. The diff itself is plain Python in `tiltmeter/core`,
 with no LLM involved.
 
 ```mermaid
@@ -105,7 +105,7 @@ graph state never holds credentials or response bodies.
 
 ```yaml
 version: 1
-state_dir: .driftwatch      # history database, relative to this file
+state_dir: .tiltmeter      # history database, relative to this file
 concurrency: 5              # endpoints checked in parallel
 keep_checks: 500            # history kept per endpoint
 
@@ -155,14 +155,14 @@ Endpoint options:
 | `severity_overrides` | none | Per change kind, on top of the global ones. |
 | `store_samples` | `false` | Keep the first 4,000 characters of each response in the history. |
 
-More examples, including a GraphQL endpoint, are in [`examples/driftwatch.yaml`](examples/driftwatch.yaml).
+More examples, including a GraphQL endpoint, are in [`examples/tiltmeter.yaml`](examples/tiltmeter.yaml).
 
 ## Use it from agents (MCP)
 
 Claude Code:
 
 ```bash
-claude mcp add driftwatch -- driftwatch serve --config /absolute/path/to/driftwatch.yaml
+claude mcp add tiltmeter -- tiltmeter serve --config /absolute/path/to/tiltmeter.yaml
 ```
 
 Cursor and other clients that take a JSON config:
@@ -170,9 +170,9 @@ Cursor and other clients that take a JSON config:
 ```json
 {
   "mcpServers": {
-    "driftwatch": {
-      "command": "driftwatch",
-      "args": ["serve", "--config", "/absolute/path/to/driftwatch.yaml"]
+    "tiltmeter": {
+      "command": "tiltmeter",
+      "args": ["serve", "--config", "/absolute/path/to/tiltmeter.yaml"]
     }
   }
 }
@@ -187,7 +187,7 @@ Cursor and other clients that take a JSON config:
 | `check_api(endpoint_id, explain?)` | Calls one API now and records the result. |
 | `check_all(explain?)` | Calls every API now. |
 
-It also serves the resources `driftwatch://endpoints` and `driftwatch://schema/{endpoint_id}`.
+It also serves the resources `tiltmeter://endpoints` and `tiltmeter://schema/{endpoint_id}`.
 A useful instruction for an agent: *before you call the billing API, call
 `has_drifted("billing_customers")`, and if it drifted, read the summary before trusting the
 response.*
@@ -202,14 +202,14 @@ response.*
 | 3 | A check could not run (network error, unexpected status, invalid JSON) and nothing broke. |
 | 4 | Usage or configuration error. |
 
-The baseline lives in `.driftwatch/`, so keep it between runs.
+The baseline lives in `.tiltmeter/`, so keep it between runs.
 [`examples/github-action.yml`](examples/github-action.yml) checks hourly, keeps the baseline
 with `actions/cache` and fails the job on breaking drift.
 
 ## Explanations with Claude
 
 When a check finds drift at `llm.min_severity` or worse and `ANTHROPIC_API_KEY` is set,
-driftwatch asks Claude, through `langchain-anthropic`, to explain it. Structured outputs
+tiltmeter asks Claude, through `langchain-anthropic`, to explain it. Structured outputs
 make the reply an object with `summary`, `likely_cause`, `impact`, `suggested_action`,
 `probable_renames` and `confidence`.
 
@@ -220,7 +220,7 @@ credentials or response bodies, unless you set `llm.include_samples: true`, whic
 first 4,000 characters of the latest response, labelled as untrusted third-party data.
 
 The default model is `claude-haiku-5-5` at `effort: low`, because explanations only run
-when drift is found. Run `driftwatch explain <check-id>` to explain a past check. Set
+when drift is found. Run `tiltmeter explain <check-id>` to explain a past check. Set
 `effort: null` for models without adaptive thinking, such as `claude-haiku-4-5`.
 
 ## Notifications
@@ -231,15 +231,15 @@ notify:
     webhook_url: ${SLACK_WEBHOOK_URL}
     min_severity: warning
   - type: webhook
-    url: https://example.com/hooks/driftwatch
+    url: https://example.com/hooks/tiltmeter
     headers:
       Authorization: Bearer ${HOOK_TOKEN}
     min_severity: breaking
     on_error: true           # also send checks that could not run
 ```
 
-The webhook receives `{"event": "drift.detected" | "check.failed", "driftwatch_version": ...,
-"result": {...}}`, where `result` is what `driftwatch show <check-id> --json` prints.
+The webhook receives `{"event": "drift.detected" | "check.failed", "tiltmeter_version": ...,
+"result": {...}}`, where `result` is what `tiltmeter show <check-id> --json` prints.
 
 ## Privacy and security
 
@@ -255,7 +255,7 @@ The webhook receives `{"event": "drift.detected" | "check.failed", "driftwatch_v
 
 ## Limitations
 
-- JSON over HTTP only. driftwatch sees what the API returns for the requests you declare;
+- JSON over HTTP only. tiltmeter sees what the API returns for the requests you declare;
   it does not read the vendor's OpenAPI spec.
 - It watches responses, not requests. It cannot tell you that a parameter became mandatory,
   only what that did to the response.
@@ -283,12 +283,12 @@ uv run python scripts/demo.py    # re-renders docs/demo.svg; add ANTHROPIC_API_K
 
 | Package | Contents |
 |---|---|
-| `driftwatch/core` | Shape inference, diff, severity rules, HTTP fetching and the SQLite store. No LangChain imports; checked with `mypy --strict`. |
-| `driftwatch/graph` | The LangGraph pipeline. |
-| `driftwatch/llm` | The Claude explainer and its prompt. |
-| `driftwatch/notify` | Slack and webhook notifiers. |
-| `driftwatch/mcp_server` | The MCP server. |
-| `driftwatch/service.py`, `cli.py` | The service the CLI and the MCP server share, and the CLI itself. |
+| `tiltmeter/core` | Shape inference, diff, severity rules, HTTP fetching and the SQLite store. No LangChain imports; checked with `mypy --strict`. |
+| `tiltmeter/graph` | The LangGraph pipeline. |
+| `tiltmeter/llm` | The Claude explainer and its prompt. |
+| `tiltmeter/notify` | Slack and webhook notifiers. |
+| `tiltmeter/mcp_server` | The MCP server. |
+| `tiltmeter/service.py`, `cli.py` | The service the CLI and the MCP server share, and the CLI itself. |
 
 ## License
 

@@ -1,4 +1,4 @@
-"""Render docs/demo.svg: a fake billing API changes and driftwatch catches it.
+"""Render docs/demo.svg: a fake billing API changes and Tiltmeter catches it.
 
     uv run python scripts/demo.py
 
@@ -20,10 +20,10 @@ from typing import Any
 
 from rich.console import Console
 
-from driftwatch.cli import exit_code_for
-from driftwatch.config import Config
-from driftwatch.console import render_results
-from driftwatch.service import DriftService
+from tiltmeter.cli import exit_code_for
+from tiltmeter.config import Config
+from tiltmeter.console import render_results
+from tiltmeter.service import DriftService
 
 OUTPUT = Path(__file__).resolve().parent.parent / "docs" / "demo.svg"
 
@@ -74,12 +74,12 @@ async def main() -> None:
         )
         try:
             async with DriftService(config, state_dir=Path(tmp) / "state") as service:
-                console.print("[bold]$ driftwatch check[/]")
+                console.print("[bold]$ tiltmeter check[/]")
                 render_results(console, await service.check(explain=explain, notify=False))
                 body.write_text(json.dumps(customers(renamed=True)))
                 console.print()
                 console.print(
-                    "[bold]$ driftwatch check[/]  "
+                    "[bold]$ tiltmeter check[/]  "
                     "[dim]# the vendor renamed phone and turned balance into a string[/]"
                 )
                 results = await service.check(explain=explain, notify=False)
@@ -88,7 +88,7 @@ async def main() -> None:
         finally:
             server.shutdown()
     OUTPUT.parent.mkdir(parents=True, exist_ok=True)
-    console.save_svg(str(OUTPUT), title="driftwatch")
+    console.save_svg(str(OUTPUT), title="Tiltmeter")
     print(f"wrote {OUTPUT}")
 
 

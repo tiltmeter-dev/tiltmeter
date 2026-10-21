@@ -7,9 +7,9 @@ import httpx
 import pytest
 import respx
 
-from driftwatch.core.fetch import USER_AGENT, Expander, observe_endpoint
-from driftwatch.errors import MissingVariableError
 from tests.helpers import API, env_of, make_endpoint, no_sleep
+from tiltmeter.core.fetch import USER_AGENT, Expander, observe_endpoint
+from tiltmeter.errors import MissingVariableError
 
 URL = f"{API}/v1/items"
 

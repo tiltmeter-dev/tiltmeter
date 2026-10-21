@@ -14,8 +14,8 @@ dist/
 coverage.xml
 htmlcov/
 
-# driftwatch runtime state (baselines, history)
-.driftwatch/
+# tiltmeter runtime state (baselines, history)
+.tiltmeter/
 
 # Editors / OS
 .idea/

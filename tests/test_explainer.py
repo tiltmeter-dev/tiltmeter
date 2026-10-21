@@ -7,11 +7,12 @@ import pytest
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_core.runnables import RunnableLambda
 
-from driftwatch.config import LLMConfig
-from driftwatch.core.models import Change, ChangeKind, Explanation, Severity
-from driftwatch.core.shape import Shape
-from driftwatch.llm import explainer as explainer_module
-from driftwatch.llm.explainer import (
+from tests.helpers import env_of, explanation, make_endpoint
+from tiltmeter.config import LLMConfig
+from tiltmeter.core.models import Change, ChangeKind, Explanation, Severity
+from tiltmeter.core.shape import Shape
+from tiltmeter.llm import explainer as explainer_module
+from tiltmeter.llm.explainer import (
     MAX_AFFECTED_OBJECTS,
     ClaudeExplainer,
     ExplanationError,
@@ -20,8 +21,7 @@ from driftwatch.llm.explainer import (
     has_credentials,
     parse_output,
 )
-from driftwatch.llm.prompts import MAX_CHANGES_IN_PROMPT, SYSTEM_PROMPT, render_request
-from tests.helpers import env_of, explanation, make_endpoint
+from tiltmeter.llm.prompts import MAX_CHANGES_IN_PROMPT, SYSTEM_PROMPT, render_request
 
 
 def change(path: str, kind: ChangeKind = ChangeKind.FIELD_REMOVED) -> Change:

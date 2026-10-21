@@ -4,8 +4,8 @@ import json
 
 import pytest
 
-from driftwatch.core.paths import ITEMS
-from driftwatch.core.shape import (
+from tiltmeter.core.paths import ITEMS
+from tiltmeter.core.shape import (
     MAX_TRACKED_VALUES,
     Shape,
     core_types,

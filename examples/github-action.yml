@@ -1,6 +1,6 @@
 # Check your APIs every hour and fail the job on breaking drift.
-# Copy this file to .github/workflows/driftwatch.yml in the repository that holds
-# driftwatch.yaml, and add the secrets your endpoints reference.
+# Copy this file to .github/workflows/tiltmeter.yml in the repository that holds
+# tiltmeter.yaml, and add the secrets your endpoints reference.
 name: API drift
 
 on:
@@ -9,25 +9,25 @@ on:
   workflow_dispatch:
 
 jobs:
-  driftwatch:
+  tiltmeter:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
       - uses: astral-sh/setup-uv@v6
 
-      # The baseline lives in .driftwatch/. Restore the newest copy...
+      # The baseline lives in .tiltmeter/. Restore the newest copy...
       - uses: actions/cache/restore@v4
         with:
-          path: .driftwatch
-          key: driftwatch-${{ github.run_id }}
-          restore-keys: driftwatch-
+          path: .tiltmeter
+          key: tiltmeter-${{ github.run_id }}
+          restore-keys: tiltmeter-
 
       # Exit codes: 0 clean, 1 warning, 2 breaking, 3 a check failed, 4 bad config.
-      # driftwatch is not on PyPI yet: install it from its repository
-      # (replace OWNER/driftwatch with wherever you host it).
+      # tiltmeter is not on PyPI yet: install it from its repository
+      # (replace OWNER/tiltmeter with wherever you host it).
       - name: Check APIs
-        run: uvx --from "git+https://github.com/OWNER/driftwatch" driftwatch check
+        run: uvx --from "git+https://github.com/OWNER/tiltmeter" tiltmeter check
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           STRIPE_API_KEY: ${{ secrets.STRIPE_API_KEY }}
@@ -37,5 +37,5 @@ jobs:
       - uses: actions/cache/save@v4
         if: always()
         with:
-          path: .driftwatch
-          key: driftwatch-${{ github.run_id }}
+          path: .tiltmeter
+          key: tiltmeter-${{ github.run_id }}

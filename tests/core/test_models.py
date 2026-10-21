@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from driftwatch.core.models import (
+from tiltmeter.core.models import (
     Change,
     ChangeKind,
     CheckResult,

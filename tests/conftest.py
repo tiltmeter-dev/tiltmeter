@@ -4,14 +4,14 @@ from collections.abc import Iterator
 
 import pytest
 
-from driftwatch.core.store import Store
+from tiltmeter.core.store import Store
 
 _LIVE_SERVICE_VARIABLES = (
     "ANTHROPIC_API_KEY",
     "LANGSMITH_TRACING",
     "LANGSMITH_API_KEY",
     "LANGCHAIN_TRACING_V2",
-    "DRIFTWATCH_CONFIG",
+    "TILTMETER_CONFIG",
 )
 
 

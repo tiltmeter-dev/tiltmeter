@@ -8,18 +8,18 @@ import pytest
 import respx
 from typer.testing import CliRunner
 
-from driftwatch import __version__, cli
-from driftwatch.cli import app, exit_code_for, main
-from driftwatch.core.models import CheckResult, Severity
-from driftwatch.llm.explainer import ClaudeExplainer
 from tests.helpers import API, FakeExplainer
+from tiltmeter import __version__, cli
+from tiltmeter.cli import app, exit_code_for, main
+from tiltmeter.core.models import CheckResult, Severity
+from tiltmeter.llm.explainer import ClaudeExplainer
 
 URL = f"{API}/v1/items"
 runner = CliRunner()
 
 
 def write_config(tmp_path: Path, extra: str = "") -> Path:
-    path = tmp_path / "driftwatch.yaml"
+    path = tmp_path / "tiltmeter.yaml"
     path.write_text(
         f"endpoints:\n  - id: items\n    url: {URL}\n    retries: 0\n{extra}", encoding="utf-8"
     )
@@ -54,7 +54,7 @@ def test_version() -> None:
 
 
 def test_init(tmp_path: Path) -> None:
-    target = tmp_path / "driftwatch.yaml"
+    target = tmp_path / "tiltmeter.yaml"
     first = invoke("init", str(target))
     assert first.exit_code == 0
     assert "github_repo" in target.read_text()
@@ -65,14 +65,14 @@ def test_init(tmp_path: Path) -> None:
     (tmp_path / ".gitignore").write_text("*.pyc")
     forced = invoke("init", str(target), "--force")
     assert forced.exit_code == 0
-    assert (tmp_path / ".gitignore").read_text() == "*.pyc\n.driftwatch/\n"
+    assert (tmp_path / ".gitignore").read_text() == "*.pyc\n.tiltmeter/\n"
     invoke("init", str(target), "--force")
-    assert (tmp_path / ".gitignore").read_text().count(".driftwatch/") == 1
+    assert (tmp_path / ".gitignore").read_text().count(".tiltmeter/") == 1
 
     repo = tmp_path / "repo"
     (repo / ".git").mkdir(parents=True)
-    invoke("init", str(repo / "driftwatch.yaml"))
-    assert (repo / ".gitignore").read_text() == ".driftwatch/\n"
+    invoke("init", str(repo / "tiltmeter.yaml"))
+    assert (repo / ".gitignore").read_text() == ".tiltmeter/\n"
 
 
 @respx.mock

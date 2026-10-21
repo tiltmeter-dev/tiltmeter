@@ -1,0 +1,62 @@
+# tiltmeter example: public APIs you can check right away, no keys needed.
+#   tiltmeter check -c examples/tiltmeter.yaml
+version: 1
+
+endpoints:
+  - id: github_repo
+    description: Repository metadata from the GitHub REST API (60 requests/hour without a token)
+    url: https://api.github.com/repos/langchain-ai/langchain
+    headers:
+      Accept: application/vnd.github+json
+
+  - id: jsonplaceholder_users
+    description: Fake user directory from JSONPlaceholder
+    url: https://jsonplaceholder.typicode.com/users
+
+  - id: open_meteo_buenos_aires
+    description: Current weather in Buenos Aires from Open-Meteo
+    url: https://api.open-meteo.com/v1/forecast
+    params:
+      latitude: "-34.61"
+      longitude: "-58.38"
+      current: temperature_2m,wind_speed_10m
+
+  # Credentials come from environment variables and are expanded at request time.
+  # They are never written to disk or sent to the LLM.
+  #
+  # - id: stripe_customers
+  #   url: https://api.stripe.com/v1/customers
+  #   params:
+  #     limit: 10
+  #   headers:
+  #     Authorization: Bearer ${STRIPE_API_KEY}
+  #   ignore_paths:
+  #     - $.data[*].metadata          # free-form, changes all the time
+  #   severity_overrides:
+  #     field_now_optional: warning
+  #
+  # GraphQL and other POST APIs work too:
+  #
+  # - id: github_viewer
+  #   method: POST
+  #   url: https://api.github.com/graphql
+  #   headers:
+  #     Authorization: Bearer ${GITHUB_TOKEN}
+  #   body:
+  #     query: "{ viewer { login createdAt } }"
+
+llm:
+  enabled: true            # used only when ANTHROPIC_API_KEY is set
+  model: claude-haiku-5-5
+  effort: low
+
+notify: []
+#  - type: slack
+#    webhook_url: ${SLACK_WEBHOOK_URL}
+#    min_severity: warning
+#  - type: webhook
+#    url: https://example.com/hooks/tiltmeter
+#    headers:
+#      Authorization: Bearer ${HOOK_TOKEN}
+#    min_severity: breaking
+#    on_error: true

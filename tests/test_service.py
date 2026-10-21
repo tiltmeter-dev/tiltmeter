@@ -6,9 +6,6 @@ import httpx
 import pytest
 import respx
 
-from driftwatch.core.models import ChangeKind, Severity
-from driftwatch.errors import DriftwatchError, UnknownEndpointError
-from driftwatch.service import NO_API_KEY, DriftService
 from tests.helpers import (
     API,
     FakeClock,
@@ -17,6 +14,9 @@ from tests.helpers import (
     make_endpoint,
 )
 from tests.service_kit import make_service
+from tiltmeter.core.models import ChangeKind, Severity
+from tiltmeter.errors import TiltmeterError, UnknownEndpointError
+from tiltmeter.service import NO_API_KEY, DriftService
 
 URL = f"{API}/v1/items"
 BEFORE = {"data": [{"id": 1, "phone": "555"}], "has_more": False}
@@ -238,9 +238,9 @@ async def test_explain_check_later() -> None:
         stored = service.get_check(drifted.check_id or 0)
         assert stored is not None
         assert stored.explanation_model == "fake-model"
-        with pytest.raises(DriftwatchError, match="no check"):
+        with pytest.raises(TiltmeterError, match="no check"):
             await service.explain_check(999)
-        with pytest.raises(DriftwatchError, match="no changes"):
+        with pytest.raises(TiltmeterError, match="no changes"):
             await service.explain_check(first.check_id or 0)
     async with make_service(detect_explainer=True) as service:
         await service.check()
@@ -248,17 +248,17 @@ async def test_explain_check_later() -> None:
         await service.check()
         route.respond(200, json={"id": 1})
         [result] = await service.check(explain=False)
-        with pytest.raises(DriftwatchError, match="ANTHROPIC_API_KEY"):
+        with pytest.raises(TiltmeterError, match="ANTHROPIC_API_KEY"):
             await service.explain_check(result.check_id or 0)
 
 
 @respx.mock
 async def test_from_config_file(tmp_path: Path) -> None:
     respx.get(URL).respond(200, json={"id": 1})
-    config_path = tmp_path / "driftwatch.yaml"
+    config_path = tmp_path / "tiltmeter.yaml"
     config_path.write_text(f"endpoints:\n  - id: items\n    url: {URL}\n")
     service = DriftService.from_config_file(config_path, detect_explainer=False)
     async with service:
         result = await service.check_endpoint("items")
         assert result.outcome == "baseline"
-    assert (tmp_path / ".driftwatch" / "driftwatch.db").exists()
+    assert (tmp_path / ".tiltmeter" / "tiltmeter.db").exists()

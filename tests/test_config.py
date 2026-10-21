@@ -5,22 +5,22 @@ from pathlib import Path
 import pytest
 import yaml
 
-from driftwatch.config import (
+from tests.helpers import make_config, make_endpoint
+from tiltmeter.config import (
     EXAMPLE_CONFIG,
     Config,
     EndpointConfig,
     load_config,
     resolve_state_dir,
 )
-from driftwatch.core.models import ChangeKind, Severity
-from driftwatch.errors import ConfigError, UnknownEndpointError
-from tests.helpers import make_config, make_endpoint
+from tiltmeter.core.models import ChangeKind, Severity
+from tiltmeter.errors import ConfigError, UnknownEndpointError
 
 EXAMPLES = Path(__file__).parent.parent / "examples"
 
 
 def write(tmp_path: Path, text: str) -> Path:
-    path = tmp_path / "driftwatch.yaml"
+    path = tmp_path / "tiltmeter.yaml"
     path.write_text(text)
     return path
 
@@ -34,7 +34,7 @@ def test_example_config_is_valid(tmp_path: Path) -> None:
 
 @pytest.mark.skipif(not EXAMPLES.exists(), reason="examples folder not present")
 def test_shipped_examples_are_valid() -> None:
-    config = load_config(EXAMPLES / "driftwatch.yaml")
+    config = load_config(EXAMPLES / "tiltmeter.yaml")
     assert len(config.endpoints) >= 2
 
 
@@ -117,7 +117,7 @@ def test_severity_override_precedence() -> None:
 def test_state_dir_resolution(tmp_path: Path) -> None:
     config_path = write(tmp_path, yaml.safe_dump({"endpoints": [{"id": "a", "url": "https://x"}]}))
     config = load_config(config_path)
-    assert resolve_state_dir(config, config_path) == tmp_path.resolve() / ".driftwatch"
+    assert resolve_state_dir(config, config_path) == tmp_path.resolve() / ".tiltmeter"
     absolute = Config.model_validate({**config.model_dump(), "state_dir": str(tmp_path / "abs")})
     assert resolve_state_dir(absolute, config_path) == tmp_path / "abs"
     home = Config.model_validate({**config.model_dump(), "state_dir": "~/dw"})

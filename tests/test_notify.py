@@ -6,13 +6,13 @@ import httpx
 import pytest
 import respx
 
-from driftwatch.config import SlackNotifierConfig, WebhookNotifierConfig
-from driftwatch.core.models import Change, ChangeKind, CheckResult, Severity
-from driftwatch.notify import NotificationError, build_notifiers
-from driftwatch.notify.base import ThresholdNotifier, headline
-from driftwatch.notify.slack import SlackNotifier, slack_text
-from driftwatch.notify.webhook import WebhookNotifier, webhook_payload
 from tests.helpers import env_of, explanation
+from tiltmeter.config import SlackNotifierConfig, WebhookNotifierConfig
+from tiltmeter.core.models import Change, ChangeKind, CheckResult, Severity
+from tiltmeter.notify import NotificationError, build_notifiers
+from tiltmeter.notify.base import ThresholdNotifier, headline
+from tiltmeter.notify.slack import SlackNotifier, slack_text
+from tiltmeter.notify.webhook import WebhookNotifier, webhook_payload
 
 HOOK = "https://hooks.test/T000/B000/secret-token"
 
@@ -56,7 +56,7 @@ def test_headline() -> None:
 
 def test_slack_text_escapes_and_truncates() -> None:
     text = slack_text(drift(changes=20, explanation=explanation(summary="a & b")))
-    assert text.startswith(":rotating_light: *driftwatch*")
+    assert text.startswith(":rotating_light: *Tiltmeter*")
     assert "a&lt;b&gt;" in text
     assert "…and 5 more" in text
     assert "> a &amp; b" in text

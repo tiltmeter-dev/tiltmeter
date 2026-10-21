@@ -4,7 +4,7 @@ from datetime import UTC, datetime, timedelta, timezone
 
 import pytest
 
-from driftwatch.core.timeutil import parse_since, to_iso, utcnow
+from tiltmeter.core.timeutil import parse_since, to_iso, utcnow
 
 NOW = datetime(2026, 10, 20, 12, 0, 0, tzinfo=UTC)
 
