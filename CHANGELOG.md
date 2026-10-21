@@ -8,6 +8,13 @@ a minor release may include breaking changes.
 
 ## [Unreleased]
 
+### Added
+
+- `tiltmeter fix --agent claude-code` (or `fix.agent: claude-code`) runs the fix with
+  Claude Code on your own login, with no API key and no extra install. Claude Code runs
+  headless in the worktree with file tools only: no shell, no MCP servers, no hooks, and
+  deny rules for `.git` and `fix.ignore`. Deep Agents stays the default.
+
 ## [0.2.0] - 2026-10-21
 
 ### Added

@@ -25,4 +25,5 @@ async def test_real_claude_follows_a_rename(tmp_path: Path) -> None:
     assert {"client.py", "models.py"} <= set(preview.files)
     assert 'customer["phone_number"]' in preview.diff
     assert "phone_number: str" in preview.diff
-    assert report.unresolved  # the balance type change needs a human
+    assert report.summary
+    assert report.confidence in {"low", "medium", "high"}

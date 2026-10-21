@@ -203,8 +203,11 @@ check pipeline and only runs when you ask:
    worktree with file tools only (list, read, glob, grep, edit, write). The shell,
    subagent and delete tools are removed, and `.git` plus the `fix.ignore` paths are denied.
    Files the harness writes for itself, such as offloaded tool results, go to memory
-   instead of the worktree. The agent ends with a structured report: summary, files
-   changed, what is left for a human, and confidence.
+   instead of the worktree. With `fix.agent: claude-code`, `claude -p` does the same job
+   instead: `--restricted` with only the Read, Edit, Write, Glob and Grep tools, deny rules
+   for `.git` and `fix.ignore`, and no MCP servers, hooks or user settings. Either way the
+   agent ends with a structured report: summary, files changed, what is left for a human,
+   and confidence.
 4. Tiltmeter stages the edits, refuses any diff that touches an ignored path, and shows
    the diff. On approval it commits, pushes and opens the pull request with `gh`.
 

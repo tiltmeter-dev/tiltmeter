@@ -15,40 +15,20 @@ from pathlib import Path
 from typing import Protocol
 
 from tiltmeter.errors import FixError
+from tiltmeter.fix._proc import failure_reason, run_tool
 
 
 def _call(
     command: Sequence[str], *, cwd: Path, stdin: str | None = None
 ) -> subprocess.CompletedProcess[str]:
-    try:
-        return subprocess.run(
-            list(command),
-            cwd=cwd,
-            input=stdin,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            check=False,
-            env={**os.environ, "GIT_TERMINAL_PROMPT": "0", "GH_PROMPT_DISABLED": "1"},
-        )
-    except FileNotFoundError as exc:
-        raise FixError(f"{command[0]} is not installed or not on PATH") from exc
-
-
-def _reason(completed: subprocess.CompletedProcess[str]) -> str:
-    lines = [line.strip() for line in (completed.stderr or completed.stdout).splitlines()]
-    lines = [line for line in lines if line]
-    for line in lines:
-        if line.startswith(("fatal:", "error:")):
-            return line
-    return lines[-1] if lines else f"exit code {completed.returncode}"
+    env = {**os.environ, "GIT_TERMINAL_PROMPT": "0", "GH_PROMPT_DISABLED": "1"}
+    return run_tool(command, cwd=cwd, env=env, stdin=stdin)
 
 
 def _checked(command: Sequence[str], *, cwd: Path, stdin: str | None = None) -> str:
     completed = _call(command, cwd=cwd, stdin=stdin)
     if completed.returncode != 0:
-        raise FixError(f"`{' '.join(command[:3])}` failed: {_reason(completed)}")
+        raise FixError(f"`{' '.join(command[:3])}` failed: {failure_reason(completed)}")
     return completed.stdout
 
 

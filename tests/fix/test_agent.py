@@ -11,7 +11,14 @@ from langchain_core.messages import ToolMessage
 from tests.fix.kit import CLIENT, ScriptedChatModel, rename_request, report, tool_call
 from tiltmeter.config import FixConfig
 from tiltmeter.errors import FixError
-from tiltmeter.fix.agent import HIDDEN_TOOLS, DeepFixAgent, parse_report
+from tiltmeter.fix.agent import (
+    HIDDEN_TOOLS,
+    NO_API_KEY,
+    DeepFixAgent,
+    build_fix_agent,
+    parse_report,
+)
+from tiltmeter.fix.claude_code import ClaudeCodeFixAgent
 from tiltmeter.fix.models import FixReport
 from tiltmeter.fix.prompts import SYSTEM_PROMPT, render_fix_request
 
@@ -122,3 +129,23 @@ def test_from_config_explains_the_missing_extra(monkeypatch: pytest.MonkeyPatch)
     monkeypatch.setattr(builtins, "__import__", without_deepagents)
     with pytest.raises(FixError, match=r'pip install "tiltmeter\[fix\]"'):
         DeepFixAgent.from_config(FixConfig())
+
+
+def test_build_fix_agent_picks_the_backend(monkeypatch: pytest.MonkeyPatch) -> None:
+    with pytest.raises(FixError, match="--agent claude-code"):
+        build_fix_agent(FixConfig(), environ={})
+    assert NO_API_KEY.startswith("set ANTHROPIC_API_KEY")
+    assert isinstance(
+        build_fix_agent(FixConfig(), environ={"ANTHROPIC_API_KEY": "k"}), DeepFixAgent
+    )
+
+    seen: list[dict[str, str]] = []
+
+    def from_config(cls: type, config: FixConfig, *, environ: dict[str, str]) -> str:
+        seen.append(environ)
+        return "claude-code-agent"
+
+    monkeypatch.setattr(ClaudeCodeFixAgent, "from_config", classmethod(from_config))
+    picked = build_fix_agent(FixConfig(agent="claude-code"), environ={"PATH": "/bin"})
+    assert picked == "claude-code-agent"
+    assert seen == [{"PATH": "/bin"}]  # no API key needed

@@ -9,8 +9,9 @@ import respx
 
 from tests.fix.kit import PR_URL, FakeFixAgent, FakeGitHub, git, make_repo
 from tests.test_cli import URL, flat, invoke, runner, write_config
-from tiltmeter.cli import app
+from tiltmeter.cli import app, main
 from tiltmeter.fix.agent import DeepFixAgent
+from tiltmeter.fix.claude_code import ClaudeCodeFixAgent
 
 BRANCH = "tiltmeter/fix-items-2"
 
@@ -136,6 +137,40 @@ def test_fix_exit_codes_for_problems(
     no_key = fix(drifted, repo)
     assert no_key.exit_code == 4
     assert "ANTHROPIC_API_KEY" in no_key.output
+    assert "--agent claude-code" in flat(no_key.output)
+
+
+def test_fix_with_claude_code_needs_no_api_key(
+    tmp_path: Path,
+    drifted: Path,
+    fakes: tuple[FakeFixAgent, FakeGitHub],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    agent, _ = fakes
+    monkeypatch.delenv("ANTHROPIC_API_KEY")
+    picked: list[str] = []
+
+    def from_config(cls: type, config: Any, *, environ: Any) -> FakeFixAgent:
+        picked.append(config.agent)
+        return agent
+
+    monkeypatch.setattr(ClaudeCodeFixAgent, "from_config", classmethod(from_config))
+    repo, _ = make_repo(tmp_path)
+    outcome = fix(drifted, repo, "--agent", "claude-code", "--yes")
+    assert outcome.exit_code == 0, outcome.output
+    assert f"✓ opened {PR_URL}" in flat(outcome.output)
+    assert picked == ["claude-code"]
+
+    with drifted.open("a", encoding="utf-8") as handle:
+        handle.write("fix:\n  agent: claude-code\n")
+    git(repo, "branch", "-D", BRANCH)
+    from_yaml = fix(drifted, repo, "--yes", "--no-pr")
+    assert from_yaml.exit_code == 0, from_yaml.output
+    assert picked == ["claude-code", "claude-code"]
+
+    with pytest.raises(SystemExit) as unknown:
+        main(["fix", "2", "-c", str(drifted), "--repo", str(repo), "--agent", "codex"])
+    assert unknown.value.code == 4
 
 
 def test_a_failed_commit_is_reported_without_a_traceback(

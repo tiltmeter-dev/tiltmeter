@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import os
 import sys
 from collections.abc import Coroutine, Iterator, Sequence
 from contextlib import contextmanager
@@ -29,7 +28,7 @@ from rich.console import Console
 from rich.markup import escape
 
 from tiltmeter import __version__
-from tiltmeter.config import DEFAULT_CONFIG_FILE, EXAMPLE_CONFIG
+from tiltmeter.config import DEFAULT_CONFIG_FILE, EXAMPLE_CONFIG, FixAgentKind
 from tiltmeter.core.models import CheckResult, Severity, max_severity
 from tiltmeter.errors import TiltmeterError
 
@@ -377,17 +376,21 @@ def fix(
     dry_run: Annotated[
         bool, typer.Option("--dry-run", help="Show the agent's edits, then discard them.")
     ] = False,
+    agent_kind: Annotated[
+        FixAgentKind | None,
+        typer.Option("--agent", help="The agent that edits the code (default: fix.agent)."),
+    ] = None,
     as_json: JsonOption = False,
 ) -> None:
     """Let an agent adapt your code to the drift a check found, in a pull request.
 
-    Needs ANTHROPIC_API_KEY and the fix extra: pip install "tiltmeter\\[fix]".
+    The default agent needs ANTHROPIC_API_KEY and the fix extra (pip install
+    "tiltmeter\\[fix]"). --agent claude-code runs on your Claude Code login instead.
     """
     from tiltmeter.console import render_fix_outcome, render_fix_preview, render_result
-    from tiltmeter.fix.agent import DeepFixAgent
+    from tiltmeter.fix.agent import build_fix_agent
     from tiltmeter.fix.models import FixOutcome
     from tiltmeter.fix.runner import FixSession
-    from tiltmeter.llm.explainer import has_credentials
 
     with _opened(config) as service:
         check = service.get_check(check_id)
@@ -402,10 +405,10 @@ def fix(
             )
         else:
             settings = service.config.fix
-            if not has_credentials(os.environ.get):
-                _fail("set ANTHROPIC_API_KEY: the fix agent runs on Claude")
+            if agent_kind is not None:
+                settings = settings.model_copy(update={"agent": agent_kind})
             try:
-                agent = DeepFixAgent.from_config(settings)
+                agent = build_fix_agent(settings)
                 session = FixSession.open(
                     repo, request, branch=branch, prefix=settings.branch_prefix, base=base
                 )

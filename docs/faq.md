@@ -45,7 +45,8 @@ carries the changes and some field names, not response bodies. With the default
 It depends on how many files the agent reads. On a small service, a fix takes about five
 model calls and 30,000 input tokens with `claude-sonnet-5-5`, which is two or three cents.
 `fix.max_model_calls` caps a run, and with LangSmith tracing on, each `tiltmeter.fix` run
-shows its tokens.
+shows its tokens. With `--agent claude-code`, the run counts against your Claude Code plan
+instead, unless `ANTHROPIC_API_KEY` is set.
 
 ## Noise
 

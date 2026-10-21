@@ -6,6 +6,7 @@ finds the code reading that API, adapts it, shows you the diff and, once you agr
 pull request.
 
 - [Install](#install)
+- [Choosing the agent](#choosing-the-agent)
 - [Run it](#run-it)
 - [Flags](#flags)
 - [What happens, step by step](#what-happens-step-by-step)
@@ -18,17 +19,40 @@ pull request.
 
 ## Install
 
-The agent is built on [LangChain Deep Agents](https://github.com/langchain-ai/deepagents),
-which comes as an optional extra so the drift monitor stays small:
+Pick the agent that edits your code. The default one is built on
+[LangChain Deep Agents](https://github.com/langchain-ai/deepagents) and comes as an optional
+extra, so the drift monitor stays small:
 
 ```bash
 pip install "tiltmeter[fix]"          # or: uv tool install "tiltmeter[fix]"
 export ANTHROPIC_API_KEY=sk-ant-...
 ```
 
+If you already use [Claude Code](https://code.claude.com), skip both lines: the base install
+is enough, and `--agent claude-code` runs the fix on your Claude Code login.
+
+```bash
+pip install tiltmeter
+tiltmeter fix 2 --agent claude-code   # or set fix.agent: claude-code in tiltmeter.yaml
+```
+
 Opening pull requests uses the [GitHub CLI](https://cli.github.com) (`gh`) and the
 credentials it already has. Without it, Tiltmeter commits and pushes the branch and prints
 the command to open the pull request yourself.
+
+## Choosing the agent
+
+| | `deepagents` (default) | `claude-code` |
+|---|---|---|
+| Needs | `pip install "tiltmeter[fix]"` and `ANTHROPIC_API_KEY` | `claude` on your `PATH`, logged in, or `ANTHROPIC_API_KEY` |
+| Billed to | your Anthropic API key | your Claude Code plan, or the API key when it is set |
+| Runs as | a LangChain Deep Agent inside Tiltmeter | `claude -p` in the worktree, with `--restricted` and only the Read, Edit, Write, Glob and Grep tools |
+| Traces | LangSmith, when `LANGSMITH_TRACING=true` | none; the session is not saved in `~/.claude` |
+
+Both get the same instructions and the same change list. Both work only in the worktree,
+with file tools and no shell, and both end with the same report. Whatever you pick, the
+review, the ignored-path check and the pull request work the same way. Codex and OpenCode
+are tracked in [#8](https://github.com/tiltmeter-dev/tiltmeter/issues/8).
 
 ## Run it
 
@@ -82,6 +106,7 @@ removed as if nothing happened.
 | `--yes`, `-y` | Commit, push and open the pull request without asking. |
 | `--no-pr` | Commit to a local branch only. Nothing is pushed. |
 | `--dry-run` | Show the diff, then discard it. |
+| `--agent NAME` | `deepagents` or `claude-code`. Overrides `fix.agent` for this run. |
 | `--json` | Print the outcome, including the diff and the agent's report, as JSON. With `--json`, nothing is committed unless you also pass `--yes`. |
 
 ## What happens, step by step
@@ -106,14 +131,17 @@ removed as if nothing happened.
 
 ## What the agent can and cannot do
 
-The agent is a LangChain Deep Agent with file tools rooted at the worktree:
+Both agents get file tools rooted at the worktree and nothing else:
 
 - **Can:** list, read, glob and grep files, and edit or write them.
-- **Cannot:** run commands, reach the network, start subagents or delete files. Those tools
-  are removed before the model sees the tool list, and refused if it calls them anyway.
+- **Cannot:** run commands, reach the network, start subagents or delete files. The Deep
+  Agent never sees those tools, and refuses them if the model asks anyway. Claude Code runs
+  with `--restricted` and an explicit tool list, without MCP servers, hooks or your own
+  Claude Code settings.
 - **Never sees:** files outside the worktree, untracked files (a fresh worktree has none, so
-  your `.env` is not there), and anything matching `fix.ignore` or `.git`, which the file
-  tools refuse to read or write.
+  your `.env` is not there), and anything matching `fix.ignore` or `.git`. Those paths are
+  denied to the file tools: the Deep Agent's permissions refuse them, and Claude Code gets
+  them as deny rules, which also hide them from searches.
 
 Tiltmeter checks the result too: if the diff touches an ignored path anyway, it discards
 everything and exits with code 1.
@@ -125,7 +153,7 @@ question in the "Left for a human" section of the pull request.
 
 ## What leaves your machine
 
-Sent to Anthropic:
+Sent to Anthropic, through your API key or your Claude Code login:
 
 - the change list: paths, change kinds and types, plus Claude's earlier explanation if the
   check has one;
@@ -133,8 +161,9 @@ Sent to Anthropic:
 - the content of the files the agent decides to read, and the edits it makes.
 
 Never sent: response values, header values, `${VAR}` values, untracked files and paths
-matching `fix.ignore`. With `LANGSMITH_TRACING=true`, the run is traced to your LangSmith
-project as `tiltmeter.fix`, with the same content.
+matching `fix.ignore`. With the Deep Agent and `LANGSMITH_TRACING=true`, the run is traced
+to your LangSmith project as `tiltmeter.fix`, with the same content. Claude Code runs with
+`--no-session-persistence`, so the session is not written to `~/.claude`.
 
 ## Reviewing the pull request
 
@@ -151,9 +180,10 @@ The `fix` section of `tiltmeter.yaml` is optional:
 
 ```yaml
 fix:
+  agent: deepagents            # or claude-code
   model: claude-sonnet-5-5     # the model the agent runs on
   effort: medium               # low, medium, high, xhigh, max; null turns thinking off
-  max_model_calls: 40          # stop a runaway agent; raise it for large repositories
+  max_model_calls: 40          # model calls, or Claude Code turns; raise for large repositories
   branch_prefix: tiltmeter/fix
   ignore:                      # never read or written by the agent
     - .env*
@@ -175,7 +205,7 @@ repository root, like `infra/prod`. `.git` is always blocked. Every option is in
 | 0 | The fix was committed (and pushed, and the pull request opened, when asked), discarded on purpose, or not needed. |
 | 1 | The agent changed nothing but left questions for a human, or it touched an ignored path and everything was discarded. |
 | 3 | The agent, the model provider or a git step failed. Anything already committed is kept, and the output says what is left to run. |
-| 4 | Usage error: unknown check, not a git repository, a branch that already exists, no `ANTHROPIC_API_KEY`, or the `fix` extra is missing. |
+| 4 | Usage error: unknown check, not a git repository, a branch that already exists, no `ANTHROPIC_API_KEY` or `fix` extra for the default agent, or Claude Code missing or logged out with `--agent claude-code`. |
 
 ## Limits
 
@@ -185,3 +215,6 @@ repository root, like `infra/prod`. `.git` is always blocked. Every option is in
 - It does not run your tests. Your CI does, on the pull request.
 - It is not available from the GitHub Action or the MCP server yet. Both are on the
   [roadmap](../README.md#roadmap).
+- Codex and OpenCode cannot drive it yet. Codex reads files through its shell, and OpenCode
+  has no structured output on the command line. Both are tracked in
+  [#8](https://github.com/tiltmeter-dev/tiltmeter/issues/8).

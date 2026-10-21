@@ -45,6 +45,7 @@ def test_fix_defaults_and_overrides(tmp_path: Path) -> None:
     assert config.fix.branch_prefix == "bots/api"
     assert config.fix.ignore == ["vendor"]
     assert config.fix.effort == "medium"
+    assert config.fix.agent == "deepagents"
     defaults = make_config().fix
     assert defaults.ignore == [".env*", "*.pem", "*.key", "secrets*", ".tiltmeter"]
     assert defaults.max_model_calls == 40
@@ -99,6 +100,7 @@ def test_defaults_and_coercion() -> None:
         ("fix: {branch_prefix: '/x'}\nendpoints:\n  - {id: a, url: https://x.test}", "fix"),
         ("fix: {ignore: ['../up']}\nendpoints:\n  - {id: a, url: https://x.test}", "inside"),
         ("fix: {max_model_calls: 0}\nendpoints:\n  - {id: a, url: https://x.test}", "fix"),
+        ("fix: {agent: codex}\nendpoints:\n  - {id: a, url: https://x.test}", "fix.agent"),
     ],
 )
 def test_invalid_configs_have_readable_errors(tmp_path: Path, text: str, message: str) -> None:
