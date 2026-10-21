@@ -34,7 +34,7 @@ fill the gaps with guesses, or retry until the budget is gone.
   the likely cause and what to do about it.
 - **Fixes, too.** `tiltmeter fix` hands the drift to an agent that adapts the code reading
   that API, shows you the diff and opens a pull request. Use the built-in LangChain Deep
-  Agent, or your own Claude Code login.
+  Agent, or your own Claude Code or Codex login.
 - **A CI gate with alerts.** Exit codes fail the build on breaking drift. Slack and
   webhook alerts take one line of config.
 - **Local and private.** One SQLite file and no account. Credentials are expanded at
@@ -103,7 +103,7 @@ When a check finds drift, `tiltmeter fix` hands it to an agent that finds the co
 that API, adapts it, shows you the diff and opens a pull request:
 
 ```console
-$ pip install "tiltmeter[fix]"            # or plain tiltmeter, then --agent claude-code
+$ pip install "tiltmeter[fix]"            # or plain tiltmeter, then --agent claude-code or codex
 $ tiltmeter fix 2 --repo ~/code/billing-service
 ✗ billing_customer  #2  200 · 10 ms  BREAKING · 3 changes
 Working on a new branch, tiltmeter/fix-billing-customer-2, from main at 162dadd.
@@ -118,14 +118,15 @@ Commit, push and open a pull request? [y/N]: y
 
 - **Your checkout is never touched.** The agent works in a temporary git worktree on a new
   branch, and nothing is committed until you approve the diff or pass `--yes`.
-- **It can only edit files.** No shell, no network access, no subagents. Only tracked files
-  are there to read, and `.env` files, keys and `.git` are blocked.
+- **It stays inside the worktree.** No network access, and only tracked files are there to
+  read; `.env` files, keys and `.git` are blocked. The built-in agent and Claude Code get
+  file tools only. Codex keeps its shell, locked in its OS sandbox under the same limits.
 - **It says what it could not do.** Tiltmeter sees types, not values. When a number turns
   into a string, the agent updates the types and leaves the format question to a human in
   the pull request instead of guessing a conversion.
-- **Bring your own agent.** Already use Claude Code? `tiltmeter fix 2 --agent claude-code`
-  runs on your Claude Code login, with no API key and no extra install, under the same
-  file-only rules.
+- **Bring your own agent.** Already use Claude Code or Codex? `tiltmeter fix 2 --agent
+  claude-code` or `--agent codex` runs on your own login, with no API key and no extra
+  install.
 
 `--dry-run` shows the diff and throws it away, and `--no-pr` commits to a local branch. The
 [fix guide](docs/fix.md) covers the flags, what the model sees and how to review the result.

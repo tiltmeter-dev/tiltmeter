@@ -28,12 +28,14 @@ pip install "tiltmeter[fix]"          # or: uv tool install "tiltmeter[fix]"
 export ANTHROPIC_API_KEY=sk-ant-...
 ```
 
-If you already use [Claude Code](https://code.claude.com), skip both lines: the base install
-is enough, and `--agent claude-code` runs the fix on your Claude Code login.
+If you already use [Claude Code](https://code.claude.com) or
+[Codex](https://developers.openai.com/codex/cli), skip both lines: the base install is
+enough, and `--agent claude-code` or `--agent codex` runs the fix on your own login.
 
 ```bash
 pip install tiltmeter
 tiltmeter fix 2 --agent claude-code   # or set fix.agent: claude-code in tiltmeter.yaml
+tiltmeter fix 2 --agent codex         # or set fix.agent: codex
 ```
 
 Opening pull requests uses the [GitHub CLI](https://cli.github.com) (`gh`) and the
@@ -42,17 +44,18 @@ the command to open the pull request yourself.
 
 ## Choosing the agent
 
-| | `deepagents` (default) | `claude-code` |
-|---|---|---|
-| Needs | `pip install "tiltmeter[fix]"` and `ANTHROPIC_API_KEY` | `claude` on your `PATH`, logged in, or `ANTHROPIC_API_KEY` |
-| Billed to | your Anthropic API key | your Claude Code plan, or the API key when it is set |
-| Runs as | a LangChain Deep Agent inside Tiltmeter | `claude -p` in the worktree, with `--restricted` and only the Read, Edit, Write, Glob and Grep tools |
-| Traces | LangSmith, when `LANGSMITH_TRACING=true` | none; the session is not saved in `~/.claude` |
+| | `deepagents` (default) | `claude-code` | `codex` |
+|---|---|---|---|
+| Needs | `pip install "tiltmeter[fix]"` and `ANTHROPIC_API_KEY` | `claude` on your `PATH`, logged in, or `ANTHROPIC_API_KEY` | `codex` 0.156 or later on your `PATH`, logged in, or `CODEX_API_KEY` |
+| Billed to | your Anthropic API key | your Claude Code plan, or the API key when it is set | your ChatGPT plan, or the API key when it is set |
+| Model | `fix.model` | `fix.model` | Codex's default, or `fix.model` when it names an OpenAI model |
+| Runs as | a LangChain Deep Agent inside Tiltmeter | `claude -p` in the worktree, with `--restricted` and only the Read, Edit, Write, Glob and Grep tools | `codex exec` in the worktree, with its shell inside Codex's sandbox and a permission profile that only opens the worktree |
+| Traces | LangSmith, when `LANGSMITH_TRACING=true` | none; the session is not saved in `~/.claude` | none; the session is not saved (`--ephemeral`) |
 
-Both get the same instructions and the same change list. Both work only in the worktree,
-with file tools and no shell, and both end with the same report. Whatever you pick, the
-review, the ignored-path check and the pull request work the same way. Codex and OpenCode
-are tracked in [#8](https://github.com/tiltmeter-dev/tiltmeter/issues/8).
+All three get the same instructions and the same change list, work only in the worktree and
+end with the same report. Whatever you pick, the review, the ignored-path check and the
+pull request work the same way. OpenCode is tracked in
+[#8](https://github.com/tiltmeter-dev/tiltmeter/issues/8).
 
 ## Run it
 
@@ -106,7 +109,7 @@ removed as if nothing happened.
 | `--yes`, `-y` | Commit, push and open the pull request without asking. |
 | `--no-pr` | Commit to a local branch only. Nothing is pushed. |
 | `--dry-run` | Show the diff, then discard it. |
-| `--agent NAME` | `deepagents` or `claude-code`. Overrides `fix.agent` for this run. |
+| `--agent NAME` | `deepagents`, `claude-code` or `codex`. Overrides `fix.agent` for this run. |
 | `--json` | Print the outcome, including the diff and the agent's report, as JSON. With `--json`, nothing is committed unless you also pass `--yes`. |
 
 ## What happens, step by step
@@ -131,7 +134,7 @@ removed as if nothing happened.
 
 ## What the agent can and cannot do
 
-Both agents get file tools rooted at the worktree and nothing else:
+The Deep Agent and Claude Code get file tools rooted at the worktree and nothing else:
 
 - **Can:** list, read, glob and grep files, and edit or write them.
 - **Cannot:** run commands, reach the network, start subagents or delete files. The Deep
@@ -143,6 +146,25 @@ Both agents get file tools rooted at the worktree and nothing else:
   denied to the file tools: the Deep Agent's permissions refuse them, and Claude Code gets
   them as deny rules, which also hide them from searches.
 
+Codex has no file tools of its own: it reads files by running commands such as `rg` and
+`sed`, and edits them with `apply_patch`. So with `--agent codex` the shell stays, inside
+Codex's own sandbox (bubblewrap, Landlock and seccomp on Linux; Seatbelt on macOS), and
+Tiltmeter passes it a permission profile on the command line:
+
+- **Reads:** denied everywhere except the worktree, the system paths commands need and
+  Codex's own installation. Your home folder, other repositories and the main checkout's
+  `.git` are not visible.
+- **Writes:** only inside the worktree. `.git` and `fix.ignore` are denied there too.
+- **Commands:** no network, and only a core set of environment variables (`PATH`, `HOME`
+  and the like), so API keys in your environment do not reach the model.
+- **Off:** web search, apps and connectors, the browser, computer use, plugins, image
+  viewing and hooks, which would act outside the command sandbox. Your `config.toml` and
+  rules are not loaded.
+
+On Linux, Codex resolves the `fix.ignore` globs to the files that exist when the sandbox
+starts. A file the agent creates under an ignored path during the run is caught by the
+check below. Tested on Linux and WSL; macOS relies on the same profile through Seatbelt.
+
 Tiltmeter checks the result too: if the diff touches an ignored path anyway, it discards
 everything and exits with code 1.
 
@@ -153,7 +175,8 @@ question in the "Left for a human" section of the pull request.
 
 ## What leaves your machine
 
-Sent to Anthropic, through your API key or your Claude Code login:
+Sent to Anthropic, through your API key or your Claude Code login, or to OpenAI with
+`--agent codex`:
 
 - the change list: paths, change kinds and types, plus Claude's earlier explanation if the
   check has one;
@@ -163,7 +186,8 @@ Sent to Anthropic, through your API key or your Claude Code login:
 Never sent: response values, header values, `${VAR}` values, untracked files and paths
 matching `fix.ignore`. With the Deep Agent and `LANGSMITH_TRACING=true`, the run is traced
 to your LangSmith project as `tiltmeter.fix`, with the same content. Claude Code runs with
-`--no-session-persistence`, so the session is not written to `~/.claude`.
+`--no-session-persistence`, so the session is not written to `~/.claude`, and Codex with
+`--ephemeral`.
 
 ## Reviewing the pull request
 
@@ -180,8 +204,8 @@ The `fix` section of `tiltmeter.yaml` is optional:
 
 ```yaml
 fix:
-  agent: deepagents            # or claude-code
-  model: claude-sonnet-5-5     # the model the agent runs on
+  agent: deepagents            # or claude-code, or codex
+  model: claude-sonnet-5-5     # the model the agent runs on; Codex ignores Claude models
   effort: medium               # low, medium, high, xhigh, max; null turns thinking off
   max_model_calls: 40          # model calls, or Claude Code turns; raise for large repositories
   branch_prefix: tiltmeter/fix
@@ -205,7 +229,7 @@ repository root, like `infra/prod`. `.git` is always blocked. Every option is in
 | 0 | The fix was committed (and pushed, and the pull request opened, when asked), discarded on purpose, or not needed. |
 | 1 | The agent changed nothing but left questions for a human, or it touched an ignored path and everything was discarded. |
 | 3 | The agent, the model provider or a git step failed. Anything already committed is kept, and the output says what is left to run. |
-| 4 | Usage error: unknown check, not a git repository, a branch that already exists, no `ANTHROPIC_API_KEY` or `fix` extra for the default agent, or Claude Code missing or logged out with `--agent claude-code`. |
+| 4 | Usage error: unknown check, not a git repository, a branch that already exists, no `ANTHROPIC_API_KEY` or `fix` extra for the default agent, or Claude Code or Codex missing or logged out. |
 
 ## Limits
 

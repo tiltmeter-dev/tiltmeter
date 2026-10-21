@@ -3,7 +3,7 @@
 Everything here works without the ``fix`` extra except the Deep Agent in
 :mod:`tiltmeter.fix.agent`, which needs ``deepagents`` and ``langchain`` and imports them
 only when it runs. The Claude Code agent (:mod:`tiltmeter.fix.claude_code`) needs only
-the ``claude`` CLI.
+the ``claude`` CLI, and the Codex agent (:mod:`tiltmeter.fix.codex`) only ``codex``.
 """
 
 from tiltmeter.fix.models import FixOutcome, FixPreview, FixReport, FixRequest, FixTarget

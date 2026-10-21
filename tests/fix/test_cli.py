@@ -12,6 +12,7 @@ from tests.test_cli import URL, flat, invoke, runner, write_config
 from tiltmeter.cli import app, main
 from tiltmeter.fix.agent import DeepFixAgent
 from tiltmeter.fix.claude_code import ClaudeCodeFixAgent
+from tiltmeter.fix.codex import CodexFixAgent
 
 BRANCH = "tiltmeter/fix-items-2"
 
@@ -169,7 +170,7 @@ def test_fix_with_claude_code_needs_no_api_key(
     assert picked == ["claude-code", "claude-code"]
 
     with pytest.raises(SystemExit) as unknown:
-        main(["fix", "2", "-c", str(drifted), "--repo", str(repo), "--agent", "codex"])
+        main(["fix", "2", "-c", str(drifted), "--repo", str(repo), "--agent", "opencode"])
     assert unknown.value.code == 4
 
 
@@ -193,3 +194,25 @@ def test_a_failed_commit_is_reported_without_a_traceback(
     assert "Please tell me who you are" in flat(outcome.output)
     assert outcome.exception is None or isinstance(outcome.exception, SystemExit)
     assert git(repo, "branch", "--list", BRANCH) == ""
+
+
+def test_fix_with_codex_needs_no_api_key(
+    tmp_path: Path,
+    drifted: Path,
+    fakes: tuple[FakeFixAgent, FakeGitHub],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    agent, _ = fakes
+    monkeypatch.delenv("ANTHROPIC_API_KEY")
+    picked: list[str] = []
+
+    def from_config(cls: type, config: Any, *, environ: Any) -> FakeFixAgent:
+        picked.append(config.agent)
+        return agent
+
+    monkeypatch.setattr(CodexFixAgent, "from_config", classmethod(from_config))
+    repo, _ = make_repo(tmp_path)
+    outcome = fix(drifted, repo, "--agent", "codex", "--yes")
+    assert outcome.exit_code == 0, outcome.output
+    assert f"✓ opened {PR_URL}" in flat(outcome.output)
+    assert picked == ["codex"]

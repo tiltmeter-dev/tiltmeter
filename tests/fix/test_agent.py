@@ -19,6 +19,7 @@ from tiltmeter.fix.agent import (
     parse_report,
 )
 from tiltmeter.fix.claude_code import ClaudeCodeFixAgent
+from tiltmeter.fix.codex import CodexFixAgent
 from tiltmeter.fix.models import FixReport
 from tiltmeter.fix.prompts import SYSTEM_PROMPT, render_fix_request
 
@@ -149,3 +150,11 @@ def test_build_fix_agent_picks_the_backend(monkeypatch: pytest.MonkeyPatch) -> N
     picked = build_fix_agent(FixConfig(agent="claude-code"), environ={"PATH": "/bin"})
     assert picked == "claude-code-agent"
     assert seen == [{"PATH": "/bin"}]  # no API key needed
+
+    def codex_from_config(cls: type, config: FixConfig, *, environ: dict[str, str]) -> str:
+        seen.append(environ)
+        return "codex-agent"
+
+    monkeypatch.setattr(CodexFixAgent, "from_config", classmethod(codex_from_config))
+    assert build_fix_agent(FixConfig(agent="codex"), environ={"PATH": "/b"}) == "codex-agent"
+    assert seen[-1] == {"PATH": "/b"}

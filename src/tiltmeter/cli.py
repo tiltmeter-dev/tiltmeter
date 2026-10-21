@@ -456,7 +456,8 @@ def fix(
     """Let an agent adapt your code to the drift a check found, in a pull request.
 
     The default agent needs ANTHROPIC_API_KEY and the fix extra (pip install
-    "tiltmeter\\[fix]"). --agent claude-code runs on your Claude Code login instead.
+    "tiltmeter\\[fix]"). --agent claude-code or --agent codex runs on your Claude Code
+    or Codex login instead.
     """
     from tiltmeter.console import render_fix_outcome, render_fix_preview, render_result
     from tiltmeter.fix.agent import build_fix_agent

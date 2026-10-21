@@ -205,7 +205,11 @@ check pipeline and only runs when you ask:
    Files the harness writes for itself, such as offloaded tool results, go to memory
    instead of the worktree. With `fix.agent: claude-code`, `claude -p` does the same job
    instead: `--restricted` with only the Read, Edit, Write, Glob and Grep tools, deny rules
-   for `.git` and `fix.ignore`, and no MCP servers, hooks or user settings. Either way the
+   for `.git` and `fix.ignore`, and no MCP servers, hooks or user settings. With
+   `fix.agent: codex`, `codex exec` keeps its shell, inside Codex's OS sandbox with a
+   permission profile that denies reads outside the worktree, writes outside it, the
+   network and `fix.ignore`, and with web search, apps, plugins and the browser turned
+   off. Either way the
    agent ends with a structured report: summary, files changed, what is left for a human,
    and confidence.
 4. Tiltmeter stages the edits, refuses any diff that touches an ignored path, and shows
