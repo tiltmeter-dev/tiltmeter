@@ -32,8 +32,9 @@ fill the gaps with guesses, or retry until the budget is gone.
   or info, and a removed field next to a similar new one is flagged as a probable rename.
 - **Explanations on demand.** With an Anthropic API key, Claude explains what changed,
   the likely cause and what to do about it.
-- **Fixes, too.** `tiltmeter fix` hands the drift to a LangChain Deep Agent that adapts the
-  code reading that API, shows you the diff and opens a pull request.
+- **Fixes, too.** `tiltmeter fix` hands the drift to an agent that adapts the code reading
+  that API, shows you the diff and opens a pull request. Use the built-in LangChain Deep
+  Agent, or your own Claude Code login.
 - **A CI gate with alerts.** Exit codes fail the build on breaking drift. Slack and
   webhook alerts take one line of config.
 - **Local and private.** One SQLite file and no account. Credentials are expanded at
@@ -114,6 +115,9 @@ Commit, push and open a pull request? [y/N]: y
 - **It says what it could not do.** Tiltmeter sees types, not values. When a number turns
   into a string, the agent updates the types and leaves the format question to a human in
   the pull request instead of guessing a conversion.
+- **Bring your own agent.** Already use Claude Code? `tiltmeter fix 2 --agent claude-code`
+  runs on your Claude Code login, with no API key and no extra install, under the same
+  file-only rules.
 
 `--dry-run` shows the diff and throws it away, and `--no-pr` commits to a local branch. The
 [fix guide](docs/fix.md) covers the flags, what the model sees and how to review the result.

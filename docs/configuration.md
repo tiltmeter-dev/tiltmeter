@@ -222,16 +222,18 @@ succeeds and the problem is recorded as a note.
 ## Fix
 
 `tiltmeter fix <check-id>` hands the drift a check found to an agent that adapts your code
-and opens a pull request. It needs `ANTHROPIC_API_KEY` and the `fix` extra
-(`pip install "tiltmeter[fix]"`). The [fix guide](fix.md) explains the whole flow.
+and opens a pull request. The default agent needs `ANTHROPIC_API_KEY` and the `fix` extra
+(`pip install "tiltmeter[fix]"`); `claude-code` runs on your Claude Code login instead. The
+[fix guide](fix.md) explains the whole flow.
 
 | Option | Default | Description |
 |---|---|---|
+| `agent` | `deepagents` | `deepagents` runs a LangChain Deep Agent on `ANTHROPIC_API_KEY`. `claude-code` runs `claude -p` on your Claude Code login. `--agent` overrides it for one run. |
 | `model` | `claude-sonnet-5-5` | The Claude model the agent runs on. |
 | `effort` | `medium` | `low`, `medium`, `high`, `xhigh` or `max`, with adaptive thinking. Use `null` for models without adaptive thinking. |
-| `max_tokens` | `16000` | Output budget per model call, from 1,024 to 64,000. |
-| `timeout` | `120` | Seconds per model call, up to 600. |
-| `max_model_calls` | `40` | Model calls per fix, from 1 to 500. The run fails when the agent needs more; raise it for large repositories. |
+| `max_tokens` | `16000` | Output budget per model call, from 1,024 to 64,000. Deep Agent only. |
+| `timeout` | `120` | Seconds per model call, up to 600. With Claude Code, the whole run may take `timeout` × `max_model_calls`. |
+| `max_model_calls` | `40` | Model calls per fix (Claude Code turns), from 1 to 500. The run fails when the agent needs more; raise it for large repositories. |
 | `branch_prefix` | `tiltmeter/fix` | Branches are named `<prefix>-<endpoint>-<check id>` unless `--branch` is given. |
 | `ignore` | `.env*`, `*.pem`, `*.key`, `secrets*`, `.tiltmeter` | Paths the agent can never read or write. A pattern without a slash matches a name at any depth; one with a slash matches from the repository root. `.git` is always blocked. |
 

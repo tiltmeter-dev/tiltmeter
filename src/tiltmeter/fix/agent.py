@@ -7,11 +7,13 @@ offloaded tool results or conversation summaries, stay in memory, so the diff
 only ever shows real edits.
 
 ``deepagents`` and ``langchain`` come with the ``fix`` extra and are only imported
-when an agent is built.
+when an agent is built. :func:`build_fix_agent` picks this agent or the Claude Code
+one (:mod:`tiltmeter.fix.claude_code`), as ``fix.agent`` says.
 """
 
 from __future__ import annotations
 
+import os
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final, Protocol
@@ -31,6 +33,10 @@ if TYPE_CHECKING:
     from tiltmeter.config import FixConfig
 
 INSTALL_HINT: Final = 'the fix agent needs the "fix" extra: pip install "tiltmeter[fix]"'
+NO_API_KEY: Final = (
+    "set ANTHROPIC_API_KEY: the fix agent runs on Claude "
+    "(or pass --agent claude-code to use your Claude Code login)"
+)
 SCRATCH: Final = "/.tiltmeter-agent/"
 HIDDEN_TOOLS: Final = frozenset({"task", "execute", "delete", "write_todos"})
 
@@ -42,6 +48,17 @@ class FixAgent(Protocol):
     def model_name(self) -> str: ...
 
     async def run(self, request: FixRequest, root: Path) -> FixReport: ...
+
+
+def build_fix_agent(config: FixConfig, *, environ: Mapping[str, str] = os.environ) -> FixAgent:
+    """The agent ``fix.agent`` names, checked for what it needs before any work starts."""
+    if config.agent == "claude-code":
+        from tiltmeter.fix.claude_code import ClaudeCodeFixAgent
+
+        return ClaudeCodeFixAgent.from_config(config, environ=environ)
+    if not environ.get("ANTHROPIC_API_KEY"):
+        raise FixError(NO_API_KEY)
+    return DeepFixAgent.from_config(config)
 
 
 def _tool_name(tool: Any) -> str | None:

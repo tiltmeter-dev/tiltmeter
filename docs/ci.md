@@ -166,7 +166,8 @@ WantedBy=multi-user.target
 ## Fixes
 
 `tiltmeter fix` is meant for a developer's machine for now. It needs a full git checkout,
-`ANTHROPIC_API_KEY` and a `gh` that can push and open pull requests. It runs unattended
+`ANTHROPIC_API_KEY` (or a logged-in Claude Code with `--agent claude-code`) and a `gh` that
+can push and open pull requests. It runs unattended
 with `--yes`, so a job can call it, but the Tiltmeter Action does not do it yet. See the
 [fix guide](fix.md).
 

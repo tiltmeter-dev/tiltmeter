@@ -57,7 +57,7 @@ and on macOS and Windows with Python 3.13. It also builds the package and checks
 | `tiltmeter/graph` | The LangGraph pipeline that sequences one check. |
 | `tiltmeter/llm` | The Claude explainer and its prompt. |
 | `tiltmeter/notify` | Slack and webhook notifiers. |
-| `tiltmeter/fix` | `tiltmeter fix`: the fix request, the Deep Agent, the git worktree and the pull request. |
+| `tiltmeter/fix` | `tiltmeter fix`: the fix request, the agents (Deep Agents, Claude Code), the git worktree and the pull request. |
 | `tiltmeter/mcp_server` | The MCP server. |
 | `tiltmeter/service.py` | The service the CLI and the MCP server share. |
 | `tiltmeter/cli.py`, `console.py` | The command line and its rich output. |
@@ -74,10 +74,13 @@ A few rules keep it that way:
   persist or send expanded values anywhere.
 - **stdout belongs to the protocol in `serve`.** Library code never prints; the CLI does,
   through `console.py` or `_print_json`.
-- **The fix agent only touches files.** It runs on `FilesystemBackend` rooted at a fresh
-  worktree, never a shell backend, and `deepagents` and `langchain` are imported lazily so
-  the base install works without the `fix` extra. Git and `gh` run through `subprocess`
-  without a shell, and only on the worktree's branch.
+- **The fix agent only touches files.** The Deep Agent runs on `FilesystemBackend` rooted
+  at a fresh worktree, never a shell backend, and `deepagents` and `langchain` are imported
+  lazily so the base install works without the `fix` extra. An agent CLI such as Claude Code
+  runs through `fix/_proc.py`, without a shell, in the worktree, with its own shell tools
+  turned off and `fix.ignore` denied. A new backend implements the `FixAgent` protocol in
+  `fix/agent.py` and is picked in `build_fix_agent`. Git and `gh` run the same way, and
+  only on the worktree's branch.
 
 [How it works](docs/how-it-works.md) explains the design in depth.
 
@@ -91,6 +94,7 @@ A few rules keep it that way:
   way to test anything end to end.
 - `tests/fix/kit.py` builds real git repositories with a bare remote, a fake fix agent,
   a fake GitHub and a scripted chat model that drives the real Deep Agent offline.
+  `tests/fix/fake_claude.py` stands in for the `claude` CLI.
 - Tests that call real services are marked `@pytest.mark.integration` and skipped by
   default.
 

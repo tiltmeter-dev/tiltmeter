@@ -26,6 +26,8 @@ DEFAULT_FIX_IGNORE = (".env*", "*.pem", "*.key", "secrets*", ".tiltmeter")
 
 type HttpMethod = Literal["GET", "POST", "PUT", "PATCH", "DELETE"]
 type Effort = Literal["low", "medium", "high", "xhigh", "max"]
+# A plain alias rather than a `type` statement: Typer reads it for `fix --agent`.
+FixAgentKind = Literal["deepagents", "claude-code"]
 
 
 class _Model(BaseModel):
@@ -137,6 +139,7 @@ class LLMConfig(_Model):
 class FixConfig(_Model):
     """``tiltmeter fix``: the agent that adapts your code to drift."""
 
+    agent: FixAgentKind = "deepagents"
     model: str = DEFAULT_FIX_MODEL
     effort: Effort | None = "medium"
     max_tokens: int = Field(default=16_000, ge=1_024, le=64_000)
@@ -270,8 +273,10 @@ llm:
   model: claude-haiku-5-5
 
 # `tiltmeter fix <check id>` lets an agent adapt your code to drift and open a pull
-# request (needs ANTHROPIC_API_KEY and `pip install "tiltmeter[fix]"`).
+# request. The default agent needs ANTHROPIC_API_KEY and `pip install "tiltmeter[fix]"`;
+# `agent: claude-code` runs on your Claude Code login instead.
 # fix:
+#   agent: deepagents        # or claude-code
 #   model: claude-sonnet-5-5
 #   ignore: [".env*", "*.pem", "*.key", "secrets*", ".tiltmeter"]
 

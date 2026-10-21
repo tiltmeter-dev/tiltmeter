@@ -10,7 +10,13 @@ if TYPE_CHECKING:
 
 MAX_TARGETS_IN_PROMPT: Final = 60
 
-SYSTEM_PROMPT: Final = """\
+DEEPAGENTS_WORKSPACE: Final = "Use glob to find candidate files. The repository root is /."
+CLAUDE_CODE_WORKSPACE: Final = (
+    "Use Glob and Grep to find candidate files. The repository is your working directory: "
+    "use paths relative to it. You only have file tools: there is no shell."
+)
+
+_SYSTEM_PROMPT_TEMPLATE: Final = """\
 You are Tiltmeter's fixer. A third-party HTTP API that this repository calls has \
 changed the shape of its JSON responses. Tiltmeter detected the change by comparing \
 the latest responses with the ones it learned before. Your job is to update the code \
@@ -20,8 +26,7 @@ with confidence.
 How to work:
 1. Find the code that handles this API's responses. Start by grepping for the search \
 terms you are given (old field names, the API's host, the resource name), then for \
-related types, models, schemas, fixtures, mocks and tests. Use glob to find \
-candidate files. The repository root is /.
+related types, models, schemas, fixtures, mocks and tests. {workspace}
 2. Read each candidate before editing it. Common names such as id or name appear \
 everywhere: only change code that reads this API's data.
 3. Make the smallest edits that work with the new shape:
@@ -49,6 +54,14 @@ pull request), files_changed (repository paths you edited), unresolved (what you
 could not handle safely and why; empty when nothing) and confidence. If nothing in \
 the repository reads the changed fields, change nothing and say so in the summary.\
 """
+
+
+def system_prompt(workspace: str = DEEPAGENTS_WORKSPACE) -> str:
+    """The fixer's instructions, with how to find files in the agent's own workspace."""
+    return _SYSTEM_PROMPT_TEMPLATE.replace("{workspace}", workspace)
+
+
+SYSTEM_PROMPT: Final = system_prompt()
 
 
 def render_fix_request(request: FixRequest) -> str:
