@@ -1,4 +1,4 @@
-# Check your APIs every hour and fail the job on breaking drift.
+# Check your APIs every hour and fail the job on drift.
 # Copy this file to .github/workflows/tiltmeter.yml in the repository that holds
 # tiltmeter.yaml, and add the secrets your endpoints reference.
 name: API drift
@@ -20,27 +20,14 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: astral-sh/setup-uv@v10
-
-      # The baseline lives in .tiltmeter/. Restore the newest copy...
-      - uses: actions/cache/restore@v6
+      # Keeps the baseline in the Actions cache, writes the changes to the job summary and
+      # fails on drift. Exit codes: 0 clean, 1 warning, 2 breaking, 3 a check failed, 4 bad
+      # config. See https://github.com/tiltmeter-dev/tiltmeter-action for every input.
+      - uses: tiltmeter-dev/tiltmeter-action@v1
         with:
-          path: .tiltmeter
-          key: tiltmeter-${{ github.run_id }}
-          restore-keys: tiltmeter-
-
-      # Exit codes: 0 clean, 1 warning, 2 breaking, 3 a check failed, 4 bad config.
-      # Pin the version so a new release never changes your CI without a review.
-      - name: Check APIs
-        run: uvx tiltmeter@0.1.0 check
+          version: "0.1.0"    # the Tiltmeter release this job runs
+          fail-on: warning    # or "breaking", or "never" to only report
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           STRIPE_API_KEY: ${{ secrets.STRIPE_API_KEY }}
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-
-      # ...and save the new one even when the job fails, so each change is reported once.
-      - uses: actions/cache/save@v6
-        if: always()
-        with:
-          path: .tiltmeter
-          key: tiltmeter-${{ github.run_id }}

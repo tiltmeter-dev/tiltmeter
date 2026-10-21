@@ -26,8 +26,10 @@ never reports anything.
 
 ## GitHub Actions
 
-[`examples/github-action.yml`](../examples/github-action.yml) checks every hour, keeps
-`.tiltmeter/` in the Actions cache and fails the job on drift:
+The [Tiltmeter Action](https://github.com/tiltmeter-dev/tiltmeter-action) installs
+Tiltmeter, keeps `.tiltmeter/` in the Actions cache, writes a table of changes to the job
+summary and fails the step on drift.
+[`examples/github-action.yml`](../examples/github-action.yml) checks every hour:
 
 ```yaml
 name: API drift
@@ -37,9 +39,49 @@ on:
     - cron: "17 * * * *"
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   tiltmeter:
     runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: tiltmeter-dev/tiltmeter-action@v1
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          STRIPE_API_KEY: ${{ secrets.STRIPE_API_KEY }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+```
+
+- **Secrets.** Every `${VAR}` in your config needs a matching variable in `env`. Store the
+  values as repository secrets.
+- **Inputs.** `config`, `endpoints`, `version`, `fail-on`, `explain`, `notify`, `cache`
+  and `summary`; outputs `exit-code`, `result` and `json`. The
+  [action's README](https://github.com/tiltmeter-dev/tiltmeter-action#inputs) lists them
+  all.
+- **Pin the versions.** The action's `version` input pins Tiltmeter itself. For the action,
+  `@v1` follows compatible releases; use a commit SHA if your policy asks for it.
+- **Schedules are best effort.** GitHub runs `cron` in UTC and can delay busy hours by a
+  few minutes; avoid the top of the hour.
+
+### Fail only on breaking drift
+
+```yaml
+      - uses: tiltmeter-dev/tiltmeter-action@v1
+        with:
+          fail-on: breaking   # or "never" to only report
+```
+
+### Without the action
+
+Run the command yourself and keep the baseline with `actions/cache`. Restoring with the
+`tiltmeter-` prefix picks the newest saved baseline, and saving under the run id with
+`if: always()` stores the new one even when drift fails the job:
+
+```yaml
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v10
@@ -51,9 +93,7 @@ jobs:
       - name: Check APIs
         run: uvx tiltmeter@0.1.0 check
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           STRIPE_API_KEY: ${{ secrets.STRIPE_API_KEY }}
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
       - uses: actions/cache/save@v6
         if: always()
         with:
@@ -61,22 +101,8 @@ jobs:
           key: tiltmeter-${{ github.run_id }}
 ```
 
-- **The cache dance.** Restoring with the `tiltmeter-` prefix picks the newest saved
-  baseline, and saving under the run id with `if: always()` stores the new one even when
-  drift fails the job.
-- **Secrets.** Every `${VAR}` in your config needs a matching variable in `env`. Store the
-  values as repository secrets.
-- **Pin the version.** `tiltmeter@0.1.0` keeps a new release from changing your CI
-  without a review.
-- **Schedules are best effort.** GitHub runs `cron` in UTC and can delay busy hours by a
-  few minutes; avoid the top of the hour.
-- **Pin the actions too, if your policy asks for it.** Replace each `@v7`-style tag with
-  the commit SHA it points to, as this repository's own workflows do.
-
-### Fail only on breaking drift
-
-Exit code 1 fails a job like any other non-zero code. To report warnings and failed checks
-without failing the job, keep the code and decide yourself:
+Exit code 1 fails a job like any other non-zero code. To fail only on breaking drift
+without the action, keep the code and decide yourself:
 
 ```yaml
       - name: Check APIs

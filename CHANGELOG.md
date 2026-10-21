@@ -8,6 +8,11 @@ a minor release may include breaking changes.
 
 ## [Unreleased]
 
+### Added
+
+- A GitHub Action, [tiltmeter-dev/tiltmeter-action](https://github.com/tiltmeter-dev/tiltmeter-action),
+  that keeps the baseline in the Actions cache and reports drift in the job summary.
+
 ### Changed
 
 - The project homepage is now https://tiltmeter.dev.

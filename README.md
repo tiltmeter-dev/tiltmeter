@@ -110,8 +110,18 @@ Override any of them globally or per endpoint with `severity_overrides`.
 | 3 | A check could not run (network error, unexpected status, invalid JSON) and nothing broke. |
 | 4 | Usage or configuration error. |
 
-The baseline lives in `.tiltmeter/`, so keep that folder between runs. The
-[CI guide](docs/ci.md) has ready-to-copy jobs for GitHub Actions, GitLab CI and cron.
+On GitHub, the [Tiltmeter Action](https://github.com/tiltmeter-dev/tiltmeter-action) keeps
+the baseline in the Actions cache, writes the changes to the job summary and fails the job
+on drift:
+
+```yaml
+- uses: tiltmeter-dev/tiltmeter-action@v1
+  env:
+    STRIPE_API_KEY: ${{ secrets.STRIPE_API_KEY }}
+```
+
+Anywhere else, keep `.tiltmeter/` between runs. The [CI guide](docs/ci.md) has
+ready-to-copy jobs for GitHub Actions, GitLab CI and cron.
 
 ## How it works
 
