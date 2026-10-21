@@ -1,0 +1,308 @@
+# Configuration reference
+
+Tiltmeter reads one YAML file, `tiltmeter.yaml` by default. Every key is validated when the
+file is loaded, and unknown keys are rejected, so a typo fails loudly instead of being
+ignored.
+
+- [Finding the file](#finding-the-file)
+- [A complete example](#a-complete-example)
+- [Top-level options](#top-level-options)
+- [Endpoints](#endpoints)
+- [Placeholders and secrets](#placeholders-and-secrets)
+- [Paths and ignore patterns](#paths-and-ignore-patterns)
+- [Severity overrides](#severity-overrides)
+- [LLM explanations](#llm-explanations)
+- [Notifications](#notifications)
+- [Environment variables](#environment-variables)
+- [Files on disk](#files-on-disk)
+
+## Finding the file
+
+Every command looks for `tiltmeter.yaml` in the current folder. Point it elsewhere with
+`--config` (`-c`) or the `TILTMETER_CONFIG` environment variable:
+
+```bash
+tiltmeter check --config ops/apis.yaml
+TILTMETER_CONFIG=ops/apis.yaml tiltmeter watch
+```
+
+`tiltmeter init [PATH]` writes a starter file with commented examples.
+
+## A complete example
+
+```yaml
+version: 1
+state_dir: .tiltmeter          # history database, relative to this file
+concurrency: 5                 # endpoints checked in parallel
+keep_checks: 500               # history kept per endpoint
+severity_overrides:
+  latency_regression: info     # applies to every endpoint
+
+endpoints:
+  - id: stripe_customers
+    description: Customer list from Stripe
+    url: https://api.stripe.com/v1/customers
+    method: GET
+    params:
+      limit: 10
+    headers:
+      Authorization: Bearer ${STRIPE_API_KEY}
+    timeout: 10
+    retries: 2
+    sample_size: 1
+    baseline_window: 20
+    ignore_paths:
+      - $.data[*].metadata
+    severity_overrides:
+      field_now_optional: warning
+
+  - id: github_viewer
+    description: The authenticated GitHub user, through GraphQL
+    method: POST
+    url: https://api.github.com/graphql
+    headers:
+      Authorization: Bearer ${GITHUB_TOKEN}
+    body:
+      query: "{ viewer { login createdAt } }"
+    strict: true
+
+llm:
+  enabled: true
+  model: claude-haiku-5-5
+  effort: low
+  min_severity: warning
+
+notify:
+  - type: slack
+    webhook_url: ${SLACK_WEBHOOK_URL}
+    min_severity: warning
+  - type: webhook
+    url: https://example.com/hooks/tiltmeter
+    headers:
+      Authorization: Bearer ${HOOK_TOKEN}
+    min_severity: breaking
+    on_error: true
+```
+
+## Top-level options
+
+| Option | Default | Description |
+|---|---|---|
+| `version` | `1` | Config format version. Only `1` exists. |
+| `state_dir` | `.tiltmeter` | Folder for the history database. Relative paths start at the config file's folder; `~` is expanded. |
+| `concurrency` | `5` | How many endpoints are checked at the same time, from 1 to 64. |
+| `keep_checks` | `500` | Checks kept per endpoint, from 10 to 100,000. Never fewer than that endpoint's `baseline_window`. |
+| `severity_overrides` | none | Severity per change kind for every endpoint. See [severity overrides](#severity-overrides). |
+| `llm` | see below | [LLM explanations](#llm-explanations). |
+| `notify` | none | A list of [notifications](#notifications). |
+| `endpoints` | required | At least one [endpoint](#endpoints). Ids must be unique. |
+
+## Endpoints
+
+| Option | Default | Description |
+|---|---|---|
+| `id` | required | 1 to 64 letters, digits, `_`, `.` or `-`, starting with a letter or digit. Used in commands, history and MCP tools. |
+| `url` | required | Must start with `http://`, `https://` or a `${VAR}` placeholder. Put credentials in `params` or `headers`, not here. |
+| `method` | `GET` | `GET`, `POST`, `PUT`, `PATCH` or `DELETE`. |
+| `description` | none | Shown by `list_endpoints` and passed to the LLM as context. |
+| `headers` | none | Request headers. Values may use placeholders. Tiltmeter sends `User-Agent: tiltmeter/<version>` unless you set your own. |
+| `params` | none | Query parameters. Values may use placeholders. Numbers and booleans are sent as text. |
+| `body` | none | A JSON request body, for GraphQL and other POST APIs. Strings anywhere inside may use placeholders. |
+| `timeout` | `10` | Seconds per request, up to 300. |
+| `retries` | `2` | Extra attempts, up to 10, after a timeout, a connection error or HTTP 429, 500, 502, 503 or 504. Waits 0.5 s, 1 s, 2 s and so on, up to 8 s, or what `Retry-After` asks for, up to 10 s. |
+| `sample_size` | `1` | Requests per check, up to 20. Their bodies are merged into one observation, which helps with APIs that return varying data. |
+| `max_body_bytes` | `5000000` | Responses larger than this fail the check. |
+| `ignore_paths` | none | Parts of the body to leave out of the comparison. See [ignore patterns](#paths-and-ignore-patterns). |
+| `strict` | `false` | Report new fields as warnings instead of info, for consumers that reject unknown keys. |
+| `baseline_window` | `20` | How many recent successful checks form the baseline, from 1 to 500. |
+| `latency_factor` | `3.0` | A check is a latency regression when its median latency is this many times the baseline median and at least 250 ms slower. It needs three earlier successful checks. `null` turns the check off. |
+| `severity_overrides` | none | Per change kind, on top of the global ones. |
+| `store_samples` | `false` | Keep the first 4,000 characters of each response in the history. Off by default because responses often contain personal data. |
+
+Redirects are followed. Only JSON responses are supported: a 2xx response whose body is
+not valid JSON fails the first check, and on later checks it is reported as
+`content_type_changed`.
+
+## Placeholders and secrets
+
+Values can reference environment variables:
+
+| Syntax | Meaning |
+|---|---|
+| `${NAME}` | The value of `NAME`. The check fails with `environment variable NAME is not set` if it is missing or empty. |
+| `${NAME:-fallback}` | The value of `NAME`, or `fallback` when it is missing or empty. |
+
+Placeholders work in `url`, `headers`, `params` and `body` of endpoints, and in the URLs
+and headers of notifications. They are expanded right before each request, so:
+
+- the expanded values never appear in the history database, the LangGraph state, LLM
+  prompts or LangSmith traces;
+- any expanded value of four characters or more is replaced with `***` in error messages
+  and response excerpts;
+- you can rotate a secret without touching the config.
+
+`description` and `id` are never expanded.
+
+## Paths and ignore patterns
+
+Tiltmeter names locations in a response body with a small JSONPath-like syntax. The same
+notation appears in reports, in the MCP tools and in `ignore_paths`.
+
+| Syntax | Meaning | Example |
+|---|---|---|
+| `$` | The whole body. | `$` |
+| `.name` | A property whose name is a plain identifier. | `$.data` |
+| `["name"]` | Any other property name, as a JSON string. | `$["content-type"]` |
+| `[*]` | Every item of an array. | `$.data[*].id` |
+
+Ignore patterns add three conveniences:
+
+| Pattern feature | Example | Matches |
+|---|---|---|
+| Prefix matching | `$.metadata` | `metadata` and everything below it |
+| `*` and `?` in dotted names | `$.data[*].created_*` | `created_at`, `created_by`... in every item |
+| `..` for any depth | `$..updated_at` | every `updated_at`, wherever it is |
+
+Bracketed names are literal, so `$["a.*"]` only matches a property called `a.*`. Use
+ignore patterns for free-form objects such as `metadata`, and for fields that legitimately
+come and go. Status, content-type and latency checks are not affected by them.
+
+## Severity overrides
+
+These are the change kinds and their default severities:
+
+| Kind | Default |
+|---|---|
+| `field_removed` | `breaking` |
+| `field_now_optional` | `breaking` |
+| `type_changed` | `breaking` |
+| `nullable_introduced` | `breaking` |
+| `content_type_changed` | `breaking` |
+| `status_changed` | `breaking` from 2xx to an error, `info` from an error to 2xx, `warning` otherwise |
+| `enum_value_added` | `warning` |
+| `latency_regression` | `warning` |
+| `field_added` | `info`, or `warning` with `strict: true` |
+
+Override them with `info`, `warning` or `breaking`, globally or per endpoint. An endpoint's
+overrides win over the global ones, and an override replaces the default entirely,
+including the direction-based rule for `status_changed`.
+
+```yaml
+severity_overrides:          # every endpoint
+  latency_regression: info
+
+endpoints:
+  - id: search
+    url: https://api.example.com/search
+    severity_overrides:      # this endpoint only
+      field_now_optional: warning
+```
+
+## LLM explanations
+
+When a check finds drift at `min_severity` or worse and `ANTHROPIC_API_KEY` is set,
+Tiltmeter asks Claude to explain it. Without the key, the check says so in a note and
+carries on.
+
+| Option | Default | Description |
+|---|---|---|
+| `enabled` | `true` | Turn explanations off entirely. |
+| `model` | `claude-haiku-5-5` | Any Claude model id. |
+| `effort` | `low` | `low`, `medium`, `high`, `xhigh` or `max`. Tiltmeter also turns on adaptive thinking whenever an effort is set. Use `null` for models without adaptive thinking, such as `claude-haiku-4-5`. |
+| `max_tokens` | `2048` | Output budget per explanation, from 256 to 32,000. |
+| `timeout` | `60` | Seconds per request, up to 600. |
+| `min_severity` | `warning` | Only explain drift at this level or worse. |
+| `include_samples` | `false` | Also send the first 4,000 characters of the latest response, labelled as untrusted third-party data. Off by default because responses often contain personal data. |
+
+`--no-llm` skips explanations for one run, and `tiltmeter explain <check-id>` explains a
+past check. If the model refuses, runs out of tokens or the API fails, the check still
+succeeds and the problem is recorded as a note.
+
+## Notifications
+
+Each entry in `notify` gets the results at or above its `min_severity`. Notifications are
+sent after the check is saved, with a 10-second timeout. Delivery failures are recorded as
+notes on the check and never include the target URL, which is usually a secret.
+
+### Slack
+
+```yaml
+notify:
+  - type: slack
+    webhook_url: ${SLACK_WEBHOOK_URL}   # an incoming webhook URL
+    min_severity: warning               # default
+    on_error: false                     # default; true also sends checks that could not run
+```
+
+The message lists up to 15 changes, the explanation summary and suggested action when
+there is one, and the check id.
+
+### Webhook
+
+```yaml
+notify:
+  - type: webhook
+    url: https://example.com/hooks/tiltmeter
+    headers:
+      Authorization: Bearer ${HOOK_TOKEN}
+    min_severity: breaking
+    on_error: true
+```
+
+Tiltmeter sends a `POST` with this JSON body. `event` is `drift.detected` or
+`check.failed`, and `result` is the same object that `tiltmeter show <id> --json` prints:
+
+```json
+{
+  "event": "drift.detected",
+  "tiltmeter_version": "0.1.0",
+  "result": {
+    "endpoint_id": "billing_customers",
+    "check_id": 2,
+    "checked_at": "2026-10-21T10:00:00Z",
+    "status_code": 200,
+    "media_type": "application/json",
+    "latency_ms": 2.1,
+    "first_run": false,
+    "changes": [
+      {
+        "path": "$.data[*].phone",
+        "kind": "field_removed",
+        "severity": "breaking",
+        "before": "string",
+        "after": null,
+        "hint": "possibly renamed to $.data[*].phone_number",
+        "message": "Field $.data[*].phone (string) is no longer returned. Possibly renamed to $.data[*].phone_number."
+      }
+    ],
+    "max_severity": "breaking",
+    "explanation": null,
+    "explanation_model": null,
+    "error": null,
+    "notes": [],
+    "outcome": "drift"
+  }
+}
+```
+
+`outcome` is one of `error`, `drift` (warning or worse), `changed` (info only), `baseline`
+(first check) or `clean`.
+
+## Environment variables
+
+| Variable | Used for |
+|---|---|
+| `TILTMETER_CONFIG` | Default config file path. |
+| `ANTHROPIC_API_KEY` | Turns on LLM explanations. |
+| `LANGSMITH_TRACING`, `LANGSMITH_API_KEY`, `LANGSMITH_PROJECT` | Optional LangSmith tracing of every check and explanation. |
+| Anything your config references | Expanded into `${...}` placeholders. |
+
+## Files on disk
+
+| Path | Contents |
+|---|---|
+| `tiltmeter.yaml` | Your configuration. Safe to commit: secrets belong in environment variables. |
+| `.tiltmeter/tiltmeter.db` | SQLite history: checks, changes and observed shapes. Keep `.tiltmeter/` out of git; `tiltmeter init` adds it to `.gitignore` when it finds one, or a git repository, next to the config. |
+
+Delete `.tiltmeter/` to forget every baseline and start over. The next check of each
+endpoint records a new baseline.

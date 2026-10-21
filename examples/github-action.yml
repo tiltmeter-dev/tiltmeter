@@ -8,33 +8,38 @@ on:
     - cron: "17 * * * *"
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   tiltmeter:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
-      - uses: astral-sh/setup-uv@v6
+      - uses: astral-sh/setup-uv@v10
 
       # The baseline lives in .tiltmeter/. Restore the newest copy...
-      - uses: actions/cache/restore@v4
+      - uses: actions/cache/restore@v6
         with:
           path: .tiltmeter
           key: tiltmeter-${{ github.run_id }}
           restore-keys: tiltmeter-
 
       # Exit codes: 0 clean, 1 warning, 2 breaking, 3 a check failed, 4 bad config.
-      # tiltmeter is not on PyPI yet: install it from its repository
-      # (replace OWNER/tiltmeter with wherever you host it).
+      # Pin the version so a new release never changes your CI without a review.
       - name: Check APIs
-        run: uvx --from "git+https://github.com/OWNER/tiltmeter" tiltmeter check
+        run: uvx tiltmeter@0.1.0 check
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           STRIPE_API_KEY: ${{ secrets.STRIPE_API_KEY }}
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
 
       # ...and save the new one even when the job fails, so each change is reported once.
-      - uses: actions/cache/save@v4
+      - uses: actions/cache/save@v6
         if: always()
         with:
           path: .tiltmeter
