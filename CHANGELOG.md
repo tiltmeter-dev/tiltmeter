@@ -8,6 +8,10 @@ a minor release may include breaking changes.
 
 ## [Unreleased]
 
+### Changed
+
+- The project homepage is now https://tiltmeter.dev.
+
 ## [0.1.0] - 2026-10-21
 
 First public release, with the same features as 0.1.0rc1.

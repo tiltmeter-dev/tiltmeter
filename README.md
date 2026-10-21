@@ -4,7 +4,7 @@
 [![Python](https://img.shields.io/badge/python-3.12%20%7C%203.13%20%7C%203.14-blue.svg)](pyproject.toml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-**An early-warning system for the third-party APIs your AI agents depend on.**
+**An early-warning system for the third-party APIs your AI agents depend on.** · [tiltmeter.dev](https://tiltmeter.dev)
 
 <!-- pypi-skip-image -->
 ![Tiltmeter catching a renamed field and a type change](docs/demo.svg)
