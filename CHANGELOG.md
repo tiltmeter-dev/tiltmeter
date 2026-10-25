@@ -8,6 +8,13 @@ a minor release may include breaking changes.
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-10-25
+
+### Added
+
+- Tiltmeter is listed in the official MCP Registry as `dev.tiltmeter/tiltmeter`, described
+  by `server.json` at the repository root.
+
 ## [0.5.0] - 2026-10-21
 
 ### Added

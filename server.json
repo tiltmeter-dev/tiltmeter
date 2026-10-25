@@ -1,0 +1,48 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "dev.tiltmeter/tiltmeter",
+  "title": "Tiltmeter",
+  "description": "Tells your agents when a third-party API they depend on changes shape, before they trust it.",
+  "version": "0.5.1",
+  "websiteUrl": "https://tiltmeter.dev",
+  "repository": {
+    "url": "https://github.com/tiltmeter-dev/tiltmeter",
+    "source": "github"
+  },
+  "icons": [
+    {
+      "src": "https://tiltmeter.dev/favicon.svg",
+      "mimeType": "image/svg+xml"
+    }
+  ],
+  "packages": [
+    {
+      "registryType": "pypi",
+      "identifier": "tiltmeter",
+      "version": "0.5.1",
+      "runtimeHint": "uvx",
+      "transport": {
+        "type": "stdio"
+      },
+      "packageArguments": [
+        {
+          "type": "positional",
+          "value": "serve"
+        }
+      ],
+      "environmentVariables": [
+        {
+          "name": "TILTMETER_CONFIG",
+          "description": "Path to tiltmeter.yaml. Defaults to tiltmeter.yaml in the working directory.",
+          "isRequired": false
+        },
+        {
+          "name": "ANTHROPIC_API_KEY",
+          "description": "Only needed for explanations written by Claude.",
+          "isRequired": false,
+          "isSecret": true
+        }
+      ]
+    }
+  ]
+}

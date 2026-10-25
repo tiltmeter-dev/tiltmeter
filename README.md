@@ -8,6 +8,8 @@
 
 **An early-warning system for the third-party APIs your AI agents depend on, with the fix as a pull request.** · [tiltmeter.dev](https://tiltmeter.dev)
 
+<!-- mcp-name: dev.tiltmeter/tiltmeter -->
+
 <!-- pypi-skip-image -->
 ![Tiltmeter catching a renamed field and a type change, then an agent adapting the code in a pull request](docs/demo.svg)
 <!-- /pypi-skip-image -->

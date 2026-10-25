@@ -28,7 +28,8 @@ a laptop, and there is no PyPI token to leak.
 ## Cutting a release
 
 1. Make sure the default branch is green and has everything you want to ship.
-2. Bump `__version__` in `src/tiltmeter/__init__.py`. Tiltmeter follows
+2. Bump `__version__` in `src/tiltmeter/__init__.py` and both `version` fields in
+   `server.json`. Tiltmeter follows
    [semantic versioning](https://semver.org); until 1.0, a minor release may break things.
 3. In CHANGELOG.md, rename `## [Unreleased]` to `## [X.Y.Z] - YYYY-MM-DD` with today's
    date, and add a new empty `## [Unreleased]` section above it.
@@ -46,6 +47,16 @@ a laptop, and there is no PyPI token to leak.
    environment, approve the deployment.
 7. Check [the PyPI page](https://pypi.org/project/tiltmeter/), then run
    `uvx tiltmeter@X.Y.Z --version` on a clean machine.
+8. Publish the new version to the [MCP Registry](https://registry.modelcontextprotocol.io)
+   with [`mcp-publisher`](https://github.com/modelcontextprotocol/registry). The
+   registry checks that the PyPI release carries the `mcp-name` line from the README, so
+   this step comes after PyPI. Ownership of `dev.tiltmeter` is proven by the key whose
+   public half is served at `https://tiltmeter.dev/.well-known/mcp-registry-auth`:
+
+   ```bash
+   mcp-publisher login http --domain tiltmeter.dev --private-key "$TILTMETER_REGISTRY_KEY"
+   mcp-publisher publish
+   ```
 
 ## Rehearsing on TestPyPI
 
