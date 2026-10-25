@@ -4,6 +4,8 @@
 [![Python](https://img.shields.io/badge/python-3.12%20%7C%203.13%20%7C%203.14-blue.svg)](pyproject.toml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
+<a href="https://devhunt.org/tool/tiltmeter" target="_blank" title="Tiltmeter on DevHunt"><img src="https://devhunt.org/badge/tiltmeter.svg" alt="Tiltmeter - Featured on DevHunt" width="220" height="54" /></a>
+
 **An early-warning system for the third-party APIs your AI agents depend on, with the fix as a pull request.** · [tiltmeter.dev](https://tiltmeter.dev)
 
 <!-- pypi-skip-image -->
