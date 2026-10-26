@@ -8,6 +8,8 @@ a minor release may include breaking changes.
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-10-26
+
 ### Added
 
 - Provider mode: API providers announce a change once and every customer that follows them
