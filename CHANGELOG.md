@@ -8,6 +8,8 @@ a minor release may include breaking changes.
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-10-26
+
 ### Added
 
 - Two change kinds for provider notices. `endpoint_removed` says an endpoint is gone, and
