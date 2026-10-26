@@ -164,20 +164,35 @@ class Store:
         return cls(state_dir / DB_FILENAME)
 
     def _migrate(self) -> None:
-        version = int(self._db.execute("PRAGMA user_version").fetchone()[0])
-        if version > SCHEMA_VERSION:
-            raise StoreError(
-                f"{self.path} was written by a newer Tiltmeter (schema {version}); "
-                "upgrade Tiltmeter to read it"
-            )
-        if version < SCHEMA_VERSION:
-            script = _SCHEMA if version == 0 else ""
-            if version < 2:
-                script += _NOTICES_SCHEMA
-            script += _SPECS_SCHEMA
-            with self._db:
-                self._db.executescript(script)
+        if self._schema_version() == SCHEMA_VERSION:
+            return
+        # Runs started together can open the same new file, so the version is read again
+        # under the write lock. The statements run one by one in that transaction
+        # (executescript would commit first), so a migration applies whole or not at all.
+        self._db.execute("BEGIN IMMEDIATE")
+        try:
+            version = self._schema_version()
+            if version > SCHEMA_VERSION:
+                raise StoreError(
+                    f"{self.path} was written by a newer Tiltmeter (schema {version}); "
+                    "upgrade Tiltmeter to read it"
+                )
+            if version < SCHEMA_VERSION:
+                script = _SCHEMA if version == 0 else ""
+                if version < 2:
+                    script += _NOTICES_SCHEMA
+                script += _SPECS_SCHEMA
+                for statement in script.split(";"):
+                    if statement.strip():
+                        self._db.execute(statement)
                 self._db.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+            self._db.commit()
+        except BaseException:
+            self._db.rollback()
+            raise
+
+    def _schema_version(self) -> int:
+        return int(self._db.execute("PRAGMA user_version").fetchone()[0])
 
     def close(self) -> None:
         self._db.close()
