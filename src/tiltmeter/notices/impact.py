@@ -210,6 +210,12 @@ def _listing(items: Sequence[str], word: str = "or") -> str:
     return f"{', '.join(shown[:-1])} {word} {shown[-1]}"
 
 
+def _literal_segments(url: str) -> int:
+    """How many segments of the URL's path are neither parameters nor the version."""
+    segments = [part for part in urlsplit(url).path.split("/") if part]
+    return sum(1 for part in segments if "{" not in part and not _VERSION.fullmatch(part))
+
+
 def _spelled(term: str, lowered: str) -> bool:
     """Whether lowercased text spells a host or a path. A path of two segments or more
     may also be quoted without its leading slash: "rest/api/3/search"."""
@@ -540,7 +546,17 @@ def assess(index: RepoIndex, notice: ApiChangeNotice, *, sdks: Sequence[SdkName]
     ]
     if removed and not set(impact.anchors) & {sdk.name for sdk in notice.sdks}:
         levels = index.uses(candidates, api_files=index.api_files(hosts, names))
-        chosen = [i for i in chosen if i not in removed or levels[i] == 2]
+        # Code that keeps the host and version in its configuration spells the rest of the
+        # path anywhere: "${baseURL}/artists/${id}/top-tracks". Two literal segments are
+        # no app route of its own, the way /markets could be.
+        anywhere = index.uses(candidates)
+        called = {
+            i
+            for i in removed
+            if levels[i] == 2 or (anywhere[i] == 2 and _literal_segments(candidates[i].url) >= 2)
+        }
+        # A call of an endpoint that is gone breaks for certain: those come first.
+        chosen = [i for i in removed if i in called] + [i for i in chosen if i not in removed]
         if not chosen:
             gone = [
                 f"{notice.endpoints[i].method} {urlsplit(notice.endpoints[i].url).path}"

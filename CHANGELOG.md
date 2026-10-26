@@ -26,7 +26,10 @@ a minor release may include breaking changes.
   domain counts as the API's name, for APIs where every customer has a host of its own
   (`your-domain.atlassian.net`), and so does a literal path of four segments or more, such
   as `/rest/api/3/search`, when the host comes from the configuration. A path quoted
-  without its leading slash (`"rest/api/3/search"`) counts as that path.
+  without its leading slash (`"rest/api/3/search"`) counts as that path, and a removed
+  endpoint of two literal segments or more counts when code spells it after a configured
+  base URL (`${baseURL}/artists/${id}/top-tracks`). Calls of removed endpoints come first
+  in what the agent is shown.
 
 ### Changed
 
