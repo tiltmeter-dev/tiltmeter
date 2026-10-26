@@ -419,7 +419,7 @@ def test_fix_from_a_notice_file(tmp_path: Path, fakes: tuple[FakeFixAgent, FakeG
     assert f"● {PROVIDER} {NOTICE_ID} unsigned" in text
     assert f"✓ opened {PR_URL}" in text
     assert agent.requests[0].notice is not None
-    assert "It was not signed" in github.created[0]["body"]
+    assert "It is not signed by `api.billing.test`" in github.created[0]["body"]
 
 
 @respx.mock

@@ -290,8 +290,20 @@ def test_notice_pull_requests_quote_the_provider_as_plain_text() -> None:
     assert "SDK releases that already follow the change: pypi `billing-sdk` 3.0.0." in body
     assert "## Left for a human" in body
     assert "from api.billing.test's change notice `2026-11-03-phone-rename`" in body
+    assert "This pull request was generated automatically by [Tiltmeter]" in body
     unsigned = pull_request_body(notice_request(verified=False), notice_preview(), model_name="m")
-    assert "It was not signed" in unsigned
+    # Anyone may write an unsigned notice: it is never put in the provider's mouth.
+    assert "announced" not in unsigned
+    assert "The provider's" not in unsigned
+    assert (
+        "Notice `2026-11-03-phone-rename` about `api.billing.test`'s API describes this change"
+        in unsigned
+    )
+    assert "It is not signed by `api.billing.test`" in unsigned
+    assert "from the unsigned notice `2026-11-03-phone-rename` about api.billing.test's API" in (
+        unsigned
+    )
+    assert "is not signed by the provider" in commit_body(notice_request(verified=False), report())
 
 
 async def test_notice_outcomes_name_the_notice(tmp_path: Path) -> None:
