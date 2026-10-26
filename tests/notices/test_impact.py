@@ -148,8 +148,8 @@ def test_paths_alone_may_belong_to_another_api(tmp_path: Path) -> None:
     impact = check(tmp_path, {"payments.py": stripe})
     assert not impact.affected
     assert impact.reason == (
-        "the repository mentions /v1/customers and /customers, but never api.billing.test "
-        "or billing-sdk, so those may belong to another API"
+        "the repository mentions /v1/customers, but never api.billing.test or billing-sdk, "
+        "so those may belong to another API"
     )
 
 
@@ -211,6 +211,37 @@ def test_a_path_that_names_an_endpoint_is_not_the_start_of_others(tmp_path: Path
     assert index.uses_path(urls[2]) == 1  # alone, nothing else explains the path
 
 
+def test_an_apps_own_routes_are_not_the_apis(tmp_path: Path) -> None:
+    index = index_of(
+        tmp_path,
+        {
+            "app/plans/page.tsx": 'redirect("/plans")\nfetch("/account")\n',
+            "lib/stripe.ts": 'import Stripe from "stripe"\nconst back = "/account"\n',
+        },
+    )
+    sdk = [SdkName(ecosystem="npm", name="stripe")]
+    assert index.api_files([], sdk) == {"lib/stripe.ts"}
+    urls = ["https://api.stripe.com/v1/plans", "https://api.stripe.com/v1/account"]
+    candidates = [Candidate(url, ()) for url in urls]
+    # /plans is only the app's page; /account also appears next to the SDK, so it may be.
+    assert index.uses(candidates, api_files=index.api_files([], sdk)) == [0, 2]
+    assert index.uses(candidates) == [2, 2]  # without knowing the API, both look used
+
+
+def test_sdk_imports_say_where_the_api_is_used(tmp_path: Path) -> None:
+    files = {
+        "package.json": '{"dependencies": {"stripe": "^18.0.0"}}\n',
+        "lib/billing/stripe.ts": (
+            'import Stripe from "stripe"\nexport const end = (s: any) => s.current_period_end\n'
+        ),
+        "app/pricing/page.tsx": "export const reason = (x: any) => x.reason\n",
+    }
+    index = index_of(tmp_path, files)
+    sdk = [SdkName(ecosystem="npm", name="stripe")]
+    near = fields_near(index, ["api.stripe.com"], sdk, ["current_period_end", "reason"])
+    assert near == {"current_period_end"}  # app/pricing is not near the Stripe code
+
+
 def test_calls_through_an_sdk_name_their_endpoints(tmp_path: Path) -> None:
     index = index_of(
         tmp_path,
@@ -219,6 +250,7 @@ def test_calls_through_an_sdk_name_their_endpoints(tmp_path: Path) -> None:
                 "sub = stripe.Subscription.retrieve(sid)\n"
                 "intent = stripe.PaymentIntent.create(amount=1)\n"
                 "pulls = await octokit.rest.pulls.list({owner, repo})\n"
+                "session = await stripe.checkout.sessions.create({mode})\n"
             ),
         },
     )
@@ -230,6 +262,8 @@ def test_calls_through_an_sdk_name_their_endpoints(tmp_path: Path) -> None:
         ("GET", "https://api.stripe.com/v1/invoices/{invoice}", 0),
         ("GET", "https://api.github.com/repos/{owner}/{repo}/pulls", 2),
         ("GET", "https://api.github.com/repos/{owner}/{repo}/pulls/{pull_number}", 0),
+        ("POST", "https://api.stripe.com/v1/checkout/sessions", 2),
+        ("POST", "https://api.stripe.com/v1/financial_connections/sessions", 0),  # not checkout
     ]
     candidates = [Candidate(url, (), method=method) for method, url, _ in endpoints]
     assert index.uses(candidates) == [level for _, _, level in endpoints]

@@ -670,7 +670,7 @@ def _chooser(index: RepoIndex) -> Chooser:
     ) -> list[int]:
         names = [name for candidate in candidates for name in candidate.fields]
         near = fields_near(index, hosts, sdks, names)
-        return choose_endpoints(index, candidates, near=near)
+        return choose_endpoints(index, candidates, near=near, hosts=hosts, sdks=sdks)
 
     return choose
 

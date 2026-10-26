@@ -45,7 +45,9 @@ a minor release may include breaking changes.
   limit instead of refused.
 - Pull requests for notices pick the endpoints the repository uses, from the paths in its
   code, its SDK calls (`stripe.Subscription.retrieve(...)`, `client.messages.create(...)`)
-  or the field names it reads, and list the changes to fields the code reads first. A fix
+  or the field names it reads, and list the changes to fields the code reads first. SDK
+  imports count as uses of the API, and paths without their version (`/account`) count
+  only next to them, so an app's own routes are not taken for the provider's. A fix
   branch that is already pushed gets its missing pull request opened from its commit.
 - `notice sign` and `notice publish` take several notices, and the signing key can be the
   PEM itself in `TILTMETER_SIGNING_KEY`. `publish --key` signs drafts on the way into the

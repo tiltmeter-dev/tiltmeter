@@ -262,13 +262,16 @@ Before any agent runs, Tiltmeter reads the tracked files once and searches them,
 an LLM:
 
 1. **Uses of the API.** The notice's hosts (`api.partner.example`), the literal start of
-   each endpoint path, with and without its version (`/v1/customers`, `/customers`), and
-   its SDKs in your dependency manifests (`requirements*.txt`, `pyproject.toml`,
-   `package.json`, `go.mod`, `pom.xml`, `Gemfile`, `Cargo.toml`, `composer.json`, `.csproj`
-   and the like).
+   each endpoint path (`/v1/customers`), its SDKs in your dependency manifests
+   (`requirements*.txt`, `pyproject.toml`, `package.json`, `go.mod`, `pom.xml`, `Gemfile`,
+   `Cargo.toml`, `composer.json`, `.csproj` and the like), and code that imports them
+   (`import Stripe from "stripe"`, `import stripe`). A path without its version
+   (`/customers`) counts only in a file that also names the host or imports the SDK, since
+   apps have routes like `/account` of their own.
 2. **The changed fields near those uses.** The old field names, also in camelCase and
    PascalCase (`phone_number`, `phoneNumber`, `PhoneNumber`), as whole words, in a file that
-   uses the API or in any file under its folder.
+   uses the API or in any file under its folder. When code imports the SDK, nearness is
+   measured from that code, not from the manifest at the root.
 
 No use of the API, or uses without the fields near them, means not affected. Paths alone
 are not enough, because another vendor's API can have a `/v1/customers` too: the host or
@@ -283,7 +286,9 @@ files as starting points:
   `` `/repos/${owner}/${repo}` `` match their endpoints), or that code calls through an
   SDK in the usual `resource.verb(` form: `stripe.Subscription.retrieve(` is
   `GET /v1/subscriptions/{id}`, `client.messages.create(` is `POST /v1/messages` and
-  `octokit.rest.pulls.list(` is `GET /repos/{owner}/{repo}/pulls`;
+  `octokit.rest.pulls.list(` is `GET /repos/{owner}/{repo}/pulls`. A namespace in the path
+  must be in the call too: `stripe.checkout.sessions.create(` is
+  `POST /v1/checkout/sessions`, not `POST /v1/financial_connections/sessions`;
 - then those whose path only starts with a path in code that names no endpoint, such as
   a `"/v1/customers"` base path;
 - when nothing names an endpoint, those whose changed field names appear near the API's

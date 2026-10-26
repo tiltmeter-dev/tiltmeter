@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import re
 from collections import Counter
-from collections.abc import Iterable, Iterator, Mapping, Sequence
+from collections.abc import Collection, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from fnmatch import fnmatchcase
 from pathlib import Path, PurePosixPath
@@ -74,6 +74,36 @@ def path_anchors(url: str) -> list[str]:
     if _VERSION.fullmatch(segments[0]):
         anchors.append("/" + "/".join(segments[1:]))
     return anchors
+
+
+def versionless_anchors(url: str) -> list[str]:
+    """The anchors of :func:`path_anchors` that leave the version out, like ``/customers``.
+    They are short enough to be an app's own routes, so they count only next to the API."""
+    return path_anchors(url)[1:]
+
+
+def import_pattern(sdk: SdkName) -> re.Pattern[str] | None:
+    """How code imports the SDK, in the ecosystems whose imports name the package."""
+    name = re.escape(sdk.name)
+    match sdk.ecosystem:
+        case "npm":
+            return re.compile(
+                rf"""(?:\bfrom\s+|\brequire\(\s*|\bimport\(\s*|\bimport\s+)['"]{name}(?:/[^'"]*)?['"]"""
+            )
+        case "pypi":
+            module = re.escape(re.sub(r"[-.]", "_", sdk.name.lower()))
+            return re.compile(
+                rf"^\s*(?:import\s+{module}\b|from\s+{module}(?:\.|\s+import\b))", re.M
+            )
+        case "go":
+            return re.compile(rf'"{name}(?:/[^"]*)?"')
+        case "rubygems":
+            return re.compile(rf"""\brequire\s*\(?\s*['"]{name}['"]""")
+        case "cargo":
+            crate = re.escape(sdk.name.replace("-", "_"))
+            return re.compile(rf"\b(?:use|extern\s+crate)\s+{crate}\b")
+        case _:
+            return None
 
 
 def name_variants(name: str) -> list[str]:
@@ -156,8 +186,8 @@ class RepoIndex:
 
     texts: Mapping[str, str]
     docs: frozenset[str] = frozenset()
-    _paths: list[str] = field(default_factory=list, compare=False)
-    _calls: frozenset[tuple[str, str]] = field(default_factory=frozenset, compare=False)
+    _paths: Mapping[str, frozenset[str]] = field(default_factory=dict, compare=False)
+    _calls: frozenset[tuple[tuple[str, ...], str]] = field(default_factory=frozenset, compare=False)
 
     @classmethod
     def read(cls, root: Path, files: Sequence[str], *, ignore: Sequence[str] = ()) -> RepoIndex:
@@ -174,12 +204,12 @@ class RepoIndex:
             texts[name] = text
             if _documentation(name):
                 docs.add(name)
-        code = [text for name, text in texts.items() if name not in docs]
-        paths = sorted({match for text in code for match in _PATH_TOKEN.findall(text)})
+        code = {name: text for name, text in texts.items() if name not in docs}
+        paths = {name: frozenset(_PATH_TOKEN.findall(text)) for name, text in code.items()}
         calls = frozenset(
-            (_resource(name), verb.lower())
-            for text in code
-            for name, verb in _SDK_CALL.findall(text)
+            (tuple(_resource(part) for part in re.split(r"\s*\.\s*", chain)), verb.lower())
+            for text in code.values()
+            for chain, verb in _SDK_CALL.findall(text)
         )
         return cls(texts, frozenset(docs), paths, calls)
 
@@ -191,31 +221,66 @@ class RepoIndex:
         lowered = text.lower()
         return any(lowered in content.lower() for _, content in self.code())
 
+    def api_files(self, hosts: Sequence[str], sdks: Sequence[SdkName]) -> frozenset[str]:
+        """The code files that mention one of the API's hosts or import one of its SDKs."""
+        lowered = [host.lower() for host in hosts]
+        imports = [pattern for sdk in sdks if (pattern := import_pattern(sdk)) is not None]
+        return frozenset(
+            name
+            for name, text in self.code()
+            if any(host in text.lower() for host in lowered)
+            or any(pattern.search(text) for pattern in imports)
+        )
+
     def uses_path(self, url: str, method: str | None = None) -> int:
         """2 when code spells the endpoint's path or calls it through an SDK, 1 when it
         spells only the path's start, 0 otherwise."""
         return self.uses([Candidate(url, (), method=method)])[0]
 
-    def uses(self, candidates: Sequence[Candidate]) -> list[int]:
+    def uses(
+        self, candidates: Sequence[Candidate], *, api_files: Collection[str] | None = None
+    ) -> list[int]:
         """:meth:`uses_path` for several endpoints at once. A path in code that spells one
         of them is not also the start of the others: ``/repos/{owner}/{repo}`` names that
-        endpoint, not every endpoint below it."""
-        patterns = [_template_pattern(candidate.url) for candidate in candidates]
+        endpoint, not every endpoint below it. A path without the API's version, such as
+        ``/account`` for ``/v1/account``, counts only in ``api_files``, when they are given.
+        """
+        everywhere = frozenset().union(*self._paths.values())
+        if api_files is None:
+            near_api = everywhere
+        else:
+            near_api = frozenset().union(
+                *(self._paths.get(name, frozenset()) for name in api_files)
+            )
+        strict = [_template_pattern(c.url, versionless=False) for c in candidates]
+        loose = [_template_pattern(c.url, versionless=True) for c in candidates]
+
+        def spells(i: int, path: str) -> bool:
+            if (pattern := strict[i]) is not None and pattern.search(path):
+                return True
+            return (
+                path in near_api
+                and (pattern := loose[i]) is not None
+                and bool(pattern.search(path))
+            )
+
         spelled = {
-            path
-            for path in self._paths
-            if any(pattern is not None and pattern.search(path) for pattern in patterns)
+            path for path in everywhere if any(spells(i, path) for i in range(len(candidates)))
         }
-        loose = [path for path in self._paths if path not in spelled]
+        rest, rest_near = everywhere - spelled, near_api - spelled
         found = []
-        for candidate, pattern in zip(candidates, patterns, strict=True):
-            named = pattern is not None and any(pattern.search(path) for path in spelled)
-            if named or self._calls & _call_shapes(candidate):
+        for i, candidate in enumerate(candidates):
+            shape = _call_shape(candidate)
+            called = shape is not None and any(_reaches(call, shape) for call in self._calls)
+            if called or any(spells(i, path) for path in spelled):
                 found.append(2)
-            elif any(anchor in path for anchor in path_anchors(candidate.url) for path in loose):
-                found.append(1)
-            else:
-                found.append(0)
+                continue
+            anchors = path_anchors(candidate.url)[:1]
+            short = versionless_anchors(candidate.url)
+            started = any(anchor in path for anchor in anchors for path in rest) or any(
+                anchor in path for anchor in short for path in rest_near
+            )
+            found.append(1 if started else 0)
         return found
 
 
@@ -223,15 +288,16 @@ class RepoIndex:
 _PATH_TOKEN: Final = re.compile(r"(?:/[A-Za-z0-9_\-.{}$:]+)+/?")
 
 
-def _template_pattern(url: str) -> re.Pattern[str] | None:
+def _template_pattern(url: str, *, versionless: bool = True) -> re.Pattern[str] | None:
     """The endpoint's path as a regex: ``{id}`` matches any one segment. Only a host may
-    come before it, so ``/repos/{owner}/{repo}/issues`` does not spell ``/issues``."""
+    come before it, so ``/repos/{owner}/{repo}/issues`` does not spell ``/issues``. With
+    ``versionless``, a leading version such as ``/v1`` may be left out."""
     segments = [segment for segment in urlsplit(url).path.split("/") if segment]
     literal = [segment for segment in segments if "{" not in segment]
     if not literal or all(_VERSION.fullmatch(segment) for segment in literal):
         return None
     parts = [r"[^/]+" if "{" in segment else re.escape(segment) for segment in segments]
-    if _VERSION.fullmatch(segments[0]):
+    if versionless and _VERSION.fullmatch(segments[0]):
         body = rf"(?:/{parts[0]})?" + "".join(f"/{part}" for part in parts[1:])
     else:
         body = "".join(f"/{part}" for part in parts)
@@ -241,7 +307,7 @@ def _template_pattern(url: str) -> re.Pattern[str] | None:
 # Calls through an SDK, as most SDKs name them: stripe.Subscription.retrieve(...),
 # client.messages.create(...), octokit.rest.pulls.list(...).
 _SDK_CALL: Final = re.compile(
-    r"\.([A-Za-z_][A-Za-z0-9_]*)\s*\.\s*"
+    r"\b([A-Za-z_]\w*(?:\s*\.\s*[A-Za-z_]\w*)+)\s*\.\s*"
     r"(retrieve|get|list|create|new|update|modify|delete|del)\s*\(",
     re.IGNORECASE,
 )
@@ -272,20 +338,39 @@ def _resource(name: str) -> str:
     return word
 
 
-def _call_shapes(candidate: Candidate) -> set[tuple[str, str]]:
-    """The SDK calls that would reach this endpoint, as (resource, verb)."""
+@dataclass(frozen=True, slots=True)
+class _CallShape:
+    """What an SDK call that reaches an endpoint looks like."""
+
+    resource: str
+    namespace: str | None  # checkout in /v1/checkout/sessions, which SDKs mirror
+    verbs: frozenset[str]
+
+
+def _call_shape(candidate: Candidate) -> _CallShape | None:
     segments = [segment for segment in urlsplit(candidate.url).path.split("/") if segment]
-    literal = [s for s in segments if "{" not in s and not _VERSION.fullmatch(s)]
+    segments = [segment for segment in segments if not _VERSION.fullmatch(segment)]
+    literal = [i for i, segment in enumerate(segments) if "{" not in segment]
     if not literal:
-        return set()
-    resource = _resource(literal[-1])
+        return None
+    last = literal[-1]
+    namespace = segments[last - 1] if last > 0 and "{" not in segments[last - 1] else None
     by_id = "{" in segments[-1]
     method = (candidate.method or "").upper()
-    return {
-        (resource, verb)
+    verbs = frozenset(
+        verb
         for verb, (methods, needs_id) in _VERBS.items()
         if needs_id == by_id and (not method or method in methods)
-    }
+    )
+    return _CallShape(_resource(segments[last]), _resource(namespace) if namespace else None, verbs)
+
+
+def _reaches(call: tuple[tuple[str, ...], str], shape: _CallShape) -> bool:
+    """Whether ``stripe.checkout.sessions.create`` reaches ``POST /v1/checkout/sessions``."""
+    chain, verb = call
+    if verb not in shape.verbs or chain[-1] != shape.resource:
+        return False
+    return shape.namespace is None or shape.namespace in chain[:-1]
 
 
 @dataclass(frozen=True, slots=True)
@@ -303,6 +388,8 @@ def choose_endpoints(
     candidates: Sequence[Candidate],
     *,
     near: Iterable[str] = (),
+    hosts: Sequence[str] = (),
+    sdks: Sequence[SdkName] = (),
     limit: int | None = None,
 ) -> list[int]:
     """The candidates the repository most likely uses, as positions, best first.
@@ -315,7 +402,8 @@ def choose_endpoints(
     order = sorted(range(len(candidates)), key=lambda i: (-candidates[i].rank, i))
     if index is None:
         return order[:limit]
-    levels = index.uses(candidates)
+    api = index.api_files(hosts, sdks) if hosts or sdks else None
+    levels = index.uses(candidates, api_files=api)
     found = {i: levels[i] for i in order}
     chosen = sorted((i for i in order if found[i]), key=lambda i: -found[i])
     if not chosen:
@@ -344,8 +432,9 @@ def assess(index: RepoIndex, notice: ApiChangeNotice, *, sdks: Sequence[SdkName]
         return Impact(affected=False, reason="the notice has no changes code has to follow")
     fields = list(dict.fromkeys(name for t in targets if (name := field_name(t.path))))
     paths = list(dict.fromkeys(a for e in notice.endpoints for a in path_anchors(e.url)))
+    short = {a for e in notice.endpoints for a in versionless_anchors(e.url)}
     names = [*notice.sdks, *(sdk for sdk in sdks if sdk.name not in {s.name for s in notice.sdks})]
-    impact = _search(index, hosts=notice.hosts, paths=paths, sdks=names, fields=fields)
+    impact = _search(index, hosts=notice.hosts, paths=paths, short=short, sdks=names, fields=fields)
     if not impact.affected:
         return impact
     candidates = [
@@ -356,7 +445,7 @@ def assess(index: RepoIndex, notice: ApiChangeNotice, *, sdks: Sequence[SdkName]
         )
         for endpoint in notice.endpoints
     ]
-    chosen = choose_endpoints(index, candidates, near=impact.fields)
+    chosen = choose_endpoints(index, candidates, near=impact.fields, hosts=notice.hosts, sdks=names)
     return impact.model_copy(update={"endpoints": chosen})
 
 
@@ -367,10 +456,15 @@ def _search(
     paths: Sequence[str],
     sdks: Sequence[SdkName],
     fields: Sequence[str],
+    short: Collection[str] = (),
 ) -> Impact:
+    """``short`` are the paths without their version: they count only in a file that also
+    mentions a host or imports an SDK."""
     field_patterns = {name: field_pattern(name) for name in fields}
     texts = list(dict.fromkeys([*hosts, *paths]))
     by_name = {sdk.name: (sdk, sdk_pattern(sdk)) for sdk in sdks}
+    imports = {sdk.name: import_pattern(sdk) for sdk in sdks}
+    manifests: set[str] = set()
 
     anchor_hits: dict[str, set[str]] = {}
     field_hits: dict[str, set[str]] = {}
@@ -384,8 +478,14 @@ def _search(
         if name in index.docs and not manifest_of:
             continue
         lowered = text.lower()
-        found = {term for term in texts if term.lower() in lowered}
+        found = {term for term in texts if term not in short and term.lower() in lowered}
         found |= {sdk for sdk in manifest_of if by_name[sdk][1].search(text)}
+        if manifest_of and found & set(manifest_of):
+            manifests.add(name)
+        elif name not in index.docs:
+            found |= {sdk for sdk, pattern in imports.items() if pattern and pattern.search(text)}
+        if found & {*hosts, *by_name}:
+            found |= {term for term in short if term.lower() in lowered}
         if found:
             anchor_hits[name] = found
         read = {field for field, pattern in field_patterns.items() if pattern.search(text)}
@@ -406,7 +506,10 @@ def _search(
             ),
             anchors=anchors,
         )
-    folders = {PurePosixPath(name).parent for name in anchor_hits}
+    # A manifest at the root is evidence the API is used, not of where: when code that
+    # names the API is found, nearness is measured from there.
+    in_code = [name for name in anchor_hits if name not in manifests]
+    folders = {PurePosixPath(name).parent for name in in_code or anchor_hits}
     near = {
         name: read
         for name, read in field_hits.items()
