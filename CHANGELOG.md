@@ -30,6 +30,10 @@ a minor release may include breaking changes.
 
 ### Changed
 
+- A pull request or commit from an unsigned notice no longer says the provider announced
+  the change: anyone can write such a notice, so it says which notice describes the change
+  and that the provider did not sign it. Pull requests now end with "This pull request was
+  generated automatically by Tiltmeter".
 - Spec diffs find fields that moved into a new object. The new object is still reported
   once, as a whole, but the fields inside it, up to three properties deep, now count as
   places a removed field went when the object was added beside it. On Stripe's 2025-03-31

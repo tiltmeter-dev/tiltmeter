@@ -74,8 +74,13 @@ def commit_body(request: FixRequest, report: FixReport) -> str:
             f"Tiltmeter found the change by comparing two versions of "
             f"{request.notice.provider}'s OpenAPI spec ({request.notice.spec.url})."
         )
-    elif request.notice is not None:
+    elif request.notice is not None and request.notice.key is not None:
         found = f"{request.notice.provider} announced the change in notice {request.notice.id}."
+    elif request.notice is not None:
+        found = (
+            f"Notice {request.notice.id} about {request.notice.provider}'s API describes the "
+            "change. It was read from a file and is not signed by the provider."
+        )
     else:
         api = request.apis[0]
         found = f"Tiltmeter check #{request.check_id} found the change in {api.method} {api.url}."
@@ -145,17 +150,27 @@ def _notice_section(request: FixRequest, notice: NoticeSource) -> list[str]:
     when = f"published {notice.published_at[:10]}"
     if notice.effective_at:
         when += f" and effective {notice.effective_at[:10]}"
-    trust = (
-        f"Its signature was verified against `{notice.key}`."
-        if notice.key
-        else "It was not signed; it was read from a file the person running Tiltmeter trusts."
-    )
+    if notice.key:
+        # Signed by the provider: these are its words.
+        source = (
+            f"`{notice.provider}` announced this change in notice `{notice.id}`, {when}. "
+            f"Its signature was verified against `{notice.key}`."
+        )
+        quoted, noted = "The provider's summary, quoted as they wrote it:", "The provider's notes:"
+    else:
+        # Anyone may write an unsigned notice: never put it in the provider's mouth.
+        source = (
+            f"Notice `{notice.id}` about `{notice.provider}`'s API describes this change, "
+            f"{when}. It is not signed by `{notice.provider}`: it was read from a file the "
+            "person running Tiltmeter trusts."
+        )
+        quoted, noted = "The notice's summary:", "The notice's notes:"
     lines = [
         "## What changed in the API",
         "",
-        f"`{notice.provider}` announced this change in notice `{notice.id}`, {when}. {trust}",
+        source,
         "",
-        "The provider's summary, quoted as they wrote it:",
+        quoted,
         "",
         *_plain_text([notice.summary]),
     ]
@@ -164,7 +179,7 @@ def _notice_section(request: FixRequest, notice: NoticeSource) -> list[str]:
         lines += _changes_table(api, shown, announced=True)
     notes = [f"{t.path}: {t.note}" for t in request.targets if t.note]
     if notes:
-        lines += ["", "The provider's notes:", "", *_plain_text(notes)]
+        lines += ["", noted, "", *_plain_text(notes)]
     if notice.sdks:
         releases = ", ".join(f"{s.ecosystem} `{s.name}` {s.fixed_in}" for s in notice.sdks)
         lines += ["", f"SDK releases that already follow the change: {releases}."]
@@ -252,14 +267,16 @@ def pull_request_body(request: FixRequest, preview: FixPreview, *, model_name: s
         lines.append("Nothing: the agent flagged nothing it could not decide.")
     if notice is not None and notice.spec is not None:
         origin = f"from a diff of {notice.provider}'s OpenAPI spec"
-    elif notice is not None:
+    elif notice is not None and notice.key:
         origin = f"from {notice.provider}'s change notice `{notice.id}`"
+    elif notice is not None:
+        origin = f"from the unsigned notice `{notice.id}` about {notice.provider}'s API"
     else:
         origin = f"with `tiltmeter fix {request.check_id}`"
     lines += [
         "",
         "---",
-        f"Opened by [Tiltmeter]({PROJECT_URL}) {origin}. "
+        f"This pull request was generated automatically by [Tiltmeter]({PROJECT_URL}) {origin}. "
         f"An AI agent ({model_name}) wrote these edits; review them like any other change.",
     ]
     return "\n".join(lines) + "\n"
