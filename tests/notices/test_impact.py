@@ -180,6 +180,19 @@ def test_paths_in_code_pick_the_endpoints(tmp_path: Path) -> None:
     assert choose_endpoints(index, candidates, limit=1) == [2]
 
 
+def test_installed_code_and_agent_copies_are_not_the_repositorys(tmp_path: Path) -> None:
+    index = index_of(
+        tmp_path,
+        {
+            "src/billing.ts": "stripe.subscriptions.retrieve(id)\n",
+            "node_modules/stripe/index.js": "a.subscriptions.retrieve(x)\n",
+            ".claude/worktrees/agent-1/src/billing.ts": "stripe.subscriptions.retrieve(id)\n",
+            "docs/.claude/notes.md": "kept: not a worktree copy\n",
+        },
+    )
+    assert set(index.texts) == {"src/billing.ts", "docs/.claude/notes.md"}
+
+
 def test_tiltmeter_config_is_no_use_of_an_api(tmp_path: Path) -> None:
     index = index_of(
         tmp_path,

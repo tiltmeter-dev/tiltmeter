@@ -21,6 +21,7 @@ from collections import Counter
 from collections.abc import Collection, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from fnmatch import fnmatchcase
+from itertools import pairwise
 from pathlib import Path, PurePosixPath
 from typing import Final
 from urllib.parse import urlsplit
@@ -46,6 +47,27 @@ MANIFESTS: Final[Mapping[str, tuple[str, ...]]] = {
 _DOCS: Final = frozenset({".md", ".markdown", ".rst", ".adoc", ".txt"})
 # Tiltmeter's own config names the APIs it follows, which is no use of them.
 _OWN_FILES: Final = frozenset({"tiltmeter.yaml", "tiltmeter.yml"})
+# Folders of installed or generated code, and agents' copies of the repository. They are
+# not the repository's own code, and can hold more files than the index reads.
+_NOT_OURS: Final = frozenset(
+    {
+        "node_modules",
+        "vendor",
+        "bower_components",
+        ".venv",
+        "venv",
+        "site-packages",
+        "__pycache__",
+        ".next",
+        ".nuxt",
+        ".output",
+        ".svelte-kit",
+        ".turbo",
+        ".vercel",
+        ".tiltmeter",
+    }
+)
+_AGENT_COPIES: Final = ((".claude", "worktrees"), (".codex", "worktrees"))
 _LOCK_FILES: Final = frozenset(
     {
         "Cargo.lock",
@@ -142,6 +164,14 @@ def sdk_pattern(sdk: SdkName) -> re.Pattern[str]:
     return re.compile(rf"(?<![A-Za-z0-9_@/.\-]){re.escape(name)}(?![A-Za-z0-9_/\-])", flags)
 
 
+def _ours(path: PurePosixPath) -> bool:
+    folders = path.parts[:-1]
+    if _NOT_OURS.intersection(folders):
+        return False
+    pairs = set(pairwise(folders))
+    return not pairs.intersection(_AGENT_COPIES)
+
+
 def _read_text(path: Path) -> str | None:
     try:
         if path.is_symlink() or not path.is_file() or path.stat().st_size > MAX_FILE_BYTES:
@@ -179,8 +209,9 @@ def _documentation(name: str) -> bool:
 class RepoIndex:
     """A repository's tracked text files, read once for every notice.
 
-    Lock files, Tiltmeter's own config and state, binaries, large files, links and
-    ``fix.ignore`` paths are left out. Docs
+    Lock files, Tiltmeter's own config and state, installed or generated code
+    (``node_modules``, ``.venv``, ``.next`` and the like), agents' worktree copies,
+    binaries, large files, links and ``fix.ignore`` paths are left out. Docs
     are kept apart: they only count when they are dependency manifests.
     """
 
@@ -193,10 +224,10 @@ class RepoIndex:
     def read(cls, root: Path, files: Sequence[str], *, ignore: Sequence[str] = ()) -> RepoIndex:
         texts: dict[str, str] = {}
         docs: set[str] = set()
-        for name in files[:MAX_FILES]:
+        for name in [name for name in files if _ours(PurePosixPath(name))][:MAX_FILES]:
             path = PurePosixPath(name)
             skipped = path.name in _LOCK_FILES or path.name in _OWN_FILES
-            if skipped or ".tiltmeter" in path.parts or is_ignored(name, ignore):
+            if skipped or not _ours(path) or is_ignored(name, ignore):
                 continue
             text = _read_text(root / name)
             if text is None:
