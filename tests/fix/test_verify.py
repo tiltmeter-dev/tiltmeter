@@ -43,7 +43,8 @@ def test_tests_see_the_edits_and_only_the_edits_are_kept(tmp_path: Path) -> None
         "print('all good')\n"
     )
     result = run(worktree, script, tmp_path)
-    assert (result.status, result.command.startswith(PY)) == ("passed", True)
+    assert result.status == "passed"
+    assert PY in result.command  # quoted on Windows, where the path has backslashes
     assert "all good" in result.output
     assert (worktree.root / "client.py").read_text(encoding="utf-8") == "EDITED = True\n"
     assert (worktree.root / "models.py").read_text(encoding="utf-8") == MODELS
@@ -87,7 +88,8 @@ def test_tests_do_not_get_tiltmeters_own_virtual_environment(
 
     tool = tmp_path / "uv-cache" / "archive-v0" / "abc"  # where uvx puts Tiltmeter
     project = tmp_path / "app"
-    path = os.pathsep.join([str(tool / "bin"), "/opt/python/bin", "/usr/bin"])
+    scripts = "Scripts" if os.name == "nt" else "bin"
+    path = os.pathsep.join([str(tool / scripts), "/opt/python/bin", "/usr/bin"])
     monkeypatch.setenv("PATH", path)
     monkeypatch.setattr("sys.prefix", str(tool))
     monkeypatch.setattr("sys.base_prefix", "/usr")
@@ -95,7 +97,7 @@ def test_tests_do_not_get_tiltmeters_own_virtual_environment(
     assert env["PATH"] == os.pathsep.join(["/opt/python/bin", "/usr/bin"])
     # Installed in the project's own environment, it is the one the tests need.
     monkeypatch.setattr("sys.prefix", str(project / ".venv"))
-    monkeypatch.setenv("PATH", os.pathsep.join([str(project / ".venv" / "bin"), "/usr/bin"]))
+    monkeypatch.setenv("PATH", os.pathsep.join([str(project / ".venv" / scripts), "/usr/bin"]))
     assert test_environment([], tmp_path / "home", project)["PATH"].startswith(str(project))
 
 
