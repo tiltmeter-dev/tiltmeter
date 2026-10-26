@@ -414,3 +414,13 @@ def test_a_removed_endpoint_counts_where_code_calls_its_whole_path(tmp_path: Pat
     assert migrated.reason == (
         "the repository never calls GET /rest/api/3/search, which the notice removes"
     )
+
+
+def test_a_quoted_path_without_its_leading_slash_is_the_path(tmp_path: Path) -> None:
+    joined = 'REST_SEARCH = "rest/api/3/search"\nclient.get(base + REST_SEARCH)["total"]\n'
+    impact = check(tmp_path / "joined", {"jira.py": joined}, **removed_search())
+    assert impact.affected
+    assert impact.anchors == ["/rest/api/3/search"]
+    # A key alone is no path: "customers" is not /customers.
+    index = index_of(tmp_path / "key", {"app.py": 'data["customers"]\n'})
+    assert index.uses([Candidate("https://api.billing.test/v1/customers", ())]) == [0]
