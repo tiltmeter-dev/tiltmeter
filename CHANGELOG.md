@@ -39,6 +39,9 @@ a minor release may include breaking changes.
   generated automatically by Tiltmeter".
 - When `fix.test_command` is set, the agent no longer says in its summary that it did not
   run the tests: Tiltmeter runs them, and the pull request reports how they went.
+- In a pull request from a notice, a removed endpoint comes first among its changes, a
+  provider note on a whole endpoint names that endpoint, and a note shared by several
+  endpoints shows once.
 - Spec diffs find fields that moved into a new object. The new object is still reported
   once, as a whole, but the fields inside it, up to three properties deep, now count as
   places a removed field went when the object was added beside it. On Stripe's 2025-03-31
