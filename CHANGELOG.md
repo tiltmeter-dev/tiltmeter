@@ -19,6 +19,10 @@ a minor release may include breaking changes.
 
 ### Changed
 
+- For a retired value whose note says requests to the replacement must leave something out,
+  such as `temperature` or a thinking budget, the agent adapts the code that builds requests
+  for that model instead of leaving it for a human. A fix that only swaps the model id would
+  still fail with a 400 error.
 - For a retired value, the agent leaves an alias or a name that spells the old model, such
   as a `llama-3.1` shortcut, as it is and reports it, instead of pointing it at the
   replacement: whoever picks that name expects that model.

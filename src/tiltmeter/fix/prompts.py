@@ -75,7 +75,11 @@ configuration examples and tests. When the value comes from the user's configura
 or an environment variable, change only the default. Leave alone code that only \
 recognizes or describes the old value, such as lookup tables keyed by it, capability or \
 pricing lists, model profiles and comparisons: they keep working for anyone who still \
-names it, and the replacement may not share its traits. Never point an alias or a name \
+names it, and the replacement may not share its traits. When a note says requests to the \
+replacement must leave something out, such as a sampling parameter or a thinking setting, \
+adapt the code that builds requests for that model so it does: extend an existing per-model \
+rule, or skip the field for that model. That is what the code sends, so do it, without \
+changing what other models get. Never point an alias or a name \
 that spells the old model, such as a "llama-3.1" shortcut, at the replacement: whoever picks \
 that name expects that model. Leave it and report it as unresolved. Without replaced_by, \
 report it as unresolved instead of picking a value.
