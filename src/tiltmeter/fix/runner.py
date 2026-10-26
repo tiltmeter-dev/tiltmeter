@@ -60,6 +60,9 @@ def default_branch(request: FixRequest, prefix: str = DEFAULT_BRANCH_PREFIX) -> 
 
 
 def commit_title(request: FixRequest) -> str:
+    retired = _retired_title(request)
+    if retired is not None:
+        return retired
     title = f"Adapt to the {request.subject} API change"
     notice = request.notice
     if notice is not None and notice.spec is not None and notice.spec.new_version:
@@ -67,6 +70,19 @@ def commit_title(request: FixRequest) -> str:
     elif notice is not None and notice.effective_at:
         title += f" effective {notice.effective_at[:10]}"
     return title
+
+
+def _retired_title(request: FixRequest) -> str | None:
+    """ "Replace the models api.anthropic.com retired", when values are all that changed."""
+    targets = request.targets
+    if not targets or any(t.kind is not ChangeKind.VALUE_RETIRED for t in targets):
+        return None
+    names = {segment for t in targets if (segment := t.path.rsplit(".", 1)[-1]).isidentifier()}
+    if len(names) != 1:
+        return f"Replace the values {request.subject} retired"
+    name = names.pop()
+    plural = name[:-1] + "ies" if name.endswith("y") else name if name.endswith("s") else name + "s"
+    return f"Replace the {plural} {request.subject} retired"
 
 
 def commit_body(request: FixRequest, report: FixReport) -> str:

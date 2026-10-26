@@ -8,6 +8,12 @@ a minor release may include breaking changes.
 
 ## [Unreleased]
 
+### Changed
+
+- A fix for a notice that only retires values is titled after them, such as "Replace the
+  models api.anthropic.com retired", instead of "Adapt to the api.anthropic.com API
+  change".
+
 ## [0.7.0] - 2026-10-26
 
 ### Added
