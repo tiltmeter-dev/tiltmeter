@@ -100,6 +100,9 @@ class FixRequest(BaseModel):
     candidate_files: list[str] = Field(
         default_factory=list, description="Files a text search found the API's use in."
     )
+    test_command: str | None = Field(
+        default=None, description="What Tiltmeter runs on the edits once the agent is done."
+    )
     test_failure: TestRun | None = Field(
         default=None, description="The tests that failed on the agent's previous edits."
     )

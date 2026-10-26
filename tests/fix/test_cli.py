@@ -13,6 +13,7 @@ from tiltmeter.cli import app, main
 from tiltmeter.fix.agent import DeepFixAgent
 from tiltmeter.fix.claude_code import ClaudeCodeFixAgent
 from tiltmeter.fix.codex import CodexFixAgent
+from tiltmeter.fix.prompts import render_fix_request
 
 BRANCH = "tiltmeter/fix-items-2"
 
@@ -263,6 +264,8 @@ def test_failing_tests_go_back_to_the_agent_until_they_pass(
     assert outcome.exit_code == 0, outcome.output
     first, second = agent.requests
     assert first.test_failure is None
+    assert first.test_command is not None
+    assert "so do not list running them as unresolved" in render_fix_request(first)
     assert second.test_failure is not None
     assert "AttributeError: not fixed yet" in second.test_failure.output
     assert second.previous_report == agent.result  # what the first round reported

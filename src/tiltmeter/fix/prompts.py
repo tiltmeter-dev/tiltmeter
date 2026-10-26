@@ -202,6 +202,12 @@ def render_fix_request(request: FixRequest) -> str:
         "Paths use JSONPath-like notation: $ is the response body and [*] means every "
         "item of an array. Update the code for these changes."
     )
+    if request.test_command is not None and request.test_failure is None:
+        parts.append(
+            f"When you are done, Tiltmeter runs the repository's tests with "
+            f"`{request.test_command}` and shows you any failure, so do not list running "
+            "them as unresolved."
+        )
     if request.test_failure is not None:
         failure = request.test_failure
         parts += [

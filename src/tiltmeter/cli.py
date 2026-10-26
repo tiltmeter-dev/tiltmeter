@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import shlex
 import sys
 from collections.abc import Callable, Coroutine, Iterator, Sequence
 from contextlib import contextmanager
@@ -493,6 +494,8 @@ def _attempt_fix(
     from tiltmeter.console import render_fix_preview
     from tiltmeter.fix.runner import FixSession
 
+    if settings.test_command:
+        request = request.model_copy(update={"test_command": shlex.join(settings.test_command)})
     try:
         session = FixSession.open(
             delivery.repo,
