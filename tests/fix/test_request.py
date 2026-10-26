@@ -305,6 +305,9 @@ def test_moves_and_retired_values_reach_the_agent() -> None:
     assert '"moved_to": "GET https://api.billing.test/v2/customers/{id}"' in text
     assert '"replaced_by": "billing-4"' in text
     assert "For value_retired, $ is the request instead" in text
+    from tiltmeter.fix.prompts import SYSTEM_PROMPT
+
+    assert "Leave alone code that only recognizes or describes the old value" in SYSTEM_PROMPT
     assert "For value_retired" not in render_fix_request(notice_request())
 
 

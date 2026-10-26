@@ -10,6 +10,10 @@ a minor release may include breaking changes.
 
 ### Changed
 
+- For a retired value, the agent changes what the code sends and leaves alone code that only
+  recognizes or describes the old value: lookup tables, capability and pricing lists, model
+  profiles and comparisons. Fixes for retired models had moved such entries to the new
+  model, which may not share their traits.
 - A fix for a notice that only retires values is titled after them, such as "Replace the
   models api.anthropic.com retired", instead of "Adapt to the api.anthropic.com API
   change".
