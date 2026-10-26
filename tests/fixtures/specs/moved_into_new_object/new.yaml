@@ -1,0 +1,103 @@
+# After: the subscription moved into the new `parent` object and the payment intent into
+# the new `payments` list. Each new object is one field_added; the fields inside them are
+# only offered as places the removed fields went. `type` now appears twice, so it pairs
+# with neither, and `payments.data[*].invoice` is not where `last_error.charge.invoice`
+# went: `payments` was not added beside it.
+openapi: 3.0.3
+info: {title: Billing API, version: "2025-03-31"}
+servers:
+  - url: https://api.billing.example
+paths:
+  /v1/invoices:
+    get:
+      responses:
+        "200":
+          description: Invoices
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items: {$ref: "#/components/schemas/invoice"}
+  /v1/invoices/{invoice}:
+    get:
+      responses:
+        "200":
+          description: One invoice
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/invoice"}
+components:
+  schemas:
+    invoice:
+      type: object
+      required: [id]
+      properties:
+        id: {type: string}
+        parent:
+          anyOf:
+            - $ref: "#/components/schemas/invoice_parent"
+          nullable: true
+        payments:
+          type: object
+          required: [data]
+          properties:
+            data:
+              type: array
+              items: {$ref: "#/components/schemas/invoice_payment"}
+        last_error:
+          type: object
+          properties:
+            code: {type: string}
+            charge:
+              type: object
+              properties:
+                id: {type: string}
+    invoice_parent:
+      type: object
+      required: [type]
+      properties:
+        type: {type: string, enum: [subscription_details]}
+        subscription_details:
+          anyOf:
+            - $ref: "#/components/schemas/invoice_subscription_parent"
+          nullable: true
+    invoice_subscription_parent:
+      type: object
+      required: [subscription]
+      properties:
+        subscription:
+          anyOf:
+            - {type: string, maxLength: 5000}
+            - $ref: "#/components/schemas/subscription"
+        subscription_proration_date: {type: integer}
+    invoice_payment:
+      type: object
+      required: [id, invoice, payment]
+      properties:
+        id: {type: string}
+        invoice: {type: string}
+        payment: {$ref: "#/components/schemas/invoice_payment_details"}
+    invoice_payment_details:
+      type: object
+      required: [type]
+      properties:
+        type: {type: string, enum: [charge, payment_intent]}
+        payment_intent:
+          anyOf:
+            - {type: string, maxLength: 5000}
+            - $ref: "#/components/schemas/payment_intent"
+    subscription:
+      type: object
+      required: [id, status]
+      properties:
+        id: {type: string}
+        status: {type: string}
+    payment_intent:
+      type: object
+      required: [id]
+      properties:
+        id: {type: string}

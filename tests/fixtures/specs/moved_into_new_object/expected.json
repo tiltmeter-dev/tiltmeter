@@ -1,0 +1,112 @@
+{
+  "base_url": "https://api.billing.example",
+  "operations": [
+    {
+      "method": "GET",
+      "path": "/v1/invoices",
+      "changes": [
+        {
+          "path": "$.data[*].last_error.charge.invoice",
+          "kind": "field_removed",
+          "severity": "breaking",
+          "before": "string"
+        },
+        {
+          "path": "$.data[*].parent",
+          "kind": "field_added",
+          "severity": "info",
+          "after": "object | null",
+          "hint": "possibly replaces $.data[*].subscription, $.data[*].subscription_proration_date"
+        },
+        {
+          "path": "$.data[*].payment_intent",
+          "kind": "field_removed",
+          "severity": "breaking",
+          "before": "object | string | null",
+          "hint": "possibly renamed to $.data[*].payments.data[*].payment.payment_intent"
+        },
+        {
+          "path": "$.data[*].payments",
+          "kind": "field_added",
+          "severity": "info",
+          "after": "object",
+          "hint": "possibly replaces $.data[*].payment_intent"
+        },
+        {
+          "path": "$.data[*].subscription",
+          "kind": "field_removed",
+          "severity": "breaking",
+          "before": "object | string | null",
+          "hint": "possibly renamed to $.data[*].parent.subscription_details.subscription"
+        },
+        {
+          "path": "$.data[*].subscription_proration_date",
+          "kind": "field_removed",
+          "severity": "breaking",
+          "before": "integer",
+          "hint": "possibly renamed to $.data[*].parent.subscription_details.subscription_proration_date"
+        },
+        {
+          "path": "$.data[*].type",
+          "kind": "field_removed",
+          "severity": "breaking",
+          "before": "string"
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/v1/invoices/{invoice}",
+      "changes": [
+        {
+          "path": "$.last_error.charge.invoice",
+          "kind": "field_removed",
+          "severity": "breaking",
+          "before": "string"
+        },
+        {
+          "path": "$.parent",
+          "kind": "field_added",
+          "severity": "info",
+          "after": "object | null",
+          "hint": "possibly replaces $.subscription, $.subscription_proration_date"
+        },
+        {
+          "path": "$.payment_intent",
+          "kind": "field_removed",
+          "severity": "breaking",
+          "before": "object | string | null",
+          "hint": "possibly renamed to $.payments.data[*].payment.payment_intent"
+        },
+        {
+          "path": "$.payments",
+          "kind": "field_added",
+          "severity": "info",
+          "after": "object",
+          "hint": "possibly replaces $.payment_intent"
+        },
+        {
+          "path": "$.subscription",
+          "kind": "field_removed",
+          "severity": "breaking",
+          "before": "object | string | null",
+          "hint": "possibly renamed to $.parent.subscription_details.subscription"
+        },
+        {
+          "path": "$.subscription_proration_date",
+          "kind": "field_removed",
+          "severity": "breaking",
+          "before": "integer",
+          "hint": "possibly renamed to $.parent.subscription_details.subscription_proration_date"
+        },
+        {
+          "path": "$.type",
+          "kind": "field_removed",
+          "severity": "breaking",
+          "before": "string"
+        }
+      ]
+    }
+  ],
+  "removed": []
+}

@@ -79,8 +79,15 @@ at least 70% alike), or when they are the only candidates under that parent. A r
 field left without a pair is a **probable move** when one field with the same name and
 type appears nearby, at most three path segments away, and no other field of that name and
 type goes or appears: `$.current_period_end` moving to
-`$.items.data[*].current_period_end`, as in Stripe's 2025 API. The hint is evidence for a
-human or an LLM to weigh; the two changes are still reported separately.
+`$.items.data[*].current_period_end`, as in Stripe's 2025 API. In a spec diff, the fields
+inside a new object count too, up to three properties deep, although only the object itself
+is reported. Such a field is a probable move however deep it sits, provided its new object
+was added beside the removed field: the same Stripe release moved `$.subscription` to
+`$.parent.subscription_details.subscription` and `$.payment_intent` to
+`$.payments.data[*].payment.payment_intent`, and the new object's hint lists the fields it
+possibly replaces. An "id or object" field inside it counts as one field and is not opened.
+The hint is evidence for a human or an LLM to weigh; the two changes are still reported
+separately.
 
 `ignore_paths` removes whole subtrees from the walk. See the
 [configuration reference](configuration.md#paths-and-ignore-patterns).

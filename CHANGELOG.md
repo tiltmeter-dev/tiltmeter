@@ -8,6 +8,16 @@ a minor release may include breaking changes.
 
 ## [Unreleased]
 
+### Changed
+
+- Spec diffs find fields that moved into a new object. The new object is still reported
+  once, as a whole, but the fields inside it, up to three properties deep, now count as
+  places a removed field went when the object was added beside it. On Stripe's 2025-03-31
+  API, the hint on `$.subscription` now names `$.parent.subscription_details.subscription`
+  and the one on `$.payment_intent` names `$.payments.data[*].payment.payment_intent`, so
+  notices carry `renamed_to` and `tiltmeter fix` follows the move instead of finding no
+  replacement. The new object's hint lists the fields it possibly replaces.
+
 ## [0.6.0] - 2026-10-26
 
 ### Added

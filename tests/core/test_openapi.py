@@ -329,3 +329,62 @@ def test_renamed_path_parameters_are_the_same_operation() -> None:
     [operation] = diff.operations
     assert operation.path == "/v1/customers/{customer}"
     assert [c.path for c in operation.changes] == ["$.id"]
+
+
+def hints(old: dict[str, Any], new: dict[str, Any]) -> dict[str, str | None]:
+    [operation] = diff_operations(old, new).operations
+    return {c.path: c.hint for c in operation.changes}
+
+
+def level(**properties: Any) -> dict[str, Any]:
+    return {"type": "object", "properties": properties}
+
+
+def test_fields_inside_a_new_object_are_places_to_move_to_not_changes() -> None:
+    string = {"type": "string"}
+    old = spec(level(near=string, deep=string, status=string, box=level(x=string)))
+    new = components(
+        Root=level(parent={"$ref": "#/components/schemas/Parent"}, box=level(new=level(x=string))),
+        Parent=level(
+            a={"type": "array", "items": level(b=level(near=string, c=level(deep=string)))},
+            subscription={"anyOf": [string, {"$ref": "#/components/schemas/Subscription"}]},
+        ),
+        Subscription=level(status=string),
+    )
+    assert hints(old, new) == {
+        "$.box.new": "possibly replaces $.box.x",
+        "$.box.x": "possibly renamed to $.box.new.x",
+        "$.deep": None,  # four properties into the new object: too deep to count
+        "$.near": "possibly renamed to $.parent.a[*].b.near",
+        "$.parent": "possibly replaces $.near",
+        "$.status": None,  # an "id or object" field holds an id unless expanded
+    }
+
+
+def test_a_name_that_appears_or_goes_twice_is_not_paired() -> None:
+    string = {"type": "string"}
+    old = spec(level(type=string, invoice=string))
+    new = spec(level(parent=level(type=string), payment=level(type=string, invoice=string)))
+    assert hints(old, new) == {
+        "$.invoice": "possibly renamed to $.payment.invoice",
+        "$.parent": None,
+        "$.payment": "possibly replaces $.invoice",
+        "$.type": None,  # in both new objects: which one is anyone's guess
+    }
+    old = spec(level(invoice=string, error=level(invoice=string)))
+    new = spec(level(payment=level(invoice=string), error=level()))
+    assert all(hint is None for hint in hints(old, new).values())  # which invoice moved?
+
+
+def test_wide_new_objects_are_read_only_up_to_a_limit() -> None:
+    def wide(i: int) -> dict[str, Any]:
+        target = {"$ref": f"#/components/schemas/W{i + 1}"} if i < 3 else {"type": "string"}
+        return level(**{f"f{k}": target for k in range(200)})
+
+    old = spec(level(f0={"type": "string"}))
+    new = components(
+        Root=level(wide={"$ref": "#/components/schemas/W0"}), **{f"W{i}": wide(i) for i in range(4)}
+    )
+    started = time.monotonic()
+    assert hints(old, new) == {"$.f0": None, "$.wide": None}  # 200³ fields, not all read
+    assert time.monotonic() - started < 5
