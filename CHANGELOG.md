@@ -8,6 +8,12 @@ a minor release may include breaking changes.
 
 ## [Unreleased]
 
+### Changed
+
+- For a retired value, the agent leaves an alias or a name that spells the old model, such
+  as a `llama-3.1` shortcut, as it is and reports it, instead of pointing it at the
+  replacement: whoever picks that name expects that model.
+
 ## [0.7.1] - 2026-10-26
 
 ### Changed

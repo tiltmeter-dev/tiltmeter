@@ -308,6 +308,7 @@ def test_moves_and_retired_values_reach_the_agent() -> None:
     from tiltmeter.fix.prompts import SYSTEM_PROMPT
 
     assert "Leave alone code that only recognizes or describes the old value" in SYSTEM_PROMPT
+    assert "Never point an alias or a name" in SYSTEM_PROMPT
     assert "For value_retired" not in render_fix_request(notice_request())
 
 
