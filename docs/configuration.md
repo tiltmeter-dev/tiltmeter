@@ -218,6 +218,8 @@ These are the change kinds and their default severities:
 | `enum_value_added` | `warning` |
 | `latency_regression` | `warning` |
 | `field_added` | `info`, or `warning` with `strict: true` |
+| `endpoint_removed` | `breaking`; only in provider notices and spec diffs |
+| `value_retired` | `breaking`; only in provider notices |
 
 Override them with `info`, `warning` or `breaking`, globally or per endpoint. An endpoint's
 overrides win over the global ones, and an override replaces the default entirely,

@@ -257,10 +257,11 @@ async def test_notes_say_what_the_diff_could_not_follow() -> None:
         )
     assert followed.fresh is not None
     assert followed.report.note == (
-        "the spec no longer has GET /v1/invoices/{id}, which needs a human; 1 reference in "
-        "the specs could not be followed, such as plans.yaml#/Plan; what it points at was "
-        "not compared"
+        "1 reference in the specs could not be followed, such as plans.yaml#/Plan; what it "
+        "points at was not compared"
     )
+    gone = [e for e in followed.fresh.notice.endpoints if e.url.endswith("/v1/invoices/{id}")]
+    assert [(c.kind.value, c.path) for c in gone[0].changes] == [("endpoint_removed", "$")]
 
 
 @respx.mock
@@ -318,10 +319,22 @@ def test_deeply_nested_specs_are_refused_not_crashing() -> None:
         parse_spec(b"{" + b'"a":{' * 100_000)
 
 
-def test_removed_operations_are_kept_for_a_human() -> None:
+def test_removed_operations_are_announced_with_where_they_moved() -> None:
     old = billing_spec()
     new = billing_spec()
     del new["paths"]["/v1/invoices/{id}"]
     change = compare(old, new, base=BASE)
-    assert change.endpoints == []
+    assert change.endpoints == [
+        ("GET", f"{BASE}/v1/invoices/{{id}}", [{"path": "$", "kind": "endpoint_removed"}])
+    ]
     assert change.removed == ["GET /v1/invoices/{id}"]
+    new["paths"]["/v1/invoices/{id}/details"] = old["paths"]["/v1/invoices/{id}"]
+    [(_, url, changes)] = compare(old, new, base=BASE).endpoints
+    assert url == f"{BASE}/v1/invoices/{{id}}"
+    assert changes == [
+        {
+            "path": "$",
+            "kind": "endpoint_removed",
+            "moved_to": {"method": "GET", "url": f"{BASE}/v1/invoices/{{id}}/details"},
+        }
+    ]

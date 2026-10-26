@@ -3,6 +3,8 @@
 An API change notice is a small JSON document in which an API provider describes a change
 to the JSON responses of its API once, in a form that tools on the customer's side can
 act on without reading prose: find the code that reads the changed fields and adapt it.
+A notice also covers an endpoint that is gone, and a value requests may no longer send,
+such as a retired model.
 This page specifies the notice, the feed that lists notices, and how notices are signed.
 It is an open format: Tiltmeter implements it, and anyone else may too.
 
@@ -62,7 +64,7 @@ The key words MUST, MUST NOT, SHOULD and MAY are used as in RFC 2119.
 | `signature` | no | The [signature](#signatures). Tools that act without a human MUST ignore notices without a valid one. |
 
 No other members are allowed, at any level. Text members (`summary`, `note`, `before`,
-`after`) MUST NOT contain control characters (U+0000 to U+001F and U+007F to U+009F) or
+`after`, `replaced_by`) MUST NOT contain control characters (U+0000 to U+001F and U+007F to U+009F) or
 bidirectional overrides (U+202A to U+202E and U+2066 to U+2069). Paths (`path`,
 `renamed_to`) MUST NOT contain those or backticks, and URLs MUST consist of the
 characters RFC 3986 allows, plus `{` and `}` for path parameters. A notice holds no
@@ -74,7 +76,7 @@ fractional numbers.
 |---|---|---|
 | `method` | yes | `GET`, `POST`, `PUT`, `PATCH` or `DELETE`. |
 | `url` | yes | The `https` URL customers call, without query string, fragment or credentials. `{name}` marks a path parameter, as in OpenAPI: `https://api.partner.example/v1/customers/{id}`. |
-| `changes` | yes | 1 to 200 [changes](#changes) to the responses of that endpoint. |
+| `changes` | yes | 1 to 200 [changes](#changes) to the responses of that endpoint, or to what its requests may send. |
 
 ### SDK releases
 
@@ -96,6 +98,8 @@ observed drift describe a change in the same terms.
 | `before` | no | The JSON type, or the values, before: `integer`, `string \| null`, `active, past_due`. At most 200 characters. |
 | `after` | no | The same, after. |
 | `renamed_to` | no | The path where a removed field lives on. Only with `field_removed`. |
+| `moved_to` | no | Where a removed endpoint lives on: an object with `method` and `url`, as in [endpoints](#endpoints), on the provider's domain. Only with `endpoint_removed`. |
+| `replaced_by` | no | The value to send instead, at most 200 characters. Only with `value_retired`. |
 | `note` | no | Up to 500 characters in the provider's own words, such as the format of a new string. |
 
 | Kind | Meaning |
@@ -108,14 +112,39 @@ observed drift describe a change in the same terms.
 | `field_added` | A new field. Informational; tools need not act on it. |
 | `status_changed` | The HTTP status of a successful call changes; `before` and `after` are status codes. |
 | `content_type_changed` | The response stops being JSON. |
+| `endpoint_removed` | The endpoint is gone; `path` is `$`. With `moved_to`, it lives on there, and the endpoint's other changes say how the new endpoint's responses differ from the old one's. |
+| `value_retired` | Requests can no longer send the value in `before`, such as a retired model id. `path` names what requests send instead of a response field: `$.model` is the request body's `model`, or the `{model}` path parameter. `replaced_by` says what to send instead. |
 | `latency_regression` | Reserved for drift reports; notices SHOULD NOT use it. |
 
 Paths start at `$`, the response body. `.name` selects a property whose name is an
 identifier, `["name"]` any other property (as a JSON string), and `[*]` every item of an
 array: `$.data[*].customer["e-mail"]`.
 
-Changes that are not about the shape of responses, such as rate limits, authentication or
-the meaning of a value, have no kind in version 1. Describe them in `summary` or `note`.
+Other changes, such as rate limits, authentication, the meaning of a value or a new
+request parameter, have no kind in version 1. Describe them in `summary` or `note`.
+
+A removed endpoint that moved, and a retired model:
+
+```json
+{ "method": "GET", "url": "https://api.partner.example/v1/playlists/{id}/tracks",
+  "changes": [
+    { "path": "$", "kind": "endpoint_removed",
+      "moved_to": { "method": "GET", "url": "https://api.partner.example/v1/playlists/{id}/items" } },
+    { "path": "$.items[*].track", "kind": "field_removed", "renamed_to": "$.items[*].item" }
+  ] }
+```
+
+```json
+{ "method": "POST", "url": "https://api.partner.example/v1/messages",
+  "changes": [
+    { "path": "$.model", "kind": "value_retired", "before": "partner-3-5-20240620",
+      "replaced_by": "partner-4-6", "note": "Requests with the old id return 404 since 2026-10-28." }
+  ] }
+```
+
+`endpoint_removed`, `value_retired`, `moved_to` and `replaced_by` were added to version 1
+in October 2026. Readers older than that (Tiltmeter before 0.7.0) reject notices that use
+them, as they reject any member they do not know.
 
 ## Signatures
 

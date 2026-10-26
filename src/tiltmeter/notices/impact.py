@@ -9,6 +9,11 @@ pull requests nobody needs. So Tiltmeter looks first, without an LLM:
 2. Fields: the old names of the changed fields (also in camelCase and PascalCase), in an
    anchor file or in a file under the folder of one.
 
+A retired value, such as a model id, is its own anchor: spelled in code, it says which
+API the code calls. A removed endpoint counts only where code spells its whole path (or
+the repository depends on an SDK release that follows the change), so code that already
+calls its replacement, which often starts the same way, is not affected.
+
 No anchor, or anchors but none of the fields near them, means not affected. When it is
 affected, the matching files are where the agent starts. Paths in ``fix.ignore`` and
 symbolic links are never read, and neither are binaries, large files, docs or lock files.
@@ -26,8 +31,9 @@ from pathlib import Path, PurePosixPath
 from typing import Final
 from urllib.parse import urlsplit
 
+from tiltmeter.core.models import ChangeKind
 from tiltmeter.fix.ignore import is_ignored
-from tiltmeter.fix.request import field_name, is_target
+from tiltmeter.fix.request import field_name, is_target, reads_response
 from tiltmeter.notices.models import ApiChangeNotice, Impact, SdkName
 
 MAX_FILE_BYTES: Final = 1_000_000
@@ -149,6 +155,13 @@ def field_pattern(name: str) -> re.Pattern[str]:
     return re.compile(
         rf"(?<![A-Za-z0-9_$])(?:{_alternatives(name_variants(name))})(?![A-Za-z0-9_$])"
     )
+
+
+def value_pattern(value: str) -> re.Pattern[str]:
+    """A retired value as code spells it, quoted or after a prefix such as ``models/`` or
+    ``anthropic/``, but not inside a longer id: ``anthropic.claude-3-opus-20240229-v1:0`` on
+    Bedrock, ``claude-2.1`` for ``claude-2``."""
+    return re.compile(rf"(?<![A-Za-z0-9_.\-]){re.escape(value)}(?![A-Za-z0-9_\-@]|\.\d)")
 
 
 def sdk_pattern(sdk: SdkName) -> re.Pattern[str]:
@@ -465,22 +478,56 @@ def assess(index: RepoIndex, notice: ApiChangeNotice, *, sdks: Sequence[SdkName]
     targets = [change for change in changes if is_target(change.kind)]
     if not targets:
         return Impact(affected=False, reason="the notice has no changes code has to follow")
-    fields = list(dict.fromkeys(name for t in targets if (name := field_name(t.path))))
+    fields = list(
+        dict.fromkeys(
+            name for t in targets if reads_response(t.kind) and (name := field_name(t.path))
+        )
+    )
+    values = list(
+        dict.fromkeys(t.before for t in targets if t.kind is ChangeKind.VALUE_RETIRED and t.before)
+    )
     paths = list(dict.fromkeys(a for e in notice.endpoints for a in path_anchors(e.url)))
     short = {a for e in notice.endpoints for a in versionless_anchors(e.url)}
     names = [*notice.sdks, *(sdk for sdk in sdks if sdk.name not in {s.name for s in notice.sdks})]
-    impact = _search(index, hosts=notice.hosts, paths=paths, short=short, sdks=names, fields=fields)
+    # The provider's domain names the API too, where each customer has a host of its own
+    # (your-domain.atlassian.net).
+    hosts = list(dict.fromkeys([*notice.hosts, notice.provider]))
+    impact = _search(
+        index, hosts=hosts, paths=paths, short=short, sdks=names, fields=fields, values=values
+    )
     if not impact.affected:
         return impact
     candidates = [
         Candidate(
             endpoint.url,
-            tuple(n for c in endpoint.changes if is_target(c.kind) and (n := field_name(c.path))),
+            tuple(
+                n
+                for c in endpoint.changes
+                if is_target(c.kind) and reads_response(c.kind) and (n := field_name(c.path))
+            ),
             method=endpoint.method,
         )
         for endpoint in notice.endpoints
     ]
-    chosen = choose_endpoints(index, candidates, near=impact.fields, hosts=notice.hosts, sdks=names)
+    chosen = choose_endpoints(index, candidates, near=impact.fields, hosts=hosts, sdks=names)
+    removed = [
+        i
+        for i, endpoint in enumerate(notice.endpoints)
+        if any(c.kind is ChangeKind.ENDPOINT_REMOVED for c in endpoint.changes)
+    ]
+    if removed and not set(impact.anchors) & {sdk.name for sdk in notice.sdks}:
+        levels = index.uses(candidates, api_files=index.api_files(hosts, names))
+        chosen = [i for i in chosen if i not in removed or levels[i] == 2]
+        if not chosen:
+            gone = [
+                f"{notice.endpoints[i].method} {urlsplit(notice.endpoints[i].url).path}"
+                for i in removed
+            ]
+            return Impact(
+                affected=False,
+                reason=f"the repository never calls {_listing(gone)}, which the notice removes",
+                anchors=impact.anchors,
+            )
     return impact.model_copy(update={"endpoints": chosen})
 
 
@@ -492,10 +539,13 @@ def _search(
     sdks: Sequence[SdkName],
     fields: Sequence[str],
     short: Collection[str] = (),
+    values: Sequence[str] = (),
 ) -> Impact:
     """``short`` are the paths without their version: they count only in a file that also
-    mentions a host or imports an SDK."""
+    mentions a host or imports an SDK. ``values`` are retired values, such as model ids:
+    spelled in code, each is an anchor that names the API on its own."""
     field_patterns = {name: field_pattern(name) for name in fields}
+    value_patterns = {value: value_pattern(value) for value in values}
     texts = list(dict.fromkeys([*hosts, *paths]))
     by_name = {sdk.name: (sdk, sdk_pattern(sdk)) for sdk in sdks}
     imports = {sdk.name: import_pattern(sdk) for sdk in sdks}
@@ -519,6 +569,8 @@ def _search(
             manifests.add(name)
         elif name not in index.docs:
             found |= {sdk for sdk, pattern in imports.items() if pattern and pattern.search(text)}
+        if name not in index.docs:
+            found |= {value for value, pattern in value_patterns.items() if pattern.search(text)}
         if found & {*hosts, *by_name}:
             found |= {term for term in short if term.lower() in lowered}
         if found:
@@ -527,11 +579,11 @@ def _search(
         if read:
             field_hits[name] = read
 
-    searched = [*texts, *by_name]
+    searched = [*texts, *by_name, *values]
     if not anchor_hits:
         return Impact(affected=False, reason=f"no tracked file mentions {_listing(searched)}")
     anchors = sorted({term for hits in anchor_hits.values() for term in hits}, key=searched.index)
-    identities = [*hosts, *by_name]
+    identities = [*hosts, *by_name, *values]
     if not set(anchors) & set(identities):
         return Impact(
             affected=False,
@@ -550,7 +602,15 @@ def _search(
         for name, read in field_hits.items()
         if name in anchor_hits or _under(name, folders)
     }
-    if fields and not near:
+    sent = [value for value in values if value in anchors]
+    if values and not fields and not sent:
+        return Impact(
+            affected=False,
+            reason=f"the repository mentions {_listing(anchors, 'and')}, but never "
+            f"{_listing(values)}",
+            anchors=anchors,
+        )
+    if fields and not near and not sent:
         return Impact(
             affected=False,
             reason=(

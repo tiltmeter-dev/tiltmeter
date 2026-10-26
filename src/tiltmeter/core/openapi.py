@@ -24,15 +24,15 @@ from __future__ import annotations
 import heapq
 import itertools
 import re
-from collections import defaultdict, deque
+from collections import Counter, defaultdict, deque
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from functools import reduce
-from typing import Any, Final
+from typing import Any, Final, Literal
 from urllib.parse import unquote
 
 from tiltmeter.core.classify import classify
-from tiltmeter.core.diff import annotate_renames, diff_shapes
+from tiltmeter.core.diff import MOVED_TO, annotate_renames, diff_shapes
 from tiltmeter.core.models import Change, ChangeKind, RawChange
 from tiltmeter.core.paths import ITEMS, ArrayItems, Segment, format_path
 from tiltmeter.core.shape import JSON_TYPES, MAX_DEPTH, MIN_ENUM_OCCURRENCES, Shape
@@ -54,6 +54,11 @@ _SOMETIMES: Final = 1
 # Schema nodes and shapes built for one comparison. A hostile or broken spec stops here
 # instead of running for hours.
 MAX_NODES: Final = 1_000_000
+# How alike, by the names at the top of their responses, a new operation must be to one
+# that is gone to count as where it moved. A path that keeps every old segment
+# (/search to /search/jql) says more than one with a segment replaced, which unrelated
+# resources share (/assistants/{id}/files and /containers/{id}/files).
+_MOVE_LIKENESS: Final = {"kept": 0.25, "replaced": 0.5}
 # How deep, in properties, the fields inside a new field are read as places a removed field
 # may have moved to, and how many of them one site keeps.
 _INSIDE_DEPTH: Final = 3
@@ -63,6 +68,7 @@ _PARAMETER: Final = re.compile(r"\{[^}]*\}")
 # Where a change sorts among the others at its path, as the shape diff walks a tree:
 # property-level changes, then null, then type, then the children, then new enum values.
 _ORDER: Final = {
+    ChangeKind.ENDPOINT_REMOVED: -1,
     ChangeKind.FIELD_ADDED: 0,
     ChangeKind.FIELD_REMOVED: 0,
     ChangeKind.FIELD_NOW_OPTIONAL: 0,
@@ -98,8 +104,8 @@ class OperationDiff:
 
 @dataclass(frozen=True, slots=True)
 class SpecDiff:
-    """Every operation whose response changed, the operations that are gone, and the
-    references that could not be followed."""
+    """Every operation whose response changed or that is gone, the operations that are
+    gone, and the references that could not be followed."""
 
     operations: list[OperationDiff]
     removed: list[str]
@@ -872,6 +878,10 @@ def diff_operations(
 ) -> SpecDiff:
     """What changed in every operation's success response from ``old`` to ``new``.
 
+    An operation that is gone gets an ``endpoint_removed`` change. When a new operation
+    looks like where it went (see :func:`_moves`), the change's hint names it, and the
+    operation's other changes compare the old response with the new operation's.
+
     ``expand_depth`` caps how many "id or object" fields a path may go through (None for
     no cap), and ``max_changes`` how many changes one operation reports.
     """
@@ -879,34 +889,130 @@ def diff_operations(
     old_catalog, new_catalog = _Catalog(old, budget), _Catalog(new, budget)
     before, after = _responses(old_catalog), _responses(new_catalog)
     routes = {(method, _same_route(path)): (method, path) for method, path in after}
+    kept = {(method, _same_route(path)) for method, path in before}
+    gone = [key for key in before if (key[0], _same_route(key[1])) not in routes]
+    added = [key for key in after if (key[0], _same_route(key[1])) not in kept]
+    moves = _moves(gone, added, old_catalog, new_catalog, before, after)
     comparison = _Comparison(old_catalog, new_catalog, budget)
     found: list[OperationDiff] = []
     removed: list[str] = []
     for (method, old_path), (old_status, old_child) in before.items():
+        raw: list[RawChange] = []
         match = routes.get((method, _same_route(old_path)))
+        # Code calls an operation that is still there by its new path, and a gone one by
+        # its old path.
+        path = match[1] if match is not None else old_path
         if match is None:
             removed.append(f"{method} {old_path}")
-            continue
-        path = match[1]
-        new_status, new_child = after[match]
-        raw: list[RawChange] = []
-        old_code, new_code = old_status or "", new_status or ""
-        if _STATUS.fullmatch(old_code) and _STATUS.fullmatch(new_code) and old_code != new_code:
-            raw.append(RawChange("$", ChangeKind.STATUS_CHANGED, before=old_code, after=new_code))
-        if old_child is not None and new_child is None:
-            raw.append(
-                RawChange(
-                    "$",
-                    ChangeKind.CONTENT_TYPE_CHANGED,
-                    before="application/json",
-                    after="no JSON body",
-                )
+            match = moves.get((method, old_path))
+            hint = f"{MOVED_TO}{match[0]} {match[1]}" if match is not None else None
+            raw.append(RawChange("$", ChangeKind.ENDPOINT_REMOVED, hint=hint))
+        if match is not None:
+            new_status, new_child = after[match]
+            raw += _response_changes(
+                comparison, (old_status, old_child), (new_status, new_child), expand_depth
             )
-        elif old_child is not None and new_child is not None:
-            raw += comparison.emit(old_child, new_child, expand_depth=expand_depth)
         omitted = 0
         if max_changes is not None and len(raw) > max_changes:
             omitted, raw = len(raw) - max_changes, raw[:max_changes]
         if raw:
             found.append(OperationDiff(method, path, [classify(c) for c in raw], omitted))
     return SpecDiff(found, removed, sorted(old_catalog.unresolved | new_catalog.unresolved))
+
+
+def _response_changes(
+    comparison: _Comparison,
+    old: tuple[str | None, _Child | None],
+    new: tuple[str | None, _Child | None],
+    expand_depth: int | None,
+) -> list[RawChange]:
+    """How one success response differs from another: status, media type and shape."""
+    (old_status, old_child), (new_status, new_child) = old, new
+    raw: list[RawChange] = []
+    old_code, new_code = old_status or "", new_status or ""
+    if _STATUS.fullmatch(old_code) and _STATUS.fullmatch(new_code) and old_code != new_code:
+        raw.append(RawChange("$", ChangeKind.STATUS_CHANGED, before=old_code, after=new_code))
+    if old_child is not None and new_child is None:
+        raw.append(
+            RawChange(
+                "$",
+                ChangeKind.CONTENT_TYPE_CHANGED,
+                before="application/json",
+                after="no JSON body",
+            )
+        )
+    elif old_child is not None and new_child is not None:
+        raw += comparison.emit(old_child, new_child, expand_depth=expand_depth)
+    return raw
+
+
+type _Route = tuple[str, str]
+
+
+def _moves(
+    gone: Sequence[_Route],
+    added: Sequence[_Route],
+    old: _Catalog,
+    new: _Catalog,
+    before: Mapping[_Route, tuple[str | None, _Child | None]],
+    after: Mapping[_Route, tuple[str | None, _Child | None]],
+) -> dict[_Route, _Route]:
+    """Where each gone operation probably went: a new operation with the same method, a
+    path one literal segment apart (``/playlists/{id}/tracks`` and ``/items``,
+    ``/search`` and ``/search/jql``) and a response alike enough (``_MOVE_LIKENESS``).
+    Among several, the most alike one wins, and only when it is the only one. A new
+    operation that two gone ones could have gone to is neither's.
+    """
+    found: dict[_Route, _Route] = {}
+    added_names = {other: _top_names(new, after[other][1]) for other in added}
+    for key in gone:
+        names = _top_names(old, before[key][1])
+        scores = {}
+        for other in added:
+            step = _one_segment_apart(key[1], other[1]) if other[0] == key[0] else None
+            if step is None:
+                continue
+            likeness = _likeness(names, added_names[other])
+            if likeness >= _MOVE_LIKENESS[step]:
+                scores[other] = likeness
+        best = max(scores.values(), default=0.0)
+        winners = [other for other, score in scores.items() if score == best]
+        if len(winners) == 1:
+            found[key] = winners[0]
+    taken = Counter(found.values())
+    return {key: other for key, other in found.items() if taken[other] == 1}
+
+
+def _route_segments(path: str) -> list[str]:
+    return [_same_route(segment) for segment in path.split("/") if segment]
+
+
+def _one_segment_apart(old: str, new: str) -> Literal["kept", "replaced"] | None:
+    """How two paths are one literal segment apart: "replaced", or "kept" when one was
+    added or dropped and the rest is the same. None when they are further apart."""
+    a, b = _route_segments(old), _route_segments(new)
+    if len(a) == len(b):
+        differ = [i for i, (x, y) in enumerate(zip(a, b, strict=True)) if x != y]
+        one = len(differ) == 1 and "{" not in a[differ[0]] + b[differ[0]]
+        return "replaced" if one else None
+    short, long = (a, b) if len(a) < len(b) else (b, a)
+    if len(long) - len(short) != 1:
+        return None
+    kept = any("{" not in long[i] and long[:i] + long[i + 1 :] == short for i in range(len(long)))
+    return "kept" if kept else None
+
+
+def _top_names(catalog: _Catalog, child: _Child | None) -> frozenset[str]:
+    """The property names at the top of a response, or of its items when it is a list."""
+    if child is None:
+        return frozenset()
+    node = catalog.node(child)
+    if "object" not in node.types and "array" in node.types and node.items is not None:
+        node = catalog.node(node.items)
+    return frozenset(node.properties)
+
+
+def _likeness(a: frozenset[str], b: frozenset[str]) -> float:
+    """The share of names two responses have in common; two without names are alike."""
+    union = a | b
+    return len(a & b) / len(union) if union else 1.0

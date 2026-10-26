@@ -388,3 +388,43 @@ def test_wide_new_objects_are_read_only_up_to_a_limit() -> None:
     started = time.monotonic()
     assert hints(old, new) == {"$.f0": None, "$.wide": None}  # 200³ fields, not all read
     assert time.monotonic() - started < 5
+
+
+def test_an_endpoint_two_removed_ones_could_have_gone_to_is_neithers() -> None:
+    page = spec({"type": "object", "properties": {"items": {"type": "array"}}})["paths"]["/x"]
+    old = {"openapi": "3.1.0", "paths": {"/v1/tracks": page, "/v1/episodes": page}}
+    new = {"openapi": "3.1.0", "paths": {"/v1/items": page}}
+    diff = diff_operations(old, new)
+    assert [(o.path, [c.hint for c in o.changes]) for o in diff.operations] == [
+        ("/v1/tracks", [None]),
+        ("/v1/episodes", [None]),
+    ]
+    # Alone, either one moved there.
+    del old["paths"]["/v1/episodes"]
+    [moved] = diff_operations(old, new).operations
+    assert moved.changes[0].hint == "possibly moved to GET /v1/items"
+
+
+def test_a_removed_endpoint_moves_only_to_a_path_one_segment_away() -> None:
+    page = spec({"type": "object", "properties": {"items": {"type": "array"}}})["paths"]["/x"]
+    old = {"openapi": "3.1.0", "paths": {"/v1/playlists/{id}/tracks": page}}
+    for far in ("/v2/playlists/{id}/items", "/v1/playlists/items", "/v1/playlists/{id}/{x}"):
+        new = {"openapi": "3.1.0", "paths": {far: page}}
+        [gone] = diff_operations(old, new).operations
+        assert gone.changes[0].hint is None, far
+
+
+def test_a_replaced_segment_needs_responses_more_alike_than_an_added_one() -> None:
+    def files(*names: str) -> dict[str, Any]:
+        schema = {"type": "object", "properties": {name: {"type": "string"} for name in names}}
+        return spec(schema)["paths"]["/x"]
+
+    old_file = files("id", "object", "created_at", "assistant_id")
+    container_file = files("id", "object", "created_at", "bytes", "container_id", "path", "x")
+    old = {"openapi": "3.1.0", "paths": {"/v1/assistants/{id}/files": old_file}}
+    new = {"openapi": "3.1.0", "paths": {"/v1/containers/{id}/files": container_file}}
+    [gone] = diff_operations(old, new).operations
+    assert gone.changes[0].hint is None  # 3 of 8 names: another resource
+    new = {"openapi": "3.1.0", "paths": {"/v1/assistants/{id}/files/v2": container_file}}
+    [moved] = diff_operations(old, new).operations
+    assert moved.changes[0].hint == "possibly moved to GET /v1/assistants/{id}/files/v2"

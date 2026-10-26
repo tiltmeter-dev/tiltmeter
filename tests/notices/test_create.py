@@ -101,7 +101,10 @@ def test_two_specs_become_a_notice() -> None:
     assert [e.url for e in model.endpoints] == [
         "https://api.partner.example/v1/customers",
         "https://api.partner.example/v1/customers/{id}",
+        "https://api.partner.example/v1/legacy",
     ]
+    assert [c.kind.value for c in model.endpoints[2].changes] == ["endpoint_removed"]
+    assert raw["summary"].endswith("GET /v1/legacy: the endpoint is removed.")
     assert [(c.path, c.kind.value, c.renamed_to) for c in model.endpoints[0].changes] == [
         ("$.data[*].balance", "type_changed", None),
         ("$.data[*].nickname", "field_removed", None),
@@ -272,3 +275,37 @@ def test_big_spec_changes_fit_in_one_notice() -> None:
         drafted.endpoints, provider=None, notice_id=None, summary=None, published_at=NOW
     )
     assert len(raw["endpoints"]) == 50
+
+
+def test_summaries_phrase_moves_and_retired_values() -> None:
+    from tiltmeter.notices.create import summarize
+
+    base = "https://api.partner.example"
+    moved = {"method": "GET", "url": f"{base}/v1/playlists/{{id}}/items"}
+    text = summarize(
+        [
+            (
+                "GET",
+                f"{base}/v1/playlists/{{id}}/tracks",
+                [{"path": "$", "kind": "endpoint_removed", "moved_to": moved}],
+            ),
+            ("GET", f"{base}/v1/browse/new-releases", [{"path": "$", "kind": "endpoint_removed"}]),
+            (
+                "POST",
+                f"{base}/v1/messages",
+                [
+                    {
+                        "path": "$.model",
+                        "kind": "value_retired",
+                        "before": "m-3",
+                        "replaced_by": "m-4",
+                    }
+                ],
+            ),
+        ]
+    )
+    assert text == (
+        "GET /v1/playlists/{id}/tracks: the endpoint moves to GET /v1/playlists/{id}/items. "
+        "GET /v1/browse/new-releases: the endpoint is removed. "
+        "POST /v1/messages: m-3 is retired in favor of m-4."
+    )

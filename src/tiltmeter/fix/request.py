@@ -32,8 +32,14 @@ _VERSION = re.compile(r"v\d+(\.\d+)*", re.IGNORECASE)
 
 
 def is_target(kind: ChangeKind) -> bool:
-    """Whether code that reads the responses may have to follow this kind of change."""
+    """Whether code that calls the API may have to follow this kind of change."""
     return kind not in _SKIPPED_KINDS
+
+
+def reads_response(kind: ChangeKind) -> bool:
+    """Whether the change's path names a field of the response, which code reads. A
+    retired value's path names what requests send, and a removed endpoint's is the body."""
+    return kind not in {ChangeKind.VALUE_RETIRED, ChangeKind.ENDPOINT_REMOVED}
 
 
 def field_name(path: str) -> str | None:
@@ -133,6 +139,7 @@ def notice_targets(endpoint: NoticeEndpoint) -> list[FixTarget]:
         if not is_target(change.kind):
             continue
         raw = RawChange(change.path, change.kind, before=change.before, after=change.after)
+        moved = change.moved_to
         targets.append(
             FixTarget(
                 path=change.path,
@@ -141,7 +148,9 @@ def notice_targets(endpoint: NoticeEndpoint) -> list[FixTarget]:
                 before=change.before,
                 after=change.after,
                 renamed_to=change.renamed_to,
-                field=field_name(change.path),
+                moved_to=f"{moved.method} {moved.url}" if moved is not None else None,
+                replaced_by=change.replaced_by,
+                field=field_name(change.path) if reads_response(change.kind) else None,
                 new_field=field_name(change.renamed_to) if change.renamed_to else None,
                 note=change.note,
             )
@@ -190,6 +199,12 @@ def build_notice_request(
         if (targets := notice_targets(endpoint))
     ]
     terms = [target.field for api in apis for target in api.targets if target.field]
+    terms += [
+        target.before
+        for api in apis
+        for target in api.targets
+        if target.kind is ChangeKind.VALUE_RETIRED and target.before
+    ]
     terms += [term for api in apis for term in url_terms(api.url)]
     terms += [sdk.name for sdk in notice.sdks]
     source = NoticeSource(

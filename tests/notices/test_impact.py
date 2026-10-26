@@ -321,3 +321,96 @@ def test_impact_lists_the_endpoints_the_repository_uses(tmp_path: Path) -> None:
     )
     assert impact.affected
     assert impact.endpoints == [1]  # /v1/customers/{id} is in the code, /v1/plans is not
+
+
+def retired_model(**change: object) -> dict[str, object]:
+    """A notice that retires a model id on the billing API's completions endpoint."""
+    return {
+        "endpoints": [
+            {
+                "method": "POST",
+                "url": "https://api.billing.test/v1/completions",
+                "changes": [
+                    {
+                        "path": "$.model",
+                        "kind": "value_retired",
+                        "before": "billing-3-5-20240620",
+                        "replaced_by": "billing-4",
+                        **change,
+                    }
+                ],
+            }
+        ],
+        "sdks": [],
+    }
+
+
+def test_a_retired_value_in_code_names_the_api_on_its_own(tmp_path: Path) -> None:
+    code = 'llm = Chat(model="billing-3-5-20240620", temperature=0)\n'
+    impact = check(tmp_path / "used", {"agent/llm.py": code}, **retired_model())
+    assert impact.affected
+    assert impact.files == ["agent/llm.py"]
+    assert impact.anchors == ["billing-3-5-20240620"]
+    assert impact.fields == []  # model is what requests send, not a field code reads
+
+
+@pytest.mark.parametrize(
+    "spelling",
+    [
+        'model = "bedrock.billing-3-5-20240620-v1:0"',  # another platform's id
+        'model = "billing-3-5-20240620-v2"',  # a longer id
+        'model = "billing-3-5-20240620@2024"',
+    ],
+)
+def test_a_retired_value_counts_only_whole(tmp_path: Path, spelling: str) -> None:
+    impact = check(tmp_path, {"llm.py": spelling + "\n"}, **retired_model())
+    assert not impact.affected
+
+
+def test_calling_the_api_with_a_current_value_is_not_affected(tmp_path: Path) -> None:
+    code = 'URL = "https://api.billing.test/v1/completions"\npost(URL, model="billing-4")\n'
+    impact = check(tmp_path, {"llm.py": code}, **retired_model())
+    assert not impact.affected
+    assert impact.reason == (
+        "the repository mentions api.billing.test, /v1/completions and /completions, but "
+        "never billing-3-5-20240620"
+    )
+
+
+def test_a_retired_value_in_the_docs_is_no_use(tmp_path: Path) -> None:
+    impact = check(tmp_path, {"README.md": "Uses billing-3-5-20240620.\n"}, **retired_model())
+    assert not impact.affected
+
+
+def removed_search(moved: bool = True) -> dict[str, object]:
+    change: dict[str, object] = {"path": "$", "kind": "endpoint_removed"}
+    if moved:
+        change["moved_to"] = {
+            "method": "GET",
+            "url": "https://your-domain.billing.test/rest/api/3/search/jql",
+        }
+    return {
+        "provider": "billing.test",
+        "endpoints": [
+            {
+                "method": "GET",
+                "url": "https://your-domain.billing.test/rest/api/3/search",
+                "changes": [change, {"path": "$.total", "kind": "field_removed"}],
+            }
+        ],
+        "sdks": [],
+    }
+
+
+def test_a_removed_endpoint_counts_where_code_calls_its_whole_path(tmp_path: Path) -> None:
+    old = 'r = get(f"https://{site}.billing.test/rest/api/3/search?jql={q}")\nprint(r["total"])\n'
+    impact = check(tmp_path / "old", {"jira.py": old}, **removed_search())
+    assert impact.affected
+    # The provider's domain is the API's name when every customer has a host of its own.
+    assert impact.anchors == ["billing.test", "/rest/api/3/search"]
+    new = old.replace("/search?", "/search/jql?")
+    migrated = check(tmp_path / "new", {"jira.py": new}, **removed_search())
+    assert not migrated.affected
+    assert migrated.reason == (
+        "the repository never calls GET /rest/api/3/search, which the notice removes"
+    )

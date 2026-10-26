@@ -4,7 +4,7 @@
   "$defs": {
     "ApiChangeNotice": {
       "additionalProperties": false,
-      "description": "A provider's announcement of a change to the JSON responses of its API.",
+      "description": "A provider's announcement of a change to the JSON responses of its API, or to what\nits requests may send.",
       "properties": {
         "spec": {
           "const": "https://tiltmeter.dev/schemas/api-change-notice/v1.json",
@@ -94,7 +94,9 @@
         "enum_value_added",
         "status_changed",
         "content_type_changed",
-        "latency_regression"
+        "latency_regression",
+        "endpoint_removed",
+        "value_retired"
       ],
       "title": "ChangeKind",
       "type": "string"
@@ -132,13 +134,35 @@
       "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f\\u202a-\\u202e\\u2066-\\u2069`]*$",
       "type": "string"
     },
+    "MovedEndpoint": {
+      "additionalProperties": false,
+      "description": "Where a removed endpoint lives on.",
+      "properties": {
+        "method": {
+          "$ref": "#/$defs/HttpMethod"
+        },
+        "url": {
+          "description": "https URL without query string; {name} marks a path parameter.",
+          "maxLength": 2048,
+          "pattern": "^https://[A-Za-z0-9\\-._~:/?#\\[\\]@!$&'()*+,;=%{}]+$",
+          "title": "Url",
+          "type": "string"
+        }
+      },
+      "required": [
+        "method",
+        "url"
+      ],
+      "title": "MovedEndpoint",
+      "type": "object"
+    },
     "NoticeChange": {
       "additionalProperties": false,
-      "description": "One change to the responses, as Tiltmeter would report it.",
+      "description": "One change to the responses, or to what requests may send, as Tiltmeter reports it.",
       "properties": {
         "path": {
           "$ref": "#/$defs/JsonPath",
-          "description": "Location in the response body: $ is the root and [*] every array item."
+          "description": "Location in the response body: $ is the root and [*] every array item. With value_retired, the request member or path parameter instead, such as $.model."
         },
         "kind": {
           "$ref": "#/$defs/ChangeKind"
@@ -153,7 +177,7 @@
             }
           ],
           "default": null,
-          "description": "The type or values before."
+          "description": "The type or values before; with value_retired, the value."
         },
         "after": {
           "anyOf": [
@@ -179,6 +203,30 @@
           "default": null,
           "description": "Where a removed field lives on. Only with field_removed."
         },
+        "moved_to": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MovedEndpoint"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Where a removed endpoint lives on. Only with endpoint_removed."
+        },
+        "replaced_by": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Value"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The value to send instead. Only with value_retired."
+        },
         "note": {
           "anyOf": [
             {
@@ -201,7 +249,7 @@
     },
     "NoticeEndpoint": {
       "additionalProperties": false,
-      "description": "An endpoint whose responses change, and how.",
+      "description": "An endpoint whose responses, or what its requests may send, change, and how.",
       "properties": {
         "method": {
           "$ref": "#/$defs/HttpMethod"

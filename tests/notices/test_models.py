@@ -142,3 +142,42 @@ def test_published_schemas_match_the_models(name: str, generate: Any) -> None:
     committed = json.loads((SCHEMAS / name / "v1.json").read_text(encoding="utf-8"))
     assert committed == generate()
     assert committed["$id"] == f"https://tiltmeter.dev/schemas/{name}/v1.json"
+
+
+def test_removed_endpoints_and_retired_values_carry_where_to_go() -> None:
+    moved = {"method": "GET", "url": f"https://{PROVIDER}/v2/customers/{{id}}"}
+    model = ApiChangeNotice.model_validate(
+        with_change(path="$", kind="endpoint_removed", moved_to=moved)
+    )
+    assert model.endpoints[0].changes[0].moved_to is not None
+    retired = with_change(
+        path="$.model", kind="value_retired", before="billing-v1", replaced_by="billing-v2"
+    )
+    assert ApiChangeNotice.model_validate(retired).endpoints[0].changes[0].replaced_by == (
+        "billing-v2"
+    )
+
+
+@pytest.mark.parametrize(
+    ("change", "problem"),
+    [
+        ({"kind": "endpoint_removed", "path": "$.phone"}, "has the path \\$"),
+        (
+            {"moved_to": {"method": "GET", "url": f"https://{PROVIDER}/v2/x"}},
+            "moved_to only goes with kind endpoint_removed",
+        ),
+        ({"replaced_by": "v2"}, "replaced_by only goes with kind value_retired"),
+        ({"kind": "value_retired", "path": "$.model"}, "names the value in before"),
+        (
+            {
+                "kind": "endpoint_removed",
+                "path": "$",
+                "moved_to": {"method": "GET", "url": "https://evil.example/v2/customers"},
+            },
+            "is not on api.billing.test",
+        ),
+    ],
+)
+def test_new_members_only_go_with_their_kind(change: dict[str, Any], problem: str) -> None:
+    with pytest.raises(ValidationError, match=problem):
+        ApiChangeNotice.model_validate(with_change(**change))

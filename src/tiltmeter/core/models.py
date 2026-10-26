@@ -52,6 +52,9 @@ class ChangeKind(StrEnum):
     STATUS_CHANGED = "status_changed"
     CONTENT_TYPE_CHANGED = "content_type_changed"
     LATENCY_REGRESSION = "latency_regression"
+    # Only in notices and spec diffs: drift sees a removed endpoint as a status change.
+    ENDPOINT_REMOVED = "endpoint_removed"
+    VALUE_RETIRED = "value_retired"
 
 
 TRANSPORT_KINDS: Final = frozenset(
@@ -96,6 +99,10 @@ def describe_change(
             text = f"The response is no longer JSON: content type was {before}, now {after}."
         case ChangeKind.LATENCY_REGRESSION:
             text = f"Median latency rose from {before} to {after}."
+        case ChangeKind.ENDPOINT_REMOVED:
+            text = "The endpoint no longer exists."
+        case ChangeKind.VALUE_RETIRED:
+            text = f"Requests can no longer send {before} in {path}."
     if hint:
         text += f" {hint[0].upper()}{hint[1:]}."
     return text

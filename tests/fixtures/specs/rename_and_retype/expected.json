@@ -80,6 +80,17 @@
           "after": "suspended"
         }
       ]
+    },
+    {
+      "method": "GET",
+      "path": "/v1/legacy",
+      "changes": [
+        {
+          "path": "$",
+          "kind": "endpoint_removed",
+          "severity": "breaking"
+        }
+      ]
     }
   ],
   "removed": [

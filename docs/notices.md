@@ -54,13 +54,18 @@ From two versions of your spec (OpenAPI 3.0, 3.1 or Swagger 2.0, YAML or JSON):
 ```console
 $ tiltmeter notice create --from-openapi openapi-v2.yaml openapi-v3.yaml \
     --effective 2026-12-01 --sdk pypi:partner-sdk@3.0.0 -o notice.json
-✓ drafted notice 2026-11-03-customers with 4 changes
-note: GET /v1/legacy is gone from the new spec; describe it by hand
+✓ drafted notice 2026-11-03-customers with 5 changes
 ```
 
 Each operation's success response goes through the same diff Tiltmeter uses for drift,
 so renamed fields are paired, and removed, retyped, newly optional and newly nullable
-fields and new enum values are found. New fields are left out. Each named schema is
+fields and new enum values are found. New fields are left out. An operation that is gone
+becomes an `endpoint_removed` change. When one new operation looks like where it went
+(the same method, a path one segment away, such as `/playlists/{id}/tracks` and
+`/playlists/{id}/items`, and a response alike enough), the change says so in `moved_to`,
+and the operation's other changes compare the old response with the new one's. Check
+that guess before you sign. Retired values, such as a model id requests may no longer
+send, are not in a spec: add a `value_retired` change by hand. Each named schema is
 compared once and reported at the shortest path that reaches it, so specs with thousands
 of schemas and "id or expanded object" fields (Stripe's) take about a second. Only local
 `$ref`s are followed, so bundle a multi-file spec first: a reference to another file, or

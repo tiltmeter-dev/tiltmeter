@@ -1,0 +1,85 @@
+# Endpoints that are gone. Two moved one path segment away (Spotify's playlist tracks to
+# items, Jira's search to search/jql), one has no replacement, and one could have gone to
+# either of two new endpoints, so it is paired with neither.
+openapi: 3.1.0
+info: {title: Music, version: "1"}
+servers: [{url: "https://api.music.example/v1"}]
+paths:
+  /playlists/{playlist_id}/tracks:
+    get:
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/TrackPage"}
+  /search:
+    get:
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/SearchResults"}
+  /albums/{id}/credits:
+    get:
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: {type: object, required: [credits], properties: {credits: {type: array, items: {type: string}}}}
+  /me/following:
+    get:
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/People"}
+  /me:
+    get:
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: {type: object, required: [id], properties: {id: {type: string}}}
+components:
+  schemas:
+    TrackPage:
+      type: object
+      required: [items, total]
+      properties:
+        items: {type: array, items: {$ref: "#/components/schemas/PlaylistTrack"}}
+        total: {type: integer}
+        next: {type: [string, "null"]}
+    PlaylistTrack:
+      type: object
+      required: [added_at, track]
+      properties:
+        added_at: {type: string}
+        track: {$ref: "#/components/schemas/Track"}
+    Track:
+      type: object
+      required: [id, name]
+      properties:
+        id: {type: string}
+        name: {type: string}
+    SearchResults:
+      type: object
+      required: [issues, startAt, total]
+      properties:
+        expand: {type: string}
+        issues: {type: array, items: {$ref: "#/components/schemas/Issue"}}
+        maxResults: {type: integer}
+        names: {type: object}
+        schema: {type: object}
+        startAt: {type: integer}
+        total: {type: integer}
+        warningMessages: {type: array, items: {type: string}}
+    Issue:
+      type: object
+      required: [key]
+      properties:
+        key: {type: string}
+    People:
+      type: object
+      required: [people]
+      properties:
+        people: {type: array, items: {type: string}}

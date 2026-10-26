@@ -33,6 +33,17 @@
           "after": "string | null"
         }
       ]
+    },
+    {
+      "method": "GET",
+      "path": "/ping",
+      "changes": [
+        {
+          "path": "$",
+          "kind": "endpoint_removed",
+          "severity": "breaking"
+        }
+      ]
     }
   ],
   "removed": [

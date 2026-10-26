@@ -8,6 +8,24 @@ a minor release may include breaking changes.
 
 ## [Unreleased]
 
+### Added
+
+- Two change kinds for provider notices. `endpoint_removed` says an endpoint is gone, and
+  with `moved_to` where it lives on; the endpoint's other changes then compare the old
+  response with the new one's. `value_retired` says requests can no longer send a value,
+  such as a retired model id, and `replaced_by` what to send instead. The fix agent calls
+  the new endpoint or sends the new value, and the pull request lists both. Readers before
+  this release reject notices that use them.
+- Spec diffs report operations that are gone as `endpoint_removed` instead of leaving
+  them for a human, and guess where each one moved: a new operation with the same method,
+  a path one segment away (`/playlists/{id}/tracks` and `/items`, `/search` and
+  `/search/jql`) and a response alike enough.
+- The affected-repository search finds retired values spelled whole in code, so a model
+  id names its API without a host or an SDK. A removed endpoint counts only where code
+  spells its whole path, so code already on its replacement is left alone. The provider's
+  domain counts as the API's name, for APIs where every customer has a host of its own
+  (`your-domain.atlassian.net`).
+
 ### Changed
 
 - Spec diffs find fields that moved into a new object. The new object is still reported

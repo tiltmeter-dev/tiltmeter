@@ -347,3 +347,18 @@ def test_the_left_for_a_human_section_is_always_there() -> None:
     preview = notice_preview().model_copy(update={"report": report(unresolved=[])})
     body = pull_request_body(rename_request(), preview, model_name="m")
     assert "## Left for a human\n\nNothing: the agent flagged nothing it could not decide." in body
+
+
+def test_pull_requests_show_moves_and_retired_values() -> None:
+    from tests.fix.test_request import MOVES_AND_RETIREMENTS
+
+    request = notice_request(endpoints=MOVES_AND_RETIREMENTS)
+    body = pull_request_body(request, notice_preview(), model_name="m")
+    assert (
+        "| breaking | endpoint_removed | `$` | — | (gone), moved to "
+        "`GET https://api.billing.test/v2/customers/{id}` |" in body
+    )
+    assert (
+        "| breaking | value_retired | `$.model` | `billing-3-5-20240620` "
+        "| (no longer accepted), send `billing-4` instead |" in body
+    )
