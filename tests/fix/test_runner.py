@@ -403,3 +403,16 @@ def test_removed_endpoints_come_first_and_shared_notes_show_once() -> None:
     assert body.count("$.startAt: Pages are fetched with nextPageToken.") == 1
     assert "GET /v1/search: GET takes the same parameters." in body
     assert "POST /v1/search: POST takes the same parameters." in body
+
+
+def test_retired_values_name_what_they_replace() -> None:
+    from tests.fix.test_request import MOVES_AND_RETIREMENTS
+
+    retired = [MOVES_AND_RETIREMENTS[1]]
+    assert commit_title(notice_request(endpoints=retired)) == (
+        "Replace the models api.billing.test retired"
+    )
+    # Anything else in the notice keeps the general title.
+    assert commit_title(notice_request(endpoints=MOVES_AND_RETIREMENTS)).startswith(
+        "Adapt to the api.billing.test API change"
+    )
