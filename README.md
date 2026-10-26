@@ -172,6 +172,13 @@ $ tiltmeter notices apply --repo . --yes
 - **For providers, from CI.** Every pull request that changes your spec gets a draft
   notice as a comment; merging signs and publishes it.
 
+**Field report, October 2026.** We searched public code for fields that Stripe and Spotify
+removed. 78 repositories still read Stripe's `subscription.current_period_end`, gone since
+API version 2025-03-31, and 228 use Spotify fields and endpoints that changed for new apps
+in February 2026. One of them was Stripe's own subscription sample, which no longer
+type-checks against Stripe's SDK. Tiltmeter fixed it and 14 others we checked by hand, and
+the pull requests are open: [the fix for Stripe's sample](https://github.com/stripe-samples/subscription-use-cases/pull/1229).
+
 Subscribe with a few lines of `tiltmeter.yaml`; the [notices guide](docs/notices.md)
 covers both sides.
 
