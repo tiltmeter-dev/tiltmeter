@@ -26,6 +26,9 @@ RENAMED_TO: Final = "possibly renamed to "
 """Hint prefix on a removed field that probably lives on under the path that follows."""
 REPLACES: Final = "possibly replaces "
 """Hint prefix on an added field that probably replaces the path that follows."""
+MOVED_TO: Final = "possibly moved to "
+"""Hint prefix on a removed endpoint that probably lives on as the method and path that
+follow, such as ``GET /v1/playlists/{id}/items``."""
 
 
 def diff_shapes(

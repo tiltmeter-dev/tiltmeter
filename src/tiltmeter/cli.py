@@ -1257,7 +1257,6 @@ def notice_create(
         sdks = [create.parse_sdk(text) for text in sdk or []]
     except (TiltmeterError, ValueError) as exc:
         _fail(str(exc))
-    removed: list[str] = []
     notes: list[str] = []
     try:
         if from_openapi is not None:
@@ -1269,7 +1268,7 @@ def notice_create(
                     raise
                 err.print(Text("no response changed: nothing to announce", style="dim"))
                 raise typer.Exit(EXIT_OK) from None
-            endpoints, removed = drafted.endpoints, drafted.removed
+            endpoints = drafted.endpoints
             if drafted.omitted_endpoints:
                 notes.append(
                     f"{drafted.omitted_endpoints} more changed endpoints are left out: a "
@@ -1307,10 +1306,6 @@ def notice_create(
             style="green",
         )
     )
-    for operation in removed:
-        err.print(
-            Text(f"note: {operation} is gone from the new spec; describe it by hand", style="dim")
-        )
     for note in notes:
         err.print(Text(f"note: {note}", style="dim"))
     target = str(output) if output else "NOTICE.json"

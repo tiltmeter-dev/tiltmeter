@@ -95,9 +95,10 @@ def test_keygen_create_sign_publish_and_verify(tmp_path: Path) -> None:
         str(draft),
     )
     assert created.exit_code == 0, created.output
-    assert "drafted notice partner-phone-rename with 8 changes" in flat(created.output)
-    assert "GET /v1/legacy is gone from the new spec" in flat(created.output)
+    assert "drafted notice partner-phone-rename with 9 changes" in flat(created.output)
     raw = json.loads(draft.read_text(encoding="utf-8"))
+    legacy = [e for e in raw["endpoints"] if e["url"].endswith("/v1/legacy")]
+    assert legacy[0]["changes"] == [{"path": "$", "kind": "endpoint_removed"}]
     assert raw["effective_at"] == "2026-12-01T00:00:00Z"
     assert "signature" not in raw
 

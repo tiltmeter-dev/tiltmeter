@@ -12,7 +12,8 @@ from tiltmeter.notices.models import Impact, SdkRelease, SpecInfo
 
 
 class FixTarget(BaseModel):
-    """One change in the responses that code reading them may have to follow."""
+    """One change to the responses, or to what requests may send, that code calling the API
+    may have to follow."""
 
     model_config = ConfigDict(frozen=True)
 
@@ -24,7 +25,15 @@ class FixTarget(BaseModel):
     renamed_to: str | None = Field(
         default=None, description="Where a removed field probably lives on, when it was renamed."
     )
-    field: str | None = Field(default=None, description="The property name at the end of path.")
+    moved_to: str | None = Field(
+        default=None, description="The method and URL a removed endpoint lives on as."
+    )
+    replaced_by: str | None = Field(
+        default=None, description="The value to send instead of a retired one."
+    )
+    field: str | None = Field(
+        default=None, description="The property name at the end of path, in the response."
+    )
     new_field: str | None = Field(
         default=None, description="The property name at the end of renamed_to."
     )

@@ -98,32 +98,8 @@ class _Strict(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
-class NoticeChange(_Strict):
-    """One change to the responses, as Tiltmeter would report it."""
-
-    path: JsonPath = Field(
-        description="Location in the response body: $ is the root and [*] every array item."
-    )
-    kind: ChangeKind
-    before: Value | None = Field(default=None, description="The type or values before.")
-    after: Value | None = Field(default=None, description="The type or values after.")
-    renamed_to: JsonPath | None = Field(
-        default=None, description="Where a removed field lives on. Only with field_removed."
-    )
-    note: Text | None = Field(
-        default=None,
-        description="The provider's own words on this change, such as the new format.",
-    )
-
-    @model_validator(mode="after")
-    def _rename_only_on_removal(self) -> NoticeChange:
-        if self.renamed_to is not None and self.kind is not ChangeKind.FIELD_REMOVED:
-            raise ValueError("renamed_to only goes with kind field_removed")
-        return self
-
-
-class NoticeEndpoint(_Strict):
-    """An endpoint whose responses change, and how."""
+class _Address(_Strict):
+    """How customers call an endpoint."""
 
     method: HttpMethod
     url: str = Field(
@@ -131,7 +107,6 @@ class NoticeEndpoint(_Strict):
         pattern=_URL_TEXT,
         description="https URL without query string; {name} marks a path parameter.",
     )
-    changes: list[NoticeChange] = Field(min_length=1, max_length=MAX_CHANGES)
 
     @field_validator("url")
     @classmethod
@@ -142,6 +117,59 @@ class NoticeEndpoint(_Strict):
         if parts.query or parts.fragment:
             raise ValueError("must not have a query string or fragment")
         return value
+
+
+class MovedEndpoint(_Address):
+    """Where a removed endpoint lives on."""
+
+
+class NoticeChange(_Strict):
+    """One change to the responses, or to what requests may send, as Tiltmeter reports it."""
+
+    path: JsonPath = Field(
+        description=(
+            "Location in the response body: $ is the root and [*] every array item. With "
+            "value_retired, the request member or path parameter instead, such as $.model."
+        )
+    )
+    kind: ChangeKind
+    before: Value | None = Field(
+        default=None, description="The type or values before; with value_retired, the value."
+    )
+    after: Value | None = Field(default=None, description="The type or values after.")
+    renamed_to: JsonPath | None = Field(
+        default=None, description="Where a removed field lives on. Only with field_removed."
+    )
+    moved_to: MovedEndpoint | None = Field(
+        default=None, description="Where a removed endpoint lives on. Only with endpoint_removed."
+    )
+    replaced_by: Value | None = Field(
+        default=None, description="The value to send instead. Only with value_retired."
+    )
+    note: Text | None = Field(
+        default=None,
+        description="The provider's own words on this change, such as the new format.",
+    )
+
+    @model_validator(mode="after")
+    def _members_of_their_kind(self) -> NoticeChange:
+        if self.renamed_to is not None and self.kind is not ChangeKind.FIELD_REMOVED:
+            raise ValueError("renamed_to only goes with kind field_removed")
+        if self.moved_to is not None and self.kind is not ChangeKind.ENDPOINT_REMOVED:
+            raise ValueError("moved_to only goes with kind endpoint_removed")
+        if self.replaced_by is not None and self.kind is not ChangeKind.VALUE_RETIRED:
+            raise ValueError("replaced_by only goes with kind value_retired")
+        if self.kind is ChangeKind.ENDPOINT_REMOVED and self.path != "$":
+            raise ValueError("an endpoint_removed change has the path $")
+        if self.kind is ChangeKind.VALUE_RETIRED and not self.before:
+            raise ValueError("a value_retired change names the value in before")
+        return self
+
+
+class NoticeEndpoint(_Address):
+    """An endpoint whose responses, or what its requests may send, change, and how."""
+
+    changes: list[NoticeChange] = Field(min_length=1, max_length=MAX_CHANGES)
 
 
 class SdkName(_Strict):
@@ -187,7 +215,8 @@ class NoticeSignature(_Strict):
 
 
 class ApiChangeNotice(_Strict):
-    """A provider's announcement of a change to the JSON responses of its API."""
+    """A provider's announcement of a change to the JSON responses of its API, or to what
+    its requests may send."""
 
     spec: Literal["https://tiltmeter.dev/schemas/api-change-notice/v1.json"]
     id: str = Field(
@@ -208,10 +237,11 @@ class ApiChangeNotice(_Strict):
 
     @model_validator(mode="after")
     def _on_the_provider_domain(self) -> ApiChangeNotice:
-        for endpoint in self.endpoints:
-            host = https_host(endpoint.url) or ""
+        moved = [c.moved_to for e in self.endpoints for c in e.changes if c.moved_to is not None]
+        for address in [*self.endpoints, *moved]:
+            host = https_host(address.url) or ""
             if not on_domain(host, self.provider):
-                raise ValueError(f"endpoint {endpoint.url} is not on {self.provider}")
+                raise ValueError(f"endpoint {address.url} is not on {self.provider}")
         if self.signature is not None and self.signature.key != default_key_url(self.provider):
             # Pinned, so that no other page on the domain, such as one that echoes its
             # input, can pass for the key file.

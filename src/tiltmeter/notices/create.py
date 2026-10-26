@@ -22,7 +22,7 @@ from urllib.parse import urlsplit
 from pydantic import ValidationError
 
 from tiltmeter.core.classify import DEFAULT_SEVERITY
-from tiltmeter.core.diff import RENAMED_TO
+from tiltmeter.core.diff import MOVED_TO, RENAMED_TO
 from tiltmeter.core.models import Change, ChangeKind, CheckResult
 from tiltmeter.core.openapi import OpenAPIError, OperationDiff, base_url, diff_operations
 from tiltmeter.core.timeutil import to_iso
@@ -71,9 +71,10 @@ def _last_name(path: str) -> str:
 
 
 def notice_changes(
-    changes: Sequence[Change], renames: Mapping[str, str] | None = None
+    changes: Sequence[Change], renames: Mapping[str, str] | None = None, *, root: str = ""
 ) -> list[dict[str, Any]]:
-    """The changes worth announcing, as notice entries."""
+    """The changes worth announcing, as notice entries. ``root`` is the base URL the path of
+    an endpoint a removed one moved to goes after."""
     entries: list[dict[str, Any]] = []
     for change in changes:
         if change.kind in _LEFT_OUT:
@@ -92,13 +93,28 @@ def notice_changes(
             )
             if new_path:
                 entry["renamed_to"] = new_path
+        if change.kind is ChangeKind.ENDPOINT_REMOVED and root:
+            hint = change.hint or ""
+            method, _, path = hint.removeprefix(MOVED_TO).partition(" ")
+            if hint.startswith(MOVED_TO) and path:
+                entry["moved_to"] = {"method": method, "url": f"{root.rstrip('/')}{path}"}
         entries.append(entry)
     return entries
 
 
 def _phrase(entry: Mapping[str, Any]) -> str:
     name = _last_name(str(entry["path"]))
+    moved = entry.get("moved_to")
     match ChangeKind(entry["kind"]):
+        case ChangeKind.ENDPOINT_REMOVED if isinstance(moved, Mapping):
+            path = urlsplit(str(moved.get("url"))).path
+            return f"the endpoint moves to {moved.get('method')} {path}"
+        case ChangeKind.ENDPOINT_REMOVED:
+            return "the endpoint is removed"
+        case ChangeKind.VALUE_RETIRED if entry.get("replaced_by"):
+            return f"{entry.get('before')} is retired in favor of {entry.get('replaced_by')}"
+        case ChangeKind.VALUE_RETIRED:
+            return f"{entry.get('before')} is retired"
         case ChangeKind.FIELD_REMOVED if entry.get("renamed_to"):
             target = str(entry["renamed_to"])
             if _last_name(target) == name:  # the same name elsewhere: it moved
@@ -234,7 +250,7 @@ def announceable(operations: Sequence[OperationDiff], root: str) -> tuple[list[A
         omitted += operation.omitted
         url = f"{root.rstrip('/')}{operation.path}"
         changes = []
-        for entry in notice_changes(operation.changes):
+        for entry in notice_changes(operation.changes, root=root):
             try:
                 NoticeChange.model_validate(entry)
             except ValidationError:

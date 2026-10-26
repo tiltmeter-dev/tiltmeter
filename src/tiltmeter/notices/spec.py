@@ -30,7 +30,7 @@ from tiltmeter.core.openapi import OpenAPIError, base_url, diff_operations
 from tiltmeter.core.store import SpecBaseline
 from tiltmeter.core.timeutil import to_iso
 from tiltmeter.errors import NoticeError
-from tiltmeter.fix.request import field_name, is_target
+from tiltmeter.fix.request import field_name, is_target, reads_response
 from tiltmeter.notices.create import (
     Announced,
     announceable,
@@ -183,7 +183,9 @@ def candidates(endpoints: Sequence[Announced]) -> list[Candidate]:
         names = tuple(
             name
             for change, kind in zip(changes, kinds, strict=True)
-            if is_target(kind) and (name := field_name(str(change["path"])))
+            if is_target(kind)
+            and reads_response(kind)
+            and (name := field_name(str(change["path"])))
         )
         rank = max((DEFAULT_SEVERITY[kind].rank for kind in kinds), default=0)
         found.append(Candidate(url, names, rank, method))
@@ -343,15 +345,6 @@ async def _given_baseline(
 
 
 def _notes(change: SpecChange) -> list[str]:
-    notes = []
-    if change.removed:
-        notes.append(f"the spec no longer has {_listing(change.removed)}, which needs a human")
-    if unread := unresolved_note(change.unresolved):
-        notes.append(unread)
-    return notes
-
-
-def _listing(operations: Sequence[str], limit: int = 5) -> str:
-    shown = ", ".join(operations[:limit])
-    more = len(operations) - limit
-    return printable(shown + (f" and {more} more" if more > 0 else ""), 300)
+    # Operations that are gone are in the entry already, as endpoint_removed changes.
+    unread = unresolved_note(change.unresolved)
+    return [unread] if unread else []

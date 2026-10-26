@@ -196,7 +196,10 @@ covers both sides.
 | `latency_regression` | median latency over 3x the baseline and at least 250 ms slower | warning |
 | `field_added` | a new `phone_number` field | info, or warning with `strict: true` |
 
-Override any of them globally or per endpoint with `severity_overrides`.
+Override any of them globally or per endpoint with `severity_overrides`. Provider notices
+and spec diffs also report `endpoint_removed` (an endpoint is gone, possibly moved to
+another path) and `value_retired` (requests can no longer send a value, such as a retired
+model), both breaking.
 
 ## Use it in CI
 

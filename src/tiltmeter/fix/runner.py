@@ -115,13 +115,23 @@ def _changes_table(
     if not targets:
         return [f"{len(api.targets)} changes, not listed."]
     lines = ["| Severity | Change | Path | Before | After |", "|---|---|---|---|---|"]
+    sure = announced and not guessed
     for target in targets:
         removed = target.kind is ChangeKind.FIELD_REMOVED
         before = value(target.before) if target.before else unknown
         after = value(target.after) if target.after else ("(absent)" if removed else unknown)
+        if target.kind is ChangeKind.ENDPOINT_REMOVED:
+            after = "(gone)"
+        elif target.kind is ChangeKind.VALUE_RETIRED:
+            after = "(no longer accepted)"
         if target.renamed_to:
-            renamed = "renamed to" if announced and not guessed else "probably renamed to"
+            renamed = "renamed to" if sure else "probably renamed to"
             after += f", {renamed} {_code(target.renamed_to)}"
+        if target.moved_to:
+            moved = "moved to" if sure else "probably moved to"
+            after += f", {moved} {_code(target.moved_to)}"
+        if target.replaced_by:
+            after += f", send {_code(target.replaced_by)} instead"
         lines.append(
             f"| {target.severity.value} | {target.kind.value} | {_code(target.path)} "
             f"| {before} | {after} |"

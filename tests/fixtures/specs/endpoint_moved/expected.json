@@ -1,0 +1,115 @@
+{
+  "base_url": "https://api.music.example/v1",
+  "operations": [
+    {
+      "method": "GET",
+      "path": "/playlists/{playlist_id}/tracks",
+      "changes": [
+        {
+          "path": "$",
+          "kind": "endpoint_removed",
+          "severity": "breaking",
+          "hint": "possibly moved to GET /playlists/{id}/items"
+        },
+        {
+          "path": "$.items[*].item",
+          "kind": "field_added",
+          "severity": "info",
+          "after": "object",
+          "hint": "possibly replaces $.items[*].track"
+        },
+        {
+          "path": "$.items[*].track",
+          "kind": "field_removed",
+          "severity": "breaking",
+          "before": "object",
+          "hint": "possibly renamed to $.items[*].item"
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/search",
+      "changes": [
+        {
+          "path": "$",
+          "kind": "endpoint_removed",
+          "severity": "breaking",
+          "hint": "possibly moved to GET /search/jql"
+        },
+        {
+          "path": "$.expand",
+          "kind": "field_removed",
+          "severity": "breaking",
+          "before": "string",
+          "hint": "possibly renamed to $.nextPageToken"
+        },
+        {
+          "path": "$.isLast",
+          "kind": "field_added",
+          "severity": "info",
+          "after": "boolean"
+        },
+        {
+          "path": "$.maxResults",
+          "kind": "field_removed",
+          "severity": "breaking",
+          "before": "integer"
+        },
+        {
+          "path": "$.nextPageToken",
+          "kind": "field_added",
+          "severity": "info",
+          "after": "string",
+          "hint": "possibly replaces $.expand"
+        },
+        {
+          "path": "$.startAt",
+          "kind": "field_removed",
+          "severity": "breaking",
+          "before": "integer"
+        },
+        {
+          "path": "$.total",
+          "kind": "field_removed",
+          "severity": "breaking",
+          "before": "integer"
+        },
+        {
+          "path": "$.warningMessages",
+          "kind": "field_removed",
+          "severity": "breaking",
+          "before": "array"
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/albums/{id}/credits",
+      "changes": [
+        {
+          "path": "$",
+          "kind": "endpoint_removed",
+          "severity": "breaking"
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/me/following",
+      "changes": [
+        {
+          "path": "$",
+          "kind": "endpoint_removed",
+          "severity": "breaking"
+        }
+      ]
+    }
+  ],
+  "removed": [
+    "GET /playlists/{playlist_id}/tracks",
+    "GET /search",
+    "GET /albums/{id}/credits",
+    "GET /me/following"
+  ]
+}

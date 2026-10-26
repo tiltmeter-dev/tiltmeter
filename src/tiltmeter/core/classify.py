@@ -24,6 +24,8 @@ DEFAULT_SEVERITY: Final[Mapping[ChangeKind, Severity]] = MappingProxyType(
         ChangeKind.STATUS_CHANGED: Severity.WARNING,
         ChangeKind.CONTENT_TYPE_CHANGED: Severity.BREAKING,
         ChangeKind.LATENCY_REGRESSION: Severity.WARNING,
+        ChangeKind.ENDPOINT_REMOVED: Severity.BREAKING,
+        ChangeKind.VALUE_RETIRED: Severity.BREAKING,
     }
 )
 

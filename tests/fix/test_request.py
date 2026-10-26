@@ -259,3 +259,50 @@ def test_a_spec_diff_says_the_provider_announced_nothing() -> None:
     assert "The provider did not announce or sign them" in text
     assert "versions: 1.0 -> 1.1" in text
     assert "2 other changed endpoints are left out" in text
+
+
+MOVES_AND_RETIREMENTS = [
+    {
+        "method": "GET",
+        "url": "https://api.billing.test/v1/customers/{id}",
+        "changes": [
+            {
+                "path": "$",
+                "kind": "endpoint_removed",
+                "moved_to": {"method": "GET", "url": "https://api.billing.test/v2/customers/{id}"},
+            },
+            {"path": "$.phone", "kind": "field_removed", "renamed_to": "$.phone_number"},
+        ],
+    },
+    {
+        "method": "POST",
+        "url": "https://api.billing.test/v1/completions",
+        "changes": [
+            {
+                "path": "$.model",
+                "kind": "value_retired",
+                "before": "billing-3-5-20240620",
+                "replaced_by": "billing-4",
+            }
+        ],
+    },
+]
+
+
+def test_moves_and_retired_values_reach_the_agent() -> None:
+    request = notice_request(endpoints=MOVES_AND_RETIREMENTS)
+    moved, _, retired = request.targets
+    assert moved.moved_to == "GET https://api.billing.test/v2/customers/{id}"
+    assert moved.field is None
+    assert (retired.before, retired.replaced_by, retired.field) == (
+        "billing-3-5-20240620",
+        "billing-4",
+        None,  # model names what requests send, not a field code reads
+    )
+    assert "billing-3-5-20240620" in request.search_terms
+    assert "model" not in request.search_terms
+    text = render_fix_request(request)
+    assert '"moved_to": "GET https://api.billing.test/v2/customers/{id}"' in text
+    assert '"replaced_by": "billing-4"' in text
+    assert "For value_retired, $ is the request instead" in text
+    assert "For value_retired" not in render_fix_request(notice_request())

@@ -1,0 +1,79 @@
+openapi: 3.1.0
+info: {title: Music, version: "2"}
+servers: [{url: "https://api.music.example/v1"}]
+paths:
+  /playlists/{id}/items:
+    get:
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ItemPage"}
+  /search/jql:
+    get:
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/SearchAndReconcileResults"}
+  /me/followers:
+    get:
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/People"}
+  /me/follows:
+    get:
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/People"}
+  /me:
+    get:
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: {type: object, required: [id], properties: {id: {type: string}}}
+components:
+  schemas:
+    ItemPage:
+      type: object
+      required: [items, total]
+      properties:
+        items: {type: array, items: {$ref: "#/components/schemas/PlaylistItem"}}
+        total: {type: integer}
+        next: {type: [string, "null"]}
+    PlaylistItem:
+      type: object
+      required: [added_at, item]
+      properties:
+        added_at: {type: string}
+        item: {$ref: "#/components/schemas/Track"}
+    Track:
+      type: object
+      required: [id, name]
+      properties:
+        id: {type: string}
+        name: {type: string}
+    SearchAndReconcileResults:
+      type: object
+      required: [issues]
+      properties:
+        isLast: {type: boolean}
+        issues: {type: array, items: {$ref: "#/components/schemas/Issue"}}
+        names: {type: object}
+        nextPageToken: {type: string}
+        schema: {type: object}
+    Issue:
+      type: object
+      required: [key]
+      properties:
+        key: {type: string}
+    People:
+      type: object
+      required: [people]
+      properties:
+        people: {type: array, items: {type: string}}

@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING, Any, Final
 
+from tiltmeter.core.models import ChangeKind
+
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
@@ -27,7 +29,8 @@ CODEX_WORKSPACE: Final = (
 
 _SYSTEM_PROMPT_TEMPLATE: Final = """\
 You are Tiltmeter's fixer. A third-party HTTP API that this repository calls has \
-changed the shape of its JSON responses, or its provider has announced that it will. \
+changed the shape of its JSON responses, removed an endpoint or stopped accepting a \
+value requests send, or its provider has announced that it will. \
 Tiltmeter learned of it in one of three ways: by comparing the latest responses with \
 the ones it learned before, from a change notice the provider published, or by \
 comparing two versions of the provider's OpenAPI spec. Your job is to update \
@@ -53,6 +56,16 @@ such values as they are instead of inventing new ones.
    - A field that can now be null or missing: handle the absence where it is read.
    - A removed field with no replacement: make the code tolerate its absence when \
 that is straightforward; otherwise leave the code alone and report it as unresolved.
+   - A removed endpoint (endpoint_removed) with moved_to: call the new method and URL \
+instead, and adapt to the other changes listed for it, which compare the old \
+endpoint's response with the new one's. Keep the code's way of building URLs and \
+sending requests. Without moved_to, or when the new endpoint needs parameters the \
+code cannot supply, leave the call alone and report it as unresolved.
+   - A retired value (value_retired), such as a model id the API no longer accepts: \
+send replaced_by instead wherever the code sends the old value, including defaults, \
+configuration examples and tests. When the value comes from the user's configuration \
+or an environment variable, change only the default. Without replaced_by, report it as \
+unresolved instead of picking a value.
    - A provider SDK release that already follows the change: when the repository \
 depends on that SDK, raise its version in the dependency manifest (such as \
 requirements.txt, pyproject.toml, package.json or go.mod) to at least that release. \
@@ -93,6 +106,10 @@ def _changes(targets: Sequence[FixTarget]) -> list[dict[str, Any]]:
         }
         if target.renamed_to:
             entry["renamed_to"] = target.renamed_to
+        if target.moved_to:
+            entry["moved_to"] = target.moved_to
+        if target.replaced_by:
+            entry["replaced_by"] = target.replaced_by
         if target.note:
             entry["provider_note"] = target.note
         entries.append(entry)
@@ -198,9 +215,17 @@ def render_fix_request(request: FixRequest) -> str:
         parts.append(f"Search terms: {quoted}.")
     if request.candidate_files or request.search_terms:
         parts.append("")
+    retired = any(t.kind is ChangeKind.VALUE_RETIRED for t in request.targets)
     parts.append(
         "Paths use JSONPath-like notation: $ is the response body and [*] means every "
-        "item of an array. Update the code for these changes."
+        "item of an array."
+        + (
+            " For value_retired, $ is the request instead: $.model is its model member or "
+            "{model} path parameter."
+            if retired
+            else ""
+        )
+        + " Update the code for these changes."
     )
     if request.test_command is not None and request.test_failure is None:
         parts.append(

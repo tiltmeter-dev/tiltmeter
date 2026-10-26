@@ -256,6 +256,16 @@ A reference that points at another file, or at a schema the spec does not define
 specs have both), stands for an unknown schema: it is compared with nothing, so neither
 side reports changes below it, and the output counts such references.
 
+An operation that is gone is reported as **`endpoint_removed`**. It is a **probable move**
+when exactly one new operation has the same method, a path one literal segment away (one
+replaced, added or dropped: `/playlists/{id}/tracks` and `/playlists/{id}/items`,
+`/search` and `/search/jql`) and a response alike enough: the two responses share at
+least a quarter of the property names at their top when the new path keeps every old
+segment, and half when a segment was replaced, since unrelated resources such as
+`/assistants/{id}/files` and `/containers/{id}/files` share paths of that kind. No other
+candidate may share as many. Its other changes then compare the old response with the new operation's. A new
+operation that two gone ones could have moved to is neither's.
+
 A customer can follow a spec too (`openapi:` in `subscriptions`). The first apply keeps it
 as a baseline, or compares it with the `baseline` URL the subscription names; later runs
 compare the latest version with the stored one in the same way, pick the endpoints the
@@ -268,8 +278,9 @@ On the customer's side, `tiltmeter notices apply`:
 2. checks each signature against the key file on the provider's domain, and drops
    unsigned notices, tampered ones and those already handled;
 3. searches the tracked files for the notice's hosts, endpoint paths and SDKs, then for the
-   changed field names near those uses, with no LLM. A repository that does not use them
-   is recorded as not affected;
+   changed field names near those uses, with no LLM. A retired value, such as a model id,
+   counts on its own when code spells it whole, and a removed endpoint only where code
+   spells its whole path. A repository that does not use them is recorded as not affected;
 4. otherwise turns the notice into the same fix request a check would produce (the
    renames come from `renamed_to`, the severities from the default rules) and runs the
    fix, with the matching files as starting points and the provider's text marked as

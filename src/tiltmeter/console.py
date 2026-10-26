@@ -277,6 +277,11 @@ def notice_changes_table(endpoint: NoticeEndpoint) -> Table:
             detail = Text("")
         if change.renamed_to:
             detail.append(f"{', ' if detail else ''}renamed to {change.renamed_to}", style="italic")
+        if change.moved_to:
+            moved = f"{change.moved_to.method} {change.moved_to.url}"
+            detail.append(f"{', ' if detail else ''}moved to {moved}", style="italic")
+        if change.replaced_by:
+            detail.append(f"{', ' if detail else ''}use {change.replaced_by}", style="italic")
         if change.note:
             detail.append(f"  {change.note}", style="dim")
         table.add_row(change.kind.value, Text(change.path, style="bold"), detail)
