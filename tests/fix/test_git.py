@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+import sys
 from pathlib import Path
 
 import pytest
@@ -78,3 +80,30 @@ def test_gh_problem_when_the_cli_is_missing(
 ) -> None:
     monkeypatch.setattr("tiltmeter.fix.git.shutil.which", lambda _: None)
     assert GhCli().problem(tmp_path) == "the GitHub CLI (gh) is not installed"
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="a script on PATH needs a POSIX shell")
+def test_pull_requests_of_pushed_branches(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    calls = tmp_path / "calls.txt"
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    fake = bin_dir / "gh"
+    fake.write_text(
+        f"#!{sys.executable}\n"
+        "import json, sys\n"
+        f"open({str(calls)!r}, 'a').write(' '.join(sys.argv[1:]) + '\\n')\n"
+        "if sys.argv[1:3] == ['pr', 'list']:\n"
+        "    head = sys.argv[sys.argv.index('--head') + 1]\n"
+        "    found = [{'url': 'https://github.test/pr/3'}] if head == 'known' else []\n"
+        "    print(json.dumps(found))\n",
+        encoding="utf-8",
+    )
+    fake.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ['PATH']}")
+    gh = GhCli()
+    assert gh.find_pull_request(cwd=tmp_path, head="known") == "https://github.test/pr/3"
+    assert gh.find_pull_request(cwd=tmp_path, head="fresh") is None
+    assert calls.read_text(encoding="utf-8").splitlines() == [
+        "pr list --head known --state all --json url",
+        "pr list --head fresh --state all --json url",
+    ]

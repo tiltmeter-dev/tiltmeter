@@ -29,12 +29,22 @@ REPLACES: Final = "possibly replaces "
 
 
 def diff_shapes(
-    baseline: Shape, observed: Shape, *, ignore: PathMatcher | None = None
+    baseline: Shape,
+    observed: Shape,
+    *,
+    ignore: PathMatcher | None = None,
+    complete: bool = False,
+    renames: bool = True,
 ) -> list[RawChange]:
-    """Every way ``observed`` contradicts ``baseline``, in traversal order."""
+    """Every way ``observed`` contradicts ``baseline``, in traversal order.
+
+    ``complete`` says that ``observed`` lists every field the API can return, as a spec
+    does, so an optional field that is gone was removed rather than absent this time.
+    ``renames=False`` leaves out the rename hints, for callers that pair fields later.
+    """
     found: list[RawChange] = []
-    _diff_node(baseline, observed, (), ignore or PathMatcher(), found)
-    return annotate_renames(found)
+    _diff_node(baseline, observed, (), ignore or PathMatcher(), found, complete)
+    return annotate_renames(found) if renames else found
 
 
 def _diff_node(
@@ -43,6 +53,7 @@ def _diff_node(
     segments: tuple[Segment, ...],
     ignore: PathMatcher,
     out: list[RawChange],
+    complete: bool,
 ) -> None:
     if observed.count == 0 or ignore.matches(segments):
         return
@@ -74,9 +85,9 @@ def _diff_node(
             )
         )
     if baseline.object_count and observed.object_count:
-        _diff_properties(baseline, observed, segments, ignore, out)
+        _diff_properties(baseline, observed, segments, ignore, out, complete)
     if baseline.items is not None and observed.items is not None:
-        _diff_node(baseline.items, observed.items, (*segments, ITEMS), ignore, out)
+        _diff_node(baseline.items, observed.items, (*segments, ITEMS), ignore, out, complete)
     _diff_enum(baseline, observed, path, segments, out)
 
 
@@ -86,6 +97,7 @@ def _diff_properties(
     segments: tuple[Segment, ...],
     ignore: PathMatcher,
     out: list[RawChange],
+    complete: bool,
 ) -> None:
     for name in sorted(baseline.properties.keys() | observed.properties.keys()):
         child_segments = (*segments, name)
@@ -108,7 +120,7 @@ def _diff_properties(
             continue
         required = baseline.is_required(name)
         if after is None:
-            if required:
+            if required or complete:
                 out.append(
                     RawChange(
                         child_path,
@@ -131,7 +143,7 @@ def _diff_properties(
                     types=after.type_set,
                 )
             )
-        _diff_node(before, after, child_segments, ignore, out)
+        _diff_node(before, after, child_segments, ignore, out, complete)
 
 
 def _diff_enum(
@@ -173,7 +185,11 @@ def annotate_renames(changes: Sequence[RawChange]) -> list[RawChange]:
     A pair needs the same parent object and the same non-null type. It is
     accepted when the names are similar (one contains the other once case and
     separators are ignored, or they are mostly the same letters), or when it is
-    the only possible pair under that parent.
+    the only possible pair under that parent. A field left without a pair that
+    reappears nearby under another parent, with the same name and type, moved
+    there (``$.current_period_end`` to ``$.items.data[*].current_period_end``)
+    when it is the only field of that name and type to go and the only one to
+    appear. Nearby means at most three segments added, removed or replaced.
     """
     result = list(changes)
     removed = [i for i, c in enumerate(changes) if c.kind is ChangeKind.FIELD_REMOVED]
@@ -212,7 +228,46 @@ def annotate_renames(changes: Sequence[RawChange]) -> list[RawChange]:
         replacement = changes[best]
         result[i] = replace(gone, hint=f"{RENAMED_TO}{replacement.path}")
         result[best] = replace(replacement, hint=f"{REPLACES}{gone.path}")
+    _annotate_moves(changes, result, [i for i in removed if result[i] is changes[i]], used)
     return result
+
+
+def _annotate_moves(
+    changes: Sequence[RawChange], result: list[RawChange], unpaired: list[int], used: set[int]
+) -> None:
+    """Pair each unpaired removed field with the one added elsewhere under its name."""
+    gone: dict[tuple[Segment, frozenset[str]], list[int]] = defaultdict(list)
+    appeared: dict[tuple[Segment, frozenset[str]], list[int]] = defaultdict(list)
+    for i, change in enumerate(changes):
+        if not change.segments or not isinstance(change.segments[-1], str):
+            continue
+        name = (change.segments[-1], core_types(change.types))
+        if i in unpaired:
+            gone[name].append(i)
+        elif change.kind is ChangeKind.FIELD_ADDED and i not in used:
+            appeared[name].append(i)
+    for field, removed in gone.items():
+        added = appeared.get(field, [])
+        if len(removed) == 1 and len(added) == 1:
+            i, j = removed[0], added[0]
+            if _distance(changes[i].segments, changes[j].segments) > _MOVE_DISTANCE:
+                continue
+            result[i] = replace(changes[i], hint=f"{RENAMED_TO}{changes[j].path}")
+            result[j] = replace(changes[j], hint=f"{REPLACES}{changes[i].path}")
+
+
+_MOVE_DISTANCE: Final = 3
+
+
+def _distance(left: Sequence[Segment], right: Sequence[Segment]) -> int:
+    """How many segments to add, remove or replace to turn one path into the other."""
+    previous = list(range(len(right) + 1))
+    for i, a in enumerate(left, 1):
+        current = [i]
+        for j, b in enumerate(right, 1):
+            current.append(min(previous[j] + 1, current[j - 1] + 1, previous[j - 1] + (a != b)))
+        previous = current
+    return previous[-1]
 
 
 def _normalize(name: Segment) -> str:

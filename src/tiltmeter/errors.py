@@ -33,3 +33,7 @@ class FixError(TiltmeterError):
 
 class HarError(TiltmeterError):
     """A file that ``tiltmeter init --from-har`` cannot read as a HAR export."""
+
+
+class NoticeError(TiltmeterError):
+    """A change notice, feed or signing key that cannot be read, trusted or written."""

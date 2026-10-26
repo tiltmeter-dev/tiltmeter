@@ -1,0 +1,39 @@
+# References that point at nothing, or at another file, compare as unknown: they report
+# nothing, whichever side they are on, while the rest of the spec is still compared.
+openapi: 3.0.3
+info: {title: Shop, version: "1.0"}
+servers: [{url: "https://api.shop.test/v1"}]
+paths:
+  /orders/{id}:
+    get:
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Order"}
+  /refunds/{id}:
+    get:
+      responses:
+        "200": {$ref: "#/components/responses/Refund"}
+components:
+  schemas:
+    Order:
+      type: object
+      required: [id, total, details, refund]
+      properties:
+        id: {type: string}
+        total: {type: integer}
+        details: {$ref: "#/components/schemas/FoodDetails"}
+        phone: {$ref: "https://cdn.shop.test/common.json#PhoneNumber"}
+        refund: {$ref: "#/components/schemas/Refund"}
+    Refund:
+      type: object
+      required: [amount]
+      properties:
+        amount: {type: integer}
+  responses:
+    Refund:
+      description: A refund
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/Refund"}

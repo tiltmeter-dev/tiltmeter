@@ -163,12 +163,73 @@ Restart=on-failure
 WantedBy=multi-user.target
 ```
 
+## Provider notices
+
+When the APIs you call publish [change notices](notices.md), the Action can apply them on a
+schedule: `mode: notices` runs `tiltmeter notices apply`, which opens one pull request per
+new notice that affects the repository and records the rest as not affected. What was done
+about each notice lives in `.tiltmeter/`, in the Actions cache, so nothing is handled
+twice. [`examples/notices-workflow.yml`](../examples/notices-workflow.yml):
+
+```yaml
+name: API change notices
+
+on:
+  schedule:
+    - cron: "23 */6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency: tiltmeter-notices
+
+jobs:
+  notices:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: tiltmeter-dev/tiltmeter-action@v1
+        with:
+          mode: notices
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+```
+
+- **Subscriptions** go in `tiltmeter.yaml`; a config with only `subscriptions` is fine.
+- **Pull requests.** Turn on "Allow GitHub Actions to create and approve pull requests"
+  under Settings > Actions > General. Pull requests opened with the default
+  `GITHUB_TOKEN` do not start other workflows, so your CI will not run on them; pass a
+  GitHub App or fine-grained token as the action's `token` (and to `actions/checkout`) if
+  it should.
+- **The agent.** The default one needs `ANTHROPIC_API_KEY`. `agent: claude-code` or
+  `agent: codex` needs that CLI installed and logged in on the runner.
+- **No agent when nothing is affected.** A plain text search decides first, so a run where
+  no notice touches your code costs a few downloads and nothing else.
+- **Specs work the same way.** An `openapi:` subscription is compared run to run, with its
+  last version kept in the same cache.
+- **Before a release.** `source: git+https://github.com/tiltmeter-dev/tiltmeter@main` runs
+  Tiltmeter from a branch instead of PyPI.
+
+### For API providers
+
+Two more modes publish your own notices from CI, without anyone writing or signing JSON by
+hand. [`examples/provider-notices.yml`](../examples/provider-notices.yml) runs both:
+
+- `mode: notice-draft` on pull requests that touch your spec comments the changes and a
+  draft notice; `require-notice: true` fails the check until the pull request adds one.
+- `mode: notice-publish` on the main branch signs `notices/` into
+  `site/.well-known/api-changes.json` with the `TILTMETER_SIGNING_KEY` secret, ready for
+  `actions/upload-pages-artifact` (set `include-hidden-files: true`: `.well-known` is a
+  hidden folder) and `actions/deploy-pages`.
+
 ## Fixes
 
-`tiltmeter fix` is meant for a developer's machine for now. It needs a full git checkout,
-`ANTHROPIC_API_KEY` (or a logged-in Claude Code or Codex with `--agent`) and a `gh` that
-can push and open pull requests. It runs unattended
-with `--yes`, so a job can call it, but the Tiltmeter Action does not do it yet. See the
+`tiltmeter fix <check id>` is meant for a developer's machine for now. It needs a full git
+checkout, `ANTHROPIC_API_KEY` (or a logged-in Claude Code or Codex with `--agent`) and a
+`gh` that can push and open pull requests. It runs unattended with `--yes`, so a job can
+call it, but the Tiltmeter Action only does it for provider notices so far. See the
 [fix guide](fix.md).
 
 ## Machine-readable output
@@ -179,6 +240,8 @@ with `--yes`, so a job can call it, but the Tiltmeter Action does not do it yet.
 | `tiltmeter watch --json` | One check result per line ([JSON Lines](https://jsonlines.org)), for log pipelines. |
 | `tiltmeter history --json` | Recent check results, newest first. |
 | `tiltmeter show <id> --json` | One check result. |
+| `tiltmeter notices check --json` | Every subscribed feed and its notices, sorted into new, done, skipped and rejected. |
+| `tiltmeter notices apply --json` | The feeds, and what was done about each new notice, including the fix outcome. |
 
 A check result has the same fields as the `result` object of the
 [webhook payload](configuration.md#webhook).

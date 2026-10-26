@@ -54,6 +54,13 @@ def test_absent_optional_field_is_not_a_change() -> None:
     assert kinds(baseline, Shape.from_samples([{"id": 3}])) == []
 
 
+def test_a_complete_shape_reports_optional_fields_that_are_gone() -> None:
+    """A spec lists every field, so an optional one missing from it was removed."""
+    baseline = Shape.from_samples([{"id": 1, "nick": "a"}, {"id": 2}])
+    observed = Shape.from_samples([{"id": 3}])
+    assert kinds(baseline, observed, complete=True) == [("$.nick", ChangeKind.FIELD_REMOVED)]
+
+
 def test_null_that_was_seen_before_is_not_a_change() -> None:
     baseline = Shape.from_samples([{"x": "a"}, {"x": None}])
     assert kinds(baseline, Shape.from_samples([{"x": None}])) == []
@@ -144,16 +151,37 @@ def test_rename_hint_for_a_lone_pair_even_with_different_names() -> None:
     assert hints == ["possibly replaces $.tel", "possibly renamed to $.contact"]
 
 
-def test_no_rename_hint_across_types_parents_or_ambiguous_names() -> None:
+def test_a_field_that_moves_under_another_parent_keeps_its_name() -> None:
+    moved = diff_shapes(
+        Shape.from_samples([{"a": {"x": 1}, "b": {}}]),
+        Shape.from_samples([{"a": {}, "b": {"x": 1}}]),
+    )
+    assert {c.path: c.hint for c in moved} == {
+        "$.a.x": "possibly renamed to $.b.x",
+        "$.b.x": "possibly replaces $.a.x",
+    }
+    two_gone = diff_shapes(  # which of the two moved is anyone's guess
+        Shape.from_samples([{"a": {"x": 1}, "c": {"x": 1}, "b": {}}]),
+        Shape.from_samples([{"a": {}, "c": {}, "b": {"x": 1}}]),
+    )
+    assert all(c.hint is None for c in two_gone)
+    far = diff_shapes(  # a field of the same name, but nowhere near
+        Shape.from_samples([{"lines": [{"type": "a"}], "error": {}}]),
+        Shape.from_samples([{"lines": [{}], "error": {"card": {"on": {"off": {"type": "a"}}}}}]),
+    )
+    assert all(c.hint is None for c in far)
+    other_type = diff_shapes(
+        Shape.from_samples([{"a": {"x": 1}, "b": {}}]),
+        Shape.from_samples([{"a": {}, "b": {"x": "1"}}]),
+    )
+    assert all(c.hint is None for c in other_type)
+
+
+def test_no_rename_hint_across_types_or_ambiguous_names() -> None:
     different_type = diff_shapes(
         Shape.from_samples([{"count": 1}]), Shape.from_samples([{"total": "1"}])
     )
     assert all(c.hint is None for c in different_type)
-    different_parent = diff_shapes(
-        Shape.from_samples([{"a": {"x": 1}, "b": {}}]),
-        Shape.from_samples([{"a": {}, "b": {"x": 1}}]),
-    )
-    assert all(c.hint is None for c in different_parent)
     ambiguous = diff_shapes(
         Shape.from_samples([{"alpha": 1, "beta": 2}]),
         Shape.from_samples([{"gamma": 1, "delta": 2}]),

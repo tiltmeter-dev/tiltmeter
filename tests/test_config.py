@@ -75,10 +75,28 @@ def test_defaults_and_coercion() -> None:
     assert (endpoint.sample_size, endpoint.baseline_window, endpoint.latency_factor) == (1, 20, 3.0)
 
 
+def test_fix_test_commands_are_split_like_a_shell_would() -> None:
+    from tiltmeter.config import FixConfig
+
+    fix = FixConfig.model_validate({"test_command": "python -m pytest -q 'tests/a b.py'"})
+    assert fix.test_command == ["python", "-m", "pytest", "-q", "tests/a b.py"]
+    assert (fix.test_rounds, fix.test_network, fix.test_timeout) == (1, False, 300.0)
+    with pytest.raises(ValueError, match="not an environment variable name"):
+        FixConfig.model_validate({"test_env": ["OK", "NOT OK"]})
+
+
 @pytest.mark.parametrize(
     ("text", "message"),
     [
-        ("endpoints: []", "endpoints"),
+        ("endpoints: []", "at least one endpoint, or a subscription"),
+        ("subscriptions:\n  - {since: 2026-11-01}", "subscriptions.0"),
+        ("subscriptions:\n  - {provider: Partner}", "subscriptions.0.provider"),
+        ("subscriptions:\n  - {feed: http://x.test/feed.json}", "https"),
+        (
+            "subscriptions:\n  - {openapi: https://x.test/a.json, baseline: http://x.test/b.json}",
+            "https",
+        ),
+        ("subscriptions:\n  - {provider: x.test, baseline: https://x.test/b.json}", "only go"),
         ("endpoints:\n  - {id: a, url: ftp://x}", "http://"),
         ("endpoints:\n  - {id: 'bad id', url: https://x.test}", "endpoints.0.id"),
         ("endpoints:\n  - {id: a, url: https://x.test, ignore_paths: ['data']}", "start with"),

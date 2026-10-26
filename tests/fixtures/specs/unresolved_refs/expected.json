@@ -1,0 +1,25 @@
+{
+  "base_url": "https://api.shop.test/v1",
+  "operations": [
+    {
+      "method": "GET",
+      "path": "/orders/{id}",
+      "changes": [
+        {
+          "path": "$.total",
+          "kind": "type_changed",
+          "severity": "breaking",
+          "before": "integer",
+          "after": "string"
+        }
+      ]
+    }
+  ],
+  "removed": [],
+  "unresolved": [
+    "#/components/responses/Refunds",
+    "#/components/schemas/FoodDetails",
+    "#/components/schemas/Refunds",
+    "https://cdn.shop.test/common.json#PhoneNumber"
+  ]
+}

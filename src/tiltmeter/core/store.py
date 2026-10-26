@@ -5,6 +5,10 @@ that keeps returning the same structure costs one row no matter how often it is
 checked. The baseline of an endpoint is not stored: it is rebuilt on demand by
 merging the shapes of its last ``window`` successful checks, which lets old
 observations age out naturally.
+
+The same file remembers what was done about each provider change notice, so a
+scheduled run never handles one twice, and the last version of each followed spec,
+so the next run can tell what changed in it.
 """
 
 from __future__ import annotations
@@ -12,7 +16,9 @@ from __future__ import annotations
 import json
 import sqlite3
 import statistics
+import zlib
 from collections.abc import Iterable, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from types import TracebackType
 from typing import Any, Final
@@ -23,12 +29,14 @@ from tiltmeter.core.models import (
     ChangeKind,
     CheckResult,
     Explanation,
+    NoticeRecord,
+    NoticeStatus,
     Severity,
     StoredChange,
 )
 from tiltmeter.core.shape import Shape, fingerprint_of
 
-SCHEMA_VERSION: Final = 1
+SCHEMA_VERSION: Final = 3
 DB_FILENAME: Final = "tiltmeter.db"
 
 _SCHEMA: Final = """
@@ -69,6 +77,67 @@ CREATE INDEX changes_by_check ON changes(check_id);
 CREATE INDEX changes_by_endpoint ON changes(endpoint_id, detected_at);
 """
 
+# Added in schema version 3 (version 2 only ever existed in development).
+_NOTICES_SCHEMA: Final = """
+CREATE TABLE notices (
+    provider     TEXT NOT NULL,
+    notice_id    TEXT NOT NULL,
+    published_at TEXT NOT NULL,
+    status       TEXT NOT NULL,
+    detail       TEXT,
+    attempts     INTEGER NOT NULL DEFAULT 1,
+    updated_at   TEXT NOT NULL,
+    PRIMARY KEY (provider, notice_id)
+);
+"""
+
+_SPECS_SCHEMA: Final = """
+CREATE TABLE subscriptions (
+    feed       TEXT PRIMARY KEY,
+    first_seen TEXT NOT NULL
+);
+CREATE TABLE spec_baselines (
+    subscription TEXT PRIMARY KEY,
+    digest       TEXT NOT NULL,
+    version      TEXT,
+    fetched_at   TEXT NOT NULL,
+    generation   INTEGER NOT NULL,
+    body         BLOB NOT NULL
+);
+CREATE TABLE spec_changes (
+    provider     TEXT NOT NULL,
+    notice_id    TEXT NOT NULL,
+    subscription TEXT NOT NULL,
+    created_at   TEXT NOT NULL,
+    entry        TEXT NOT NULL,
+    PRIMARY KEY (provider, notice_id)
+);
+"""
+
+
+@dataclass(frozen=True, slots=True)
+class SpecBaseline:
+    """The version of a followed spec that the next run compares against."""
+
+    subscription: str
+    digest: str
+    version: str | None
+    fetched_at: str
+    generation: int
+    body: str
+    url: str | None = None  # set only for a baseline read from elsewhere, not stored
+
+
+@dataclass(frozen=True, slots=True)
+class FrozenSpecChange:
+    """A change found in a spec, kept as it was found until it is handled."""
+
+    provider: str
+    notice_id: str
+    subscription: str
+    created_at: str
+    entry: str
+
 
 class StoreError(Exception):
     """The history database cannot be used."""
@@ -101,9 +170,13 @@ class Store:
                 f"{self.path} was written by a newer Tiltmeter (schema {version}); "
                 "upgrade Tiltmeter to read it"
             )
-        if version == 0:
+        if version < SCHEMA_VERSION:
+            script = _SCHEMA if version == 0 else ""
+            if version < 2:
+                script += _NOTICES_SCHEMA
+            script += _SPECS_SCHEMA
             with self._db:
-                self._db.executescript(_SCHEMA)
+                self._db.executescript(script)
                 self._db.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
 
     def close(self) -> None:
@@ -226,6 +299,93 @@ class Store:
                 )
         return cursor.rowcount
 
+    def record_notice(
+        self,
+        provider: str,
+        notice_id: str,
+        *,
+        published_at: str,
+        status: NoticeStatus,
+        detail: str | None,
+        at: str,
+    ) -> NoticeRecord:
+        """Remember what was done about a notice. Recording it again counts an attempt."""
+        with self._db:
+            self._db.execute(
+                """
+                INSERT INTO notices (
+                    provider, notice_id, published_at, status, detail, attempts, updated_at
+                ) VALUES (?, ?, ?, ?, ?, 1, ?)
+                ON CONFLICT (provider, notice_id) DO UPDATE SET
+                    published_at = excluded.published_at,
+                    status = excluded.status,
+                    detail = excluded.detail,
+                    attempts = notices.attempts + 1,
+                    updated_at = excluded.updated_at
+                """,
+                (provider, notice_id, published_at, status, detail, at),
+            )
+        record = self.notice_record(provider, notice_id)
+        if record is None:  # pragma: no cover - the row was just written
+            raise StoreError("could not record the notice")
+        return record
+
+    def remember_subscription(self, feed: str, at: str) -> str:
+        """When the feed was first followed, recording ``at`` the first time."""
+        with self._db:
+            self._db.execute(
+                "INSERT OR IGNORE INTO subscriptions (feed, first_seen) VALUES (?, ?)", (feed, at)
+            )
+        return self.first_seen(feed) or at
+
+    def save_spec_baseline(
+        self, subscription: str, *, digest: str, version: str | None, fetched_at: str, body: str
+    ) -> None:
+        with self._db:
+            self._save_spec_baseline(subscription, digest, version, fetched_at, body)
+
+    def freeze_spec_change(
+        self,
+        subscription: str,
+        *,
+        provider: str,
+        notice_id: str,
+        entry: str,
+        digest: str,
+        version: str | None,
+        fetched_at: str,
+        body: str,
+    ) -> None:
+        """Keep a change found in a spec and move the baseline past it, together."""
+        with self._db:
+            self._db.execute(
+                """
+                INSERT OR IGNORE INTO spec_changes (
+                    provider, notice_id, subscription, created_at, entry
+                ) VALUES (?, ?, ?, ?, ?)
+                """,
+                (provider, notice_id, subscription, fetched_at, entry),
+            )
+            self._save_spec_baseline(subscription, digest, version, fetched_at, body)
+
+    def _save_spec_baseline(
+        self, subscription: str, digest: str, version: str | None, fetched_at: str, body: str
+    ) -> None:
+        self._db.execute(
+            """
+            INSERT INTO spec_baselines (
+                subscription, digest, version, fetched_at, generation, body
+            ) VALUES (?, ?, ?, ?, 1, ?)
+            ON CONFLICT (subscription) DO UPDATE SET
+                digest = excluded.digest,
+                version = excluded.version,
+                fetched_at = excluded.fetched_at,
+                generation = spec_baselines.generation + 1,
+                body = excluded.body
+            """,
+            (subscription, digest, version, fetched_at, zlib.compress(body.encode("utf-8"))),
+        )
+
     # -- reading --------------------------------------------------------------
 
     def load_baseline(
@@ -345,6 +505,55 @@ class Store:
             for row in rows
         ]
 
+    def notice_record(self, provider: str, notice_id: str) -> NoticeRecord | None:
+        row = self._db.execute(
+            "SELECT * FROM notices WHERE provider = ? AND notice_id = ?", (provider, notice_id)
+        ).fetchone()
+        return _notice_record(row) if row else None
+
+    def first_seen(self, feed: str) -> str | None:
+        row = self._db.execute(
+            "SELECT first_seen FROM subscriptions WHERE feed = ?", (feed,)
+        ).fetchone()
+        return str(row["first_seen"]) if row else None
+
+    def spec_baseline(self, subscription: str) -> SpecBaseline | None:
+        row = self._db.execute(
+            "SELECT * FROM spec_baselines WHERE subscription = ?", (subscription,)
+        ).fetchone()
+        if row is None:
+            return None
+        return SpecBaseline(
+            subscription=row["subscription"],
+            digest=row["digest"],
+            version=row["version"],
+            fetched_at=row["fetched_at"],
+            generation=int(row["generation"]),
+            body=zlib.decompress(row["body"]).decode("utf-8"),
+        )
+
+    def spec_changes(self, subscription: str) -> list[FrozenSpecChange]:
+        """The changes found in a spec, oldest first, handled or not."""
+        rows = self._db.execute(
+            "SELECT * FROM spec_changes WHERE subscription = ? ORDER BY created_at, rowid",
+            (subscription,),
+        )
+        return [
+            FrozenSpecChange(
+                provider=row["provider"],
+                notice_id=row["notice_id"],
+                subscription=row["subscription"],
+                created_at=row["created_at"],
+                entry=row["entry"],
+            )
+            for row in rows
+        ]
+
+    def notice_records(self) -> list[NoticeRecord]:
+        """Every notice handled so far, most recently updated first."""
+        rows = self._db.execute("SELECT * FROM notices ORDER BY updated_at DESC, rowid DESC")
+        return [_notice_record(row) for row in rows]
+
     def endpoint_ids(self) -> list[str]:
         """Every endpoint that has history, alphabetically."""
         rows = self._db.execute("SELECT DISTINCT endpoint_id FROM checks ORDER BY endpoint_id")
@@ -393,3 +602,15 @@ class Store:
                 )
             )
         return results
+
+
+def _notice_record(row: sqlite3.Row) -> NoticeRecord:
+    return NoticeRecord(
+        provider=row["provider"],
+        notice_id=row["notice_id"],
+        published_at=row["published_at"],
+        status=row["status"],
+        detail=row["detail"],
+        attempts=row["attempts"],
+        updated_at=row["updated_at"],
+    )

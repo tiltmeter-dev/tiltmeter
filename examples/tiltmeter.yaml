@@ -58,6 +58,12 @@ llm:
 #   max_model_calls: 40
 #   ignore: [".env*", "*.pem", "*.key", "secrets*", ".tiltmeter"]
 
+# Change notices that API providers publish. `tiltmeter notices apply` opens a pull
+# request for each one that affects this repository.
+# subscriptions:
+#   - provider: api.partner.example
+#   - openapi: https://raw.githubusercontent.com/acme/api/main/openapi.json  # no notices needed
+
 notify: []
 #  - type: slack
 #    webhook_url: ${SLACK_WEBHOOK_URL}

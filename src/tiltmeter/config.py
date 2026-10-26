@@ -7,7 +7,10 @@ so secrets never sit in the config objects that get logged or traced.
 
 from __future__ import annotations
 
+import re
+import shlex
 from collections.abc import Sequence
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Annotated, Any, Literal
 from urllib.parse import urlsplit, urlunsplit
@@ -18,6 +21,13 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_valida
 from tiltmeter.core.models import ChangeKind, Severity
 from tiltmeter.core.paths import PathPattern, PathSyntaxError
 from tiltmeter.errors import ConfigError, UnknownEndpointError
+from tiltmeter.notices.models import (
+    HOST_PATTERN,
+    SdkName,
+    default_feed_url,
+    https_host,
+    parse_sdk_name,
+)
 
 DEFAULT_CONFIG_FILE = "tiltmeter.yaml"
 DEFAULT_MODEL = "claude-haiku-5-5"
@@ -150,6 +160,24 @@ class FixConfig(_Model):
         pattern=r"^[A-Za-z0-9][A-Za-z0-9._\-]*(/[A-Za-z0-9][A-Za-z0-9._\-]*)*$",
     )
     ignore: list[str] = Field(default_factory=lambda: list(DEFAULT_FIX_IGNORE))
+    test_command: list[str] | None = Field(default=None, min_length=1)
+    test_timeout: float = Field(default=300.0, gt=0, le=3600)
+    test_rounds: int = Field(default=1, ge=0, le=3)
+    test_env: list[str] = Field(default_factory=list)
+    test_network: bool = False
+
+    @field_validator("test_command", mode="before")
+    @classmethod
+    def _split_command(cls, value: Any) -> Any:
+        return shlex.split(value) if isinstance(value, str) else value
+
+    @field_validator("test_env")
+    @classmethod
+    def _check_env_names(cls, value: list[str]) -> list[str]:
+        for name in value:
+            if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", name):
+                raise ValueError(f"{name!r} is not an environment variable name")
+        return value
 
     @field_validator("branch_prefix")
     @classmethod
@@ -168,6 +196,67 @@ class FixConfig(_Model):
         return value
 
 
+class SubscriptionConfig(_Model):
+    """A provider whose changes this repository follows: its notices, or its spec."""
+
+    provider: str | None = Field(default=None, max_length=253, pattern=HOST_PATTERN)
+    feed: str | None = None
+    since: datetime | None = None
+    openapi: str | None = None
+    baseline: str | None = None
+    base_url: str | None = None
+    sdks: list[SdkName] = Field(default_factory=list, max_length=20)
+    versioned: bool = False
+    max_bytes: int = Field(default=32_000_000, ge=10_000, le=200_000_000)
+
+    @field_validator("feed", "openapi", "baseline", "base_url")
+    @classmethod
+    def _check_https(cls, value: str | None) -> str | None:
+        if value is not None and https_host(value) is None:
+            raise ValueError("must be an https URL")
+        return value
+
+    @field_validator("sdks", mode="before")
+    @classmethod
+    def _sdk_names(cls, value: Any) -> Any:
+        if isinstance(value, list):
+            return [parse_sdk_name(item) if isinstance(item, str) else item for item in value]
+        return value
+
+    @field_validator("since", mode="before")
+    @classmethod
+    def _midnight_utc(cls, value: Any) -> Any:
+        if isinstance(value, date) and not isinstance(value, datetime):
+            return datetime(value.year, value.month, value.day, tzinfo=UTC)
+        if isinstance(value, datetime) and value.tzinfo is None:
+            return value.replace(tzinfo=UTC)
+        return value
+
+    @model_validator(mode="after")
+    def _provider_or_feed(self) -> SubscriptionConfig:
+        if self.openapi is not None:
+            if self.feed is not None or self.since is not None:
+                raise ValueError("openapi does not go with feed or since")
+        elif self.provider is None and self.feed is None:
+            raise ValueError("needs a provider, a feed, or an openapi spec")
+        elif self.baseline is not None or self.base_url is not None or self.sdks or self.versioned:
+            raise ValueError("baseline, base_url, sdks and versioned only go with openapi")
+        return self
+
+    @property
+    def feed_url(self) -> str:
+        """What to read: the spec, the feed given, or the provider's well-known feed."""
+        if self.openapi is not None:
+            return self.openapi
+        if self.feed is not None:
+            return self.feed
+        return default_feed_url(self.provider or "")
+
+    @property
+    def label(self) -> str:
+        return self.provider or https_host(self.feed or self.openapi or "") or "feed"
+
+
 class Config(_Model):
     """The whole configuration file."""
 
@@ -179,10 +268,13 @@ class Config(_Model):
     llm: LLMConfig = Field(default_factory=LLMConfig)
     fix: FixConfig = Field(default_factory=FixConfig)
     notify: list[NotifierConfig] = Field(default_factory=list)
-    endpoints: list[EndpointConfig] = Field(min_length=1)
+    subscriptions: list[SubscriptionConfig] = Field(default_factory=list)
+    endpoints: list[EndpointConfig] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def _unique_ids(self) -> Config:
+        if not self.endpoints and not self.subscriptions:
+            raise ValueError("add at least one endpoint, or a subscription to a provider")
         seen: set[str] = set()
         for endpoint in self.endpoints:
             if endpoint.id in seen:
@@ -220,7 +312,10 @@ def load_config(path: Path) -> Config:
     except yaml.YAMLError as exc:
         raise ConfigError(f"{path}: invalid YAML: {exc}") from exc
     if not isinstance(data, dict):
-        raise ConfigError(f"{path}: expected a mapping with an `endpoints` list at the top level")
+        raise ConfigError(
+            f"{path}: expected a mapping with an `endpoints` or `subscriptions` list "
+            "at the top level"
+        )
     try:
         return Config.model_validate(data)
     except ValidationError as exc:
@@ -283,6 +378,13 @@ llm:
 #   agent: deepagents        # or claude-code, or codex
 #   model: claude-sonnet-5-5
 #   ignore: [".env*", "*.pem", "*.key", "secrets*", ".tiltmeter"]
+
+# Change notices that API providers publish: when one affects this repository,
+# `tiltmeter notices apply` lets the fix agent open the pull request.
+# subscriptions:
+#   - provider: api.partner.example                      # reads its /.well-known/api-changes.json
+#   - feed: https://status.other.example/api-changes.json
+#   - openapi: https://raw.githubusercontent.com/acme/api/main/openapi.json  # its spec, diffed
 
 # Where to send alerts.
 notify: []

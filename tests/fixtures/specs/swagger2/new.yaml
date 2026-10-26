@@ -1,0 +1,25 @@
+swagger: "2.0"
+info: {title: Legacy, version: "2"}
+host: legacy.example
+basePath: /api
+schemes: [https]
+paths:
+  /users:
+    post:
+      responses:
+        201:
+          description: created
+          schema: {$ref: "#/definitions/User"}
+  /users/{id}:
+    get:
+      responses:
+        200:
+          description: ok
+          schema: {$ref: "#/definitions/User"}
+definitions:
+  User:
+    type: object
+    required: [id, email]
+    properties:
+      id: {type: integer}
+      email: {type: string, x-nullable: true}

@@ -1,0 +1,35 @@
+{
+  "spec": "https://tiltmeter.dev/schemas/api-change-notice/v1.json",
+  "id": "billing-2026-11-03-phone-rename",
+  "provider": "api.partner.example",
+  "published_at": "2026-11-03T12:00:00Z",
+  "effective_at": "2026-12-01T00:00:00Z",
+  "summary": "Customers now return phone_number instead of phone, and balance as a decimal string.",
+  "endpoints": [
+    {
+      "method": "GET",
+      "url": "https://api.partner.example/v1/customers",
+      "changes": [
+        {
+          "path": "$.data[*].phone",
+          "kind": "field_removed",
+          "renamed_to": "$.data[*].phone_number"
+        },
+        {
+          "path": "$.data[*].balance",
+          "kind": "type_changed",
+          "before": "integer",
+          "after": "string",
+          "note": "Decimal string in the account currency, such as \"12.00\"."
+        }
+      ]
+    }
+  ],
+  "sdks": [
+    {
+      "ecosystem": "pypi",
+      "name": "partner-sdk",
+      "fixed_in": "3.0.0"
+    }
+  ]
+}

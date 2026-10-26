@@ -7,6 +7,7 @@ never touched. Commands run without a shell and never prompt for credentials.
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import subprocess
@@ -78,6 +79,18 @@ class Git:
             return "origin"
         return remotes[0] if remotes else None
 
+    def remote_branch_exists(self, remote: str, name: str) -> bool:
+        """Whether ``remote`` already has the branch; False when it cannot be asked."""
+        completed = _call(
+            ["git", "ls-remote", "--exit-code", "--heads", remote, f"refs/heads/{name}"],
+            cwd=self.root,
+        )
+        return completed.returncode == 0
+
+    def tracked_files(self) -> list[str]:
+        """Every file in the index, as repository-relative POSIX paths."""
+        return [name for name in self.run("ls-files", "-z").split("\0") if name]
+
     # -- worktrees ------------------------------------------------------------
 
     def add_worktree(self, path: Path, branch: str) -> Git:
@@ -134,6 +147,10 @@ class GitHub(Protocol):
         """Open a pull request and return its URL."""
         ...
 
+    def find_pull_request(self, *, cwd: Path, head: str) -> str | None:
+        """The URL of a pull request from ``head``, open or not, if there is one."""
+        ...
+
 
 class GhCli:
     """Pull requests through the GitHub CLI, which already holds the user's credentials."""
@@ -151,6 +168,18 @@ class GhCli:
         command = ["gh", "pr", "create", "--head", head, "--title", title, "--body-file", "-"]
         if base:
             command += ["--base", base]
-        output = _checked(command, cwd=cwd, stdin=body)
-        urls = [word for word in output.split() if word.startswith(("https://", "http://"))]
-        return urls[-1] if urls else output.strip()
+        return _pull_request_url(_checked(command, cwd=cwd, stdin=body))
+
+    def find_pull_request(self, *, cwd: Path, head: str) -> str | None:
+        command = ["gh", "pr", "list", "--head", head, "--state", "all", "--json", "url"]
+        try:
+            found = json.loads(_checked(command, cwd=cwd) or "[]")
+        except ValueError as exc:
+            raise FixError(f"`gh pr list` answered something unexpected: {exc}") from exc
+        urls = [item.get("url") for item in found if isinstance(item, dict)]
+        return next((url for url in urls if isinstance(url, str)), None)
+
+
+def _pull_request_url(output: str) -> str:
+    urls = [word for word in output.split() if word.startswith(("https://", "http://"))]
+    return urls[-1] if urls else output.strip()

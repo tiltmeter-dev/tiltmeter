@@ -39,6 +39,9 @@ fill the gaps with guesses, or retry until the budget is gone.
 - **Fixes, too.** `tiltmeter fix` hands the drift to an agent that adapts the code reading
   that API, shows you the diff and opens a pull request. Use the built-in LangChain Deep
   Agent, or your own Claude Code or Codex login.
+- **Provider mode.** API providers announce a change once, in a signed notice on their own
+  domain, and every customer that follows them gets the pull request before the old
+  responses stop. No server in between.
 - **A CI gate with alerts.** Exit codes fail the build on breaking drift. Slack and
   webhook alerts take one line of config.
 - **Local and private.** One SQLite file and no account. Credentials are expanded at
@@ -134,6 +137,43 @@ Commit, push and open a pull request? [y/N]: y
 
 `--dry-run` shows the diff and throws it away, and `--no-pr` commits to a local branch. The
 [fix guide](docs/fix.md) covers the flags, what the model sees and how to review the result.
+
+## Provider mode
+
+Providers shouldn't just announce changes; they should apply them. A provider describes a
+change once, in an [API change notice](docs/notice-spec.md): a small signed JSON file in
+Tiltmeter's vocabulary, served from its own domain next to its public key. Customers
+follow the provider, and each one gets a pull request that adapts its own code.
+
+```console
+# The provider, from two versions of its spec (or from a check of its staging API):
+$ tiltmeter notice create --from-openapi v2.yaml v3.yaml --effective 2026-12-01 -o notice.json
+$ tiltmeter notice sign notice.json --key api-change-key.pem
+$ tiltmeter notice publish notice.json --feed site/.well-known/api-changes.json
+
+# Each customer, on a schedule (the GitHub Action does it for you):
+$ tiltmeter notices apply --repo . --yes
+✓ opened https://github.com/acme/billing-service/pull/42
+- api.other.example  2026-11-20-invoices  not affected: no tracked file mentions api.other.example
+```
+
+- **Only signed notices act.** The signature is checked against the key the provider
+  serves at `/.well-known/api-change-key`, and every endpoint in the notice must be on the
+  provider's domain.
+- **No agent when nothing is affected.** A plain text search for the API's host, paths,
+  SDKs and the changed field names decides first, so repositories that don't use the API
+  cost nothing and get nothing.
+- **Same sandbox, same review.** The fix runs like `tiltmeter fix`, and the pull request
+  quotes the provider as plain text and lists what is left for a human.
+
+- **Works before providers do.** A provider that publishes no notices but an OpenAPI spec
+  can be followed directly: Tiltmeter keeps its last version, finds what changed in its
+  responses, and handles it like a notice.
+- **For providers, from CI.** Every pull request that changes your spec gets a draft
+  notice as a comment; merging signs and publishes it.
+
+Subscribe with a few lines of `tiltmeter.yaml`; the [notices guide](docs/notices.md)
+covers both sides.
 
 ## What counts as drift
 
@@ -247,6 +287,8 @@ Every option is described in the [configuration reference](docs/configuration.md
 - `tiltmeter fix` sends the change list and the files the agent opens to Anthropic. It
   never sees response values, `${VAR}` values or untracked files such as `.env`, and paths
   matching `fix.ignore` are blocked.
+- Provider notices come from third parties: they are applied only when signed by the
+  provider's domain, and their text reaches agents and pull requests as inert data.
 
 [SECURITY.md](SECURITY.md) has the full threat model and how to report a vulnerability.
 
@@ -254,10 +296,11 @@ Every option is described in the [configuration reference](docs/configuration.md
 
 - **Fixes in CI and over MCP.** Run `tiltmeter fix` from the GitHub Action when a scheduled
   check finds drift, and let agents request a fix through an MCP tool.
-- **Provider mode.** API vendors announce a change once and every customer gets the pull
-  request.
-- **Spec and changelog awareness.** Diff vendor OpenAPI specs and changelogs next to
-  observed responses.
+- **A hosted GitHub App for provider mode.** Install it instead of keeping a workflow:
+  providers push notices to tiltmeter.dev and the affected repositories get their pull
+  requests right away, with a dashboard for providers of who merged and who still reads
+  the old fields.
+- **Changelog awareness.** Read vendor changelogs next to observed responses.
 - **Hosted checks** and a team dashboard.
 
 ## Documentation
@@ -267,6 +310,8 @@ Every option is described in the [configuration reference](docs/configuration.md
 - [Agents and MCP](docs/agents.md): Claude Code, Cursor, Claude Desktop and LangChain.
 - [CI and scheduling](docs/ci.md): GitHub Actions, GitLab CI and cron.
 - [Fixing code](docs/fix.md): `tiltmeter fix`, the agent and how to review its pull requests.
+- [Provider notices](docs/notices.md): publish API changes as a provider, apply them as a customer.
+- [API change notices, v1](docs/notice-spec.md): the open format and how notices are signed.
 - [How it works](docs/how-it-works.md): shapes, baselines, the diff rules and the pipeline.
 - [FAQ and troubleshooting](docs/faq.md).
 

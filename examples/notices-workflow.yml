@@ -1,0 +1,27 @@
+# Applies the change notices of the API providers listed under `subscriptions` in
+# tiltmeter.yaml: one pull request per notice that affects this repository.
+# Copy it to .github/workflows/ and turn on "Allow GitHub Actions to create and approve
+# pull requests" under Settings > Actions > General.
+name: API change notices
+
+on:
+  schedule:
+    - cron: "23 */6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency: tiltmeter-notices
+
+jobs:
+  notices:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: tiltmeter-dev/tiltmeter-action@v1
+        with:
+          mode: notices
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}

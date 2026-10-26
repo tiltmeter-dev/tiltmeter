@@ -1,0 +1,329 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tiltmeter.dev/schemas/api-change-feed/v1.json",
+  "$defs": {
+    "ApiChangeNotice": {
+      "additionalProperties": false,
+      "description": "A provider's announcement of a change to the JSON responses of its API.",
+      "properties": {
+        "spec": {
+          "const": "https://tiltmeter.dev/schemas/api-change-notice/v1.json",
+          "title": "Spec",
+          "type": "string"
+        },
+        "id": {
+          "description": "Unique among the provider's notices; never reused.",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._\\-]{0,99}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "provider": {
+          "$ref": "#/$defs/Host",
+          "description": "The provider's domain. Endpoints and the signing key must live on it."
+        },
+        "published_at": {
+          "format": "date-time",
+          "title": "Published At",
+          "type": "string"
+        },
+        "effective_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "When the old responses stop.",
+          "title": "Effective At"
+        },
+        "summary": {
+          "$ref": "#/$defs/Text"
+        },
+        "endpoints": {
+          "items": {
+            "$ref": "#/$defs/NoticeEndpoint"
+          },
+          "maxItems": 50,
+          "minItems": 1,
+          "title": "Endpoints",
+          "type": "array"
+        },
+        "sdks": {
+          "items": {
+            "$ref": "#/$defs/SdkRelease"
+          },
+          "maxItems": 20,
+          "title": "Sdks",
+          "type": "array"
+        },
+        "signature": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NoticeSignature"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "spec",
+        "id",
+        "provider",
+        "published_at",
+        "summary",
+        "endpoints"
+      ],
+      "title": "ApiChangeNotice",
+      "type": "object"
+    },
+    "ChangeKind": {
+      "description": "What kind of difference a change is.",
+      "enum": [
+        "field_added",
+        "field_removed",
+        "field_now_optional",
+        "type_changed",
+        "nullable_introduced",
+        "enum_value_added",
+        "status_changed",
+        "content_type_changed",
+        "latency_regression"
+      ],
+      "title": "ChangeKind",
+      "type": "string"
+    },
+    "Ecosystem": {
+      "enum": [
+        "pypi",
+        "npm",
+        "go",
+        "maven",
+        "nuget",
+        "rubygems",
+        "cargo",
+        "packagist"
+      ],
+      "type": "string"
+    },
+    "Host": {
+      "maxLength": 253,
+      "pattern": "^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z](?:[a-z0-9-]{0,61}[a-z0-9])?$",
+      "type": "string"
+    },
+    "HttpMethod": {
+      "enum": [
+        "GET",
+        "POST",
+        "PUT",
+        "PATCH",
+        "DELETE"
+      ],
+      "type": "string"
+    },
+    "JsonPath": {
+      "maxLength": 200,
+      "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f\\u202a-\\u202e\\u2066-\\u2069`]*$",
+      "type": "string"
+    },
+    "NoticeChange": {
+      "additionalProperties": false,
+      "description": "One change to the responses, as Tiltmeter would report it.",
+      "properties": {
+        "path": {
+          "$ref": "#/$defs/JsonPath",
+          "description": "Location in the response body: $ is the root and [*] every array item."
+        },
+        "kind": {
+          "$ref": "#/$defs/ChangeKind"
+        },
+        "before": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Value"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The type or values before."
+        },
+        "after": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Value"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The type or values after."
+        },
+        "renamed_to": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JsonPath"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Where a removed field lives on. Only with field_removed."
+        },
+        "note": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Text"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The provider's own words on this change, such as the new format."
+        }
+      },
+      "required": [
+        "path",
+        "kind"
+      ],
+      "title": "NoticeChange",
+      "type": "object"
+    },
+    "NoticeEndpoint": {
+      "additionalProperties": false,
+      "description": "An endpoint whose responses change, and how.",
+      "properties": {
+        "method": {
+          "$ref": "#/$defs/HttpMethod"
+        },
+        "url": {
+          "description": "https URL without query string; {name} marks a path parameter.",
+          "maxLength": 2048,
+          "pattern": "^https://[A-Za-z0-9\\-._~:/?#\\[\\]@!$&'()*+,;=%{}]+$",
+          "title": "Url",
+          "type": "string"
+        },
+        "changes": {
+          "items": {
+            "$ref": "#/$defs/NoticeChange"
+          },
+          "maxItems": 200,
+          "minItems": 1,
+          "title": "Changes",
+          "type": "array"
+        }
+      },
+      "required": [
+        "method",
+        "url",
+        "changes"
+      ],
+      "title": "NoticeEndpoint",
+      "type": "object"
+    },
+    "NoticeSignature": {
+      "additionalProperties": false,
+      "description": "An Ed25519 signature over the notice, and where the provider publishes the key.",
+      "properties": {
+        "alg": {
+          "const": "ed25519",
+          "title": "Alg",
+          "type": "string"
+        },
+        "key": {
+          "description": "The provider's key file, always https://<provider>/.well-known/api-change-key.",
+          "maxLength": 2048,
+          "pattern": "^https://[A-Za-z0-9\\-._~:/?#\\[\\]@!$&'()*+,;=%{}]+$",
+          "title": "Key",
+          "type": "string"
+        },
+        "value": {
+          "description": "Base64 of the 64-byte signature.",
+          "pattern": "^[A-Za-z0-9+/]{86}==$",
+          "title": "Value",
+          "type": "string"
+        }
+      },
+      "required": [
+        "alg",
+        "key",
+        "value"
+      ],
+      "title": "NoticeSignature",
+      "type": "object"
+    },
+    "SdkRelease": {
+      "additionalProperties": false,
+      "description": "A release of the provider's SDK that already follows the change.",
+      "properties": {
+        "ecosystem": {
+          "$ref": "#/$defs/Ecosystem"
+        },
+        "name": {
+          "maxLength": 214,
+          "pattern": "^[A-Za-z0-9@][A-Za-z0-9@/:._\\-]*$",
+          "title": "Name",
+          "type": "string"
+        },
+        "fixed_in": {
+          "maxLength": 64,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9.+_\\-]*$",
+          "title": "Fixed In",
+          "type": "string"
+        }
+      },
+      "required": [
+        "ecosystem",
+        "name",
+        "fixed_in"
+      ],
+      "title": "SdkRelease",
+      "type": "object"
+    },
+    "Text": {
+      "maxLength": 500,
+      "minLength": 1,
+      "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f\\u202a-\\u202e\\u2066-\\u2069]*$",
+      "type": "string"
+    },
+    "Value": {
+      "maxLength": 200,
+      "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f\\u202a-\\u202e\\u2066-\\u2069]*$",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "The file a provider serves at ``/.well-known/api-changes.json``.\n\nReaders validate each notice on its own, so one bad entry never hides the others.",
+  "properties": {
+    "spec": {
+      "const": "https://tiltmeter.dev/schemas/api-change-feed/v1.json",
+      "title": "Spec",
+      "type": "string"
+    },
+    "notices": {
+      "description": "Newest first.",
+      "items": {
+        "$ref": "#/$defs/ApiChangeNotice"
+      },
+      "maxItems": 500,
+      "title": "Notices",
+      "type": "array"
+    }
+  },
+  "required": [
+    "spec",
+    "notices"
+  ],
+  "title": "NoticeFeed",
+  "type": "object"
+}

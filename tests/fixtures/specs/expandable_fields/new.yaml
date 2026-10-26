@@ -1,0 +1,401 @@
+# Stripe-style "id or expanded object" fields: node_0 to node_11 each point at the next
+# three times, so copying every $ref into place would take about 3^12 schemas.
+openapi: 3.0.3
+info:
+  title: Expandable fields
+  version: '2026-09-30'
+servers:
+- url: https://api.ledger.example
+paths:
+  /v1/nodes/{id}:
+    get:
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/node_0'
+  /v1/payments/{id}:
+    get:
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/payment'
+components:
+  schemas:
+    node_0:
+      type: object
+      required:
+      - id
+      - name
+      - total
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        total:
+          type: integer
+        a:
+          anyOf:
+          - type: string
+            maxLength: 5000
+          - $ref: '#/components/schemas/node_1'
+        b:
+          anyOf:
+          - type: string
+            maxLength: 5000
+          - $ref: '#/components/schemas/node_1'
+        c:
+          anyOf:
+          - type: string
+            maxLength: 5000
+          - $ref: '#/components/schemas/node_1'
+        status:
+          type: string
+          enum:
+          - active
+          - past_due
+          - suspended
+    node_1:
+      type: object
+      required:
+      - id
+      - display_name
+      - total
+      properties:
+        id:
+          type: string
+        total:
+          type: integer
+        a:
+          anyOf:
+          - type: string
+            maxLength: 5000
+          - $ref: '#/components/schemas/node_2'
+        b:
+          anyOf:
+          - type: string
+            maxLength: 5000
+          - $ref: '#/components/schemas/node_2'
+        c:
+          anyOf:
+          - type: string
+            maxLength: 5000
+          - $ref: '#/components/schemas/node_2'
+        display_name:
+          type: string
+    node_2:
+      type: object
+      required:
+      - id
+      - name
+      - total
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        total:
+          type: string
+        a:
+          anyOf:
+          - type: string
+            maxLength: 5000
+          - $ref: '#/components/schemas/node_3'
+        b:
+          anyOf:
+          - type: string
+            maxLength: 5000
+          - $ref: '#/components/schemas/node_3'
+        c:
+          anyOf:
+          - type: string
+            maxLength: 5000
+          - $ref: '#/components/schemas/node_3'
+    node_3:
+      type: object
+      required:
+      - id
+      - name
+      - total
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        total:
+          type: integer
+        a:
+          anyOf:
+          - type: string
+            maxLength: 5000
+          - $ref: '#/components/schemas/node_4'
+        b:
+          anyOf:
+          - type: string
+            maxLength: 5000
+          - $ref: '#/components/schemas/node_4'
+        c:
+          anyOf:
+          - type: string
+            maxLength: 5000
+          - $ref: '#/components/schemas/node_4'
+    node_4:
+      type: object
+      required:
+      - id
+      - name
+      - total
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        total:
+          type: integer
+        a:
+          anyOf:
+          - type: string
+            maxLength: 5000
+          - $ref: '#/components/schemas/node_5'
+        b:
+          anyOf:
+          - type: string
+            maxLength: 5000
+          - $ref: '#/components/schemas/node_5'
+        c:
+          anyOf:
+          - type: string
+            maxLength: 5000
+          - $ref: '#/components/schemas/node_5'
+    node_5:
+      type: object
+      required:
+      - id
+      - name
+      - total
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        total:
+          type: integer
+        a:
+          anyOf:
+          - type: string
+            maxLength: 5000
+          - $ref: '#/components/schemas/node_6'
+        b:
+          anyOf:
+          - type: string
+            maxLength: 5000
+          - $ref: '#/components/schemas/node_6'
+        c:
+          anyOf:
+          - type: string
+            maxLength: 5000
+          - $ref: '#/components/schemas/node_6'
+    node_6:
+      type: object
+      required:
+      - id
+      - name
+      - total
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        total:
+          type: integer
+        a:
+          anyOf:
+          - type: string
+            maxLength: 5000
+          - $ref: '#/components/schemas/node_7'
+        b:
+          anyOf:
+          - type: string
+            maxLength: 5000
+          - $ref: '#/components/schemas/node_7'
+        c:
+          anyOf:
+          - type: string
+            maxLength: 5000
+          - $ref: '#/components/schemas/node_7'
+    node_7:
+      type: object
+      required:
+      - id
+      - name
+      - total
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        total:
+          type: integer
+        a:
+          anyOf:
+          - type: string
+            maxLength: 5000
+          - $ref: '#/components/schemas/node_8'
+        b:
+          anyOf:
+          - type: string
+            maxLength: 5000
+          - $ref: '#/components/schemas/node_8'
+        c:
+          anyOf:
+          - type: string
+            maxLength: 5000
+          - $ref: '#/components/schemas/node_8'
+    node_8:
+      type: object
+      required:
+      - id
+      - name
+      - total
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        total:
+          type: integer
+        a:
+          anyOf:
+          - type: string
+            maxLength: 5000
+          - $ref: '#/components/schemas/node_9'
+        b:
+          anyOf:
+          - type: string
+            maxLength: 5000
+          - $ref: '#/components/schemas/node_9'
+        c:
+          anyOf:
+          - type: string
+            maxLength: 5000
+          - $ref: '#/components/schemas/node_9'
+    node_9:
+      type: object
+      required:
+      - id
+      - name
+      - total
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        total:
+          type: integer
+        a:
+          anyOf:
+          - type: string
+            maxLength: 5000
+          - $ref: '#/components/schemas/node_10'
+        b:
+          anyOf:
+          - type: string
+            maxLength: 5000
+          - $ref: '#/components/schemas/node_10'
+        c:
+          anyOf:
+          - type: string
+            maxLength: 5000
+          - $ref: '#/components/schemas/node_10'
+    node_10:
+      type: object
+      required:
+      - id
+      - name
+      - total
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        total:
+          type: integer
+        a:
+          anyOf:
+          - type: string
+            maxLength: 5000
+          - $ref: '#/components/schemas/node_11'
+        b:
+          anyOf:
+          - type: string
+            maxLength: 5000
+          - $ref: '#/components/schemas/node_11'
+        c:
+          anyOf:
+          - type: string
+            maxLength: 5000
+          - $ref: '#/components/schemas/node_11'
+    node_11:
+      type: object
+      required:
+      - id
+      - name
+      - total
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        total:
+          type: integer
+    customer:
+      type: object
+      required:
+      - id
+      - email
+      properties:
+        id:
+          type: string
+        email:
+          type: string
+    deleted_customer:
+      type: object
+      required:
+      - id
+      - deleted
+      properties:
+        id:
+          type: string
+        deleted:
+          type: boolean
+          enum:
+          - true
+    currency:
+      type: string
+      enum:
+      - eur
+      - usd
+      - gbp
+    payment:
+      type: object
+      required:
+      - id
+      - customer
+      - currency
+      properties:
+        id:
+          type: string
+        customer:
+          anyOf:
+          - type: string
+            maxLength: 5000
+          - $ref: '#/components/schemas/customer'
+          - $ref: '#/components/schemas/deleted_customer'
+        currency:
+          $ref: '#/components/schemas/currency'

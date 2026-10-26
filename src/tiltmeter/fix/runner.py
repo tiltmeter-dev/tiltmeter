@@ -8,73 +8,248 @@ session removes the worktree, and the branch too unless something was committed.
 
 from __future__ import annotations
 
+import hashlib
 import re
 import shutil
 import tempfile
+import textwrap
 from collections.abc import Sequence
 from pathlib import Path
 from types import TracebackType
 from typing import Any, Final
 
+from tiltmeter.core.models import ChangeKind
 from tiltmeter.errors import FixError
 from tiltmeter.fix.git import Git, GitHub
 from tiltmeter.fix.ignore import is_ignored
-from tiltmeter.fix.models import FixOutcome, FixPreview, FixReport, FixRequest, FixStatus
+from tiltmeter.fix.models import (
+    FixApi,
+    FixOutcome,
+    FixPreview,
+    FixReport,
+    FixRequest,
+    FixStatus,
+    FixTarget,
+    NoticeSource,
+    TestRun,
+)
+from tiltmeter.notices.models import SpecInfo
 
 PROJECT_URL: Final = "https://github.com/tiltmeter-dev/tiltmeter"
 DEFAULT_BRANCH_PREFIX: Final = "tiltmeter/fix"
+MAX_SLUG: Final = 80
+PLAIN_WIDTH: Final = 100
+# Rows of change tables in one pull request; GitHub refuses bodies past 65,536 characters.
+MAX_CHANGES_IN_BODY: Final = 100
+
+
+def _slug(text: str) -> str:
+    return re.sub(r"[^A-Za-z0-9]+", "-", text).strip("-").lower()
 
 
 def default_branch(request: FixRequest, prefix: str = DEFAULT_BRANCH_PREFIX) -> str:
-    slug = re.sub(r"[^A-Za-z0-9]+", "-", request.endpoint_id).strip("-").lower() or "api"
+    if request.notice is not None:
+        notice = request.notice
+        slug = _slug(f"{notice.provider}-{notice.id}")[:MAX_SLUG].strip("-")
+        # Different notices can share a slug; the digest keeps their branches apart.
+        digest = hashlib.sha256(f"{notice.provider}\0{notice.id}".encode()).hexdigest()[:8]
+        return f"{prefix}-{slug}-{digest}"
+    slug = _slug(request.subject) or "api"
     return f"{prefix}-{slug}-{request.check_id}"
 
 
 def commit_title(request: FixRequest) -> str:
-    return f"Adapt to the {request.endpoint_id} API change"
+    title = f"Adapt to the {request.subject} API change"
+    notice = request.notice
+    if notice is not None and notice.spec is not None and notice.spec.new_version:
+        title += f" in spec {notice.spec.new_version}"
+    elif notice is not None and notice.effective_at:
+        title += f" effective {notice.effective_at[:10]}"
+    return title
 
 
 def commit_body(request: FixRequest, report: FixReport) -> str:
-    return (
-        f"{report.summary}\n\n"
-        f"Tiltmeter check #{request.check_id} found the change in "
-        f"{request.method} {request.url}."
-    )
+    if request.notice is not None and request.notice.spec is not None:
+        found = (
+            f"Tiltmeter found the change by comparing two versions of "
+            f"{request.notice.provider}'s OpenAPI spec ({request.notice.spec.url})."
+        )
+    elif request.notice is not None:
+        found = f"{request.notice.provider} announced the change in notice {request.notice.id}."
+    else:
+        api = request.apis[0]
+        found = f"Tiltmeter check #{request.check_id} found the change in {api.method} {api.url}."
+    return f"{report.summary}\n\n{found}"
 
 
 def _cell(text: str) -> str:
     return text.replace("|", "\\|").replace("\n", " ")
 
 
-def pull_request_body(request: FixRequest, preview: FixPreview, *, model_name: str) -> str:
+def _code(text: str) -> str:
+    """Third-party text as inline code, which renders no links, mentions or HTML."""
+    return f"`{_cell(text).replace('`', "'")}`"
+
+
+def _plain_text(lines: Sequence[str]) -> list[str]:
+    """Third-party text as a plain code block: no links, mentions, images or HTML."""
+    body = [textwrap.fill(line.replace("`", "'"), PLAIN_WIDTH) for line in lines]
+    return ["```text", *body, "```"]
+
+
+def _changes_table(
+    api: FixApi,
+    shown: Sequence[FixTarget] | None = None,
+    *,
+    announced: bool,
+    guessed: bool = False,
+) -> list[str]:
+    """The changes of one API, or the ``shown`` ones. A notice may leave a type out: that
+    is "—", not absent.
+
+    A notice's values are the provider's words, so they are shown as inline code.
+    """
+    unknown = "—" if announced else "(absent)"
+    value = _code if announced else _cell
+    targets = api.targets if shown is None else shown
+    if not targets:
+        return [f"{len(api.targets)} changes, not listed."]
+    lines = ["| Severity | Change | Path | Before | After |", "|---|---|---|---|---|"]
+    for target in targets:
+        removed = target.kind is ChangeKind.FIELD_REMOVED
+        before = value(target.before) if target.before else unknown
+        after = value(target.after) if target.after else ("(absent)" if removed else unknown)
+        if target.renamed_to:
+            renamed = "renamed to" if announced and not guessed else "probably renamed to"
+            after += f", {renamed} {_code(target.renamed_to)}"
+        lines.append(
+            f"| {target.severity.value} | {target.kind.value} | {_code(target.path)} "
+            f"| {before} | {after} |"
+        )
+    if len(targets) < len(api.targets):
+        lines += ["", f"And {len(api.targets) - len(targets)} more changes, not listed."]
+    return lines
+
+
+def _notice_section(request: FixRequest, notice: NoticeSource) -> list[str]:
+    when = f"published {notice.published_at[:10]}"
+    if notice.effective_at:
+        when += f" and effective {notice.effective_at[:10]}"
+    trust = (
+        f"Its signature was verified against `{notice.key}`."
+        if notice.key
+        else "It was not signed; it was read from a file the person running Tiltmeter trusts."
+    )
     lines = [
         "## What changed in the API",
         "",
-        f"Tiltmeter check #{request.check_id} found drift in `{request.endpoint_id}` "
-        f"(`{request.method} {request.url}`).",
+        f"`{notice.provider}` announced this change in notice `{notice.id}`, {when}. {trust}",
         "",
-        "| Severity | Change | Path | Before | After |",
-        "|---|---|---|---|---|",
+        "The provider's summary, quoted as they wrote it:",
+        "",
+        *_plain_text([notice.summary]),
     ]
-    for target in request.targets:
-        after = target.after or "(absent)"
-        if target.renamed_to:
-            after += f", probably renamed to `{target.renamed_to}`"
-        lines.append(
-            f"| {target.severity.value} | {target.kind.value} | `{_cell(target.path)}` "
-            f"| {_cell(target.before or '(absent)')} | {_cell(after)} |"
-        )
+    for api, shown in zip(request.apis, request.shown(MAX_CHANGES_IN_BODY), strict=True):
+        lines += ["", f"**{_code(f'{api.method} {api.url}')}**", ""]
+        lines += _changes_table(api, shown, announced=True)
+    notes = [f"{t.path}: {t.note}" for t in request.targets if t.note]
+    if notes:
+        lines += ["", "The provider's notes:", "", *_plain_text(notes)]
+    if notice.sdks:
+        releases = ", ".join(f"{s.ecosystem} `{s.name}` {s.fixed_in}" for s in notice.sdks)
+        lines += ["", f"SDK releases that already follow the change: {releases}."]
+    return lines
+
+
+def _spec_section(request: FixRequest, notice: NoticeSource, spec: SpecInfo) -> list[str]:
+    versions = f"{spec.old_version or '?'} to {spec.new_version or '?'}"
+    where = f"at {_code(spec.url)}"
+    if spec.baseline_url:
+        where = f"at {_code(spec.baseline_url)} and {_code(spec.url)}"
+    lines = [
+        "## What changed in the API",
+        "",
+        f"Tiltmeter compared two versions of the OpenAPI spec `{notice.provider}` publishes "
+        f"{where}: {_code(versions)}, fetched {spec.old_fetched_at[:10]} and "
+        f"{spec.new_fetched_at[:10]}. The provider did not announce this change: a spec can "
+        "run ahead of production or lag behind it, and renames are guessed from similar "
+        "names.",
+    ]
+    if spec.new_api_version:
+        lines += [
+            "",
+            f"This is a new API version. Clients that pin {_code(spec.old_version or '?')} keep "
+            "their responses until they upgrade.",
+        ]
+    for api, shown in zip(request.apis, request.shown(MAX_CHANGES_IN_BODY), strict=True):
+        lines += ["", f"**{_code(f'{api.method} {api.url}')}**", ""]
+        lines += _changes_table(api, shown, announced=True, guessed=True)
+    if spec.omitted_endpoints:
+        lines += [
+            "",
+            f"{spec.omitted_endpoints} other changed endpoints are left out: nothing here "
+            "seems to use them.",
+        ]
+    return lines
+
+
+def _check_section(request: FixRequest) -> list[str]:
+    api = request.apis[0]
+    lines = [
+        "## What changed in the API",
+        "",
+        f"Tiltmeter check #{request.check_id} found drift in `{api.endpoint_id}` "
+        f"(`{api.method} {api.url}`).",
+        "",
+        *_changes_table(api, request.shown(MAX_CHANGES_IN_BODY)[0], announced=False),
+    ]
     if request.explanation is not None:
         lines += ["", request.explanation.summary]
+    return lines
+
+
+def _tests_section(tests: TestRun) -> list[str]:
+    command = _code(tests.command)
+    if tests.status == "skipped":
+        return [f"{command} did not run: {tests.reason}."]
+    again = " after the agent saw them fail and edited again" if tests.rounds > 1 else ""
+    if tests.status == "passed":
+        how = "without network access" if tests.offline else "with network access"
+        return [f"{command} passed on these edits{again}. It ran {how} and without secrets."]
+    tail = tests.output.strip().splitlines()[-30:] or ["(no output)"]
+    return [f"{command} fails on these edits. The end of its output:", "", *_plain_text(tail)]
+
+
+def pull_request_body(request: FixRequest, preview: FixPreview, *, model_name: str) -> str:
+    notice = request.notice
+    if notice is not None and notice.spec is not None:
+        lines = _spec_section(request, notice, notice.spec)
+    elif notice is not None:
+        lines = _notice_section(request, notice)
+    else:
+        lines = _check_section(request)
     lines += ["", "## What this pull request changes", "", preview.report.summary, ""]
     lines += [f"- `{name}`" for name in preview.files]
-    if preview.report.unresolved:
-        lines += ["", "## Left for a human", ""]
-        lines += [f"- {item}" for item in preview.report.unresolved]
+    if preview.tests is not None:
+        lines += ["", "## Tests", "", *_tests_section(preview.tests)]
+    unresolved = list(preview.report.unresolved)
+    if preview.tests is not None and preview.tests.status == "failed":
+        unresolved.insert(0, "The tests still fail with these edits: see Tests above.")
+    lines += ["", "## Left for a human", ""]
+    if unresolved:
+        lines += [f"- {item}" for item in unresolved]
+    else:
+        lines.append("Nothing: the agent flagged nothing it could not decide.")
+    if notice is not None and notice.spec is not None:
+        origin = f"from a diff of {notice.provider}'s OpenAPI spec"
+    elif notice is not None:
+        origin = f"from {notice.provider}'s change notice `{notice.id}`"
+    else:
+        origin = f"with `tiltmeter fix {request.check_id}`"
     lines += [
         "",
         "---",
-        f"Opened by [Tiltmeter]({PROJECT_URL}) with `tiltmeter fix {request.check_id}`. "
+        f"Opened by [Tiltmeter]({PROJECT_URL}) {origin}. "
         f"An AI agent ({model_name}) wrote these edits; review them like any other change.",
     ]
     return "\n".join(lines) + "\n"
@@ -137,7 +312,14 @@ class FixSession:
         """Where the agent works."""
         return self.worktree.root
 
-    def review(self, report: FixReport, *, ignore: Sequence[str] = ()) -> FixPreview:
+    @property
+    def scratch(self) -> Path:
+        """A folder of the session's own, outside the worktree, removed with it."""
+        return self._workspace
+
+    def review(
+        self, report: FixReport, *, ignore: Sequence[str] = (), tests: TestRun | None = None
+    ) -> FixPreview:
         """Stage everything the agent changed and describe it."""
         self.worktree.stage_all()
         files = self.worktree.staged_files()
@@ -151,13 +333,17 @@ class FixSession:
             diff=self.worktree.staged_diff() if files else "",
             report=report,
             ignored=[name for name in files if is_ignored(name, ignore)],
+            tests=tests,
         )
 
     def outcome(self, status: FixStatus, preview: FixPreview | None, **fields: Any) -> FixOutcome:
+        notice = self.request.notice
         return FixOutcome(
             status=status,
             check_id=self.request.check_id,
-            endpoint_id=self.request.endpoint_id,
+            endpoint_id=self.request.apis[0].endpoint_id if self.request.apis else None,
+            notice_id=notice.id if notice else None,
+            provider=notice.provider if notice else None,
             branch=self.branch if self._committed else None,
             base=self.base,
             preview=preview,

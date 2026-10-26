@@ -190,6 +190,9 @@ class FakeGitHub:
         self.created.append({"head": head, "base": base, "title": title, "body": body})
         return PR_URL
 
+    def find_pull_request(self, *, cwd: Path, head: str) -> str | None:
+        return next((PR_URL for pr in self.created if pr["head"] == head), None)
+
 
 def tool_call(name: str, call_id: str, **args: Any) -> AIMessage:
     return AIMessage(content="", tool_calls=[{"name": name, "args": args, "id": call_id}])

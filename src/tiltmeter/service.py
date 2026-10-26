@@ -2,7 +2,8 @@
 
 It owns the config, the history store and the HTTP client, runs the LangGraph
 check for each endpoint (with bounded concurrency), and answers the read-only
-questions agents and humans ask afterwards.
+questions agents and humans ask afterwards. It also reads the change notices of
+the providers the config subscribes to, and remembers what was done about them.
 """
 
 from __future__ import annotations
@@ -10,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import os
 from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
 from types import TracebackType
@@ -23,6 +25,8 @@ from tiltmeter.core.models import (
     CheckResult,
     DriftStatus,
     EndpointSummary,
+    NoticeRecord,
+    NoticeStatus,
     SchemaReport,
     Severity,
     StoredChange,
@@ -36,9 +40,30 @@ from tiltmeter.fix.models import FixRequest
 from tiltmeter.fix.request import build_fix_request
 from tiltmeter.graph import DriftContext, build_graph
 from tiltmeter.llm.explainer import Explainer, build_request, has_credentials
+from tiltmeter.notices.impact import Candidate, choose_endpoints
+from tiltmeter.notices.models import ApiChangeNotice, FeedReport, SdkName
+from tiltmeter.notices.reader import NoticeReader, follow
+from tiltmeter.notices.spec import Chooser, SpecFollow, follow_spec
 from tiltmeter.notify import Notifier, build_notifiers
 
 DEFAULT_DRIFT_WINDOW: Final = timedelta(days=7)
+
+
+def by_severity(
+    candidates: Sequence[Candidate], hosts: Sequence[str], sdks: Sequence[SdkName]
+) -> list[int]:
+    """Endpoint selection without a repository to look at: the most severe changes first."""
+    return choose_endpoints(None, candidates)
+
+
+@dataclass(slots=True)
+class Followed:
+    """Every subscription's report, and for openapi ones, what to store after applying."""
+
+    reports: list[FeedReport]
+    specs: list[SpecFollow]
+
+
 NO_API_KEY: Final = "LLM explanation skipped: set ANTHROPIC_API_KEY to explain drift with Claude"
 
 
@@ -206,6 +231,91 @@ class DriftService:
         )
         return build_fix_request(
             endpoint, check, baseline=baseline.shape, observed=self.store.check_shape(check_id)
+        )
+
+    # -- notices --------------------------------------------------------------
+
+    async def read_notices(self, *, chooser: Chooser = by_severity) -> Followed:
+        """Every subscription's notices and spec changes, and whether they are new here.
+
+        Nothing is written: ``remember_subscriptions`` and ``keep_spec`` do that when the
+        notices are applied. ``chooser`` picks the endpoints of a spec change that matter.
+        """
+        subscriptions = self.config.subscriptions
+        if not subscriptions:
+            raise TiltmeterError(
+                "the config has no subscriptions; add a provider under `subscriptions`"
+            )
+        now = self._clock()
+        feeds = [sub for sub in subscriptions if sub.openapi is None]
+        # A client of its own, opened and closed in this event loop.
+        async with httpx.AsyncClient() as http:
+            reader = NoticeReader(http)
+            reports = await follow(
+                reader, feeds, self.store.notice_record, first_seen=self.store.first_seen, now=now
+            )
+            specs = [
+                await follow_spec(
+                    reader,
+                    sub,
+                    baseline=self.store.spec_baseline(sub.feed_url),
+                    frozen=self.store.spec_changes(sub.feed_url),
+                    record_for=self.store.notice_record,
+                    chooser=chooser,
+                    now=now,
+                )
+                for sub in subscriptions
+                if sub.openapi is not None
+            ]
+        by_feed, by_spec = iter(reports), iter(specs)
+        ordered = [
+            next(by_spec).report if sub.openapi is not None else next(by_feed)
+            for sub in subscriptions
+        ]
+        return Followed(ordered, specs)
+
+    def remember_subscriptions(self) -> None:
+        """Note when each feed was first followed, so later runs skip older history."""
+        at = to_iso(self._clock())
+        for sub in self.config.subscriptions:
+            if sub.openapi is None:
+                self.store.remember_subscription(sub.feed_url, at)
+
+    def keep_spec(self, followed: SpecFollow) -> None:
+        """Store a spec's new baseline, freezing its change first when there is one."""
+        latest, fresh = followed.latest, followed.fresh
+        if latest is None:
+            return
+        if fresh is None or fresh.notice is None:
+            self.store.save_spec_baseline(
+                latest.url,
+                digest=latest.digest,
+                version=latest.version,
+                fetched_at=latest.fetched_at,
+                body=latest.body,
+            )
+            return
+        self.store.freeze_spec_change(
+            latest.url,
+            provider=fresh.notice.provider,
+            notice_id=fresh.notice.id,
+            entry=fresh.model_dump_json(),
+            digest=latest.digest,
+            version=latest.version,
+            fetched_at=latest.fetched_at,
+            body=latest.body,
+        )
+
+    def record_notice(
+        self, notice: ApiChangeNotice, status: NoticeStatus, detail: str | None = None
+    ) -> NoticeRecord:
+        return self.store.record_notice(
+            notice.provider,
+            notice.id,
+            published_at=to_iso(notice.published_at),
+            status=status,
+            detail=detail,
+            at=to_iso(self._clock()),
         )
 
     # -- questions ------------------------------------------------------------
