@@ -46,6 +46,7 @@ class TestRun(BaseModel):
     rounds: int = Field(default=1, description="How many times the agent edited the code.")
     output: str = Field(default="", description="The end of the test output.")
     reason: str | None = Field(default=None, description="Why the tests were skipped.")
+    offline: bool = Field(default=True, description="Whether the network was cut for them.")
 
 
 class FixApi(BaseModel):

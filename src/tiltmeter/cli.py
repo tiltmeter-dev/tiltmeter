@@ -552,6 +552,7 @@ def _test_and_retry(
                 env_names=settings.test_env,
                 network=settings.test_network,
                 home=session.scratch / "home",
+                project=session.repo.root,
             )
         tests = tests.model_copy(update={"rounds": rounds})
         if tests.status != "failed" or rounds > settings.test_rounds:

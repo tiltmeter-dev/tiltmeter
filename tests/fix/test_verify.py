@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
@@ -23,7 +24,13 @@ def edited(tmp_path: Path) -> Git:
 
 def run(worktree: Git, script: str, tmp_path: Path, **options: object) -> TestRun:
     settings: dict[str, object] = {"timeout": 30.0, "network": True, **options}
-    return run_tests(worktree, [PY, "-c", script], home=tmp_path / "home", **settings)  # type: ignore[arg-type]
+    return run_tests(
+        worktree,
+        [PY, "-c", script],
+        home=tmp_path / "home",
+        project=worktree.root,
+        **settings,  # type: ignore[arg-type]
+    )
 
 
 def test_tests_see_the_edits_and_only_the_edits_are_kept(tmp_path: Path) -> None:
@@ -71,6 +78,25 @@ def test_tests_get_no_secrets_and_a_home_of_their_own(
     assert "None yes" in result.output
     assert "s3cret" not in result.output
     assert str(tmp_path / "home") in result.output
+
+
+def test_tests_do_not_get_tiltmeters_own_virtual_environment(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from tiltmeter.fix.verify import test_environment
+
+    tool = tmp_path / "uv-cache" / "archive-v0" / "abc"  # where uvx puts Tiltmeter
+    project = tmp_path / "app"
+    path = os.pathsep.join([str(tool / "bin"), "/opt/python/bin", "/usr/bin"])
+    monkeypatch.setenv("PATH", path)
+    monkeypatch.setattr("sys.prefix", str(tool))
+    monkeypatch.setattr("sys.base_prefix", "/usr")
+    env = test_environment([], tmp_path / "home", project)
+    assert env["PATH"] == os.pathsep.join(["/opt/python/bin", "/usr/bin"])
+    # Installed in the project's own environment, it is the one the tests need.
+    monkeypatch.setattr("sys.prefix", str(project / ".venv"))
+    monkeypatch.setenv("PATH", os.pathsep.join([str(project / ".venv" / "bin"), "/usr/bin"]))
+    assert test_environment([], tmp_path / "home", project)["PATH"].startswith(str(project))
 
 
 def test_tests_are_skipped_when_the_network_cannot_be_cut(

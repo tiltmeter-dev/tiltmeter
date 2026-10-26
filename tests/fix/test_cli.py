@@ -270,6 +270,7 @@ def test_failing_tests_go_back_to_the_agent_until_they_pass(
     [pr] = github.created
     assert "## Tests" in pr["body"]
     assert "passed on these edits after the agent saw them fail" in pr["body"]
+    assert "It ran with network access and without secrets." in pr["body"]
     diff = git(repo, "diff", "main", BRANCH)
     assert "phone_number" in diff and "# FIXED" in diff  # both rounds are in the commit  # noqa: PT018
 

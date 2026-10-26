@@ -214,10 +214,8 @@ def _tests_section(tests: TestRun) -> list[str]:
         return [f"{command} did not run: {tests.reason}."]
     again = " after the agent saw them fail and edited again" if tests.rounds > 1 else ""
     if tests.status == "passed":
-        return [
-            f"{command} passed on these edits{again}, with no network access "
-            "unless `fix.test_network` allows it."
-        ]
+        how = "without network access" if tests.offline else "with network access"
+        return [f"{command} passed on these edits{again}. It ran {how} and without secrets."]
     tail = tests.output.strip().splitlines()[-30:] or ["(no output)"]
     return [f"{command} fails on these edits. The end of its output:", "", *_plain_text(tail)]
 

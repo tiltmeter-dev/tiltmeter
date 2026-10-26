@@ -7,6 +7,10 @@ on Linux, ``sandbox-exec`` on macOS; without either the tests are skipped), an
 environment with only ``PATH``, the locale and the names in ``fix.test_env``, and an
 empty home folder. Whatever the run writes to the worktree is thrown away afterwards, so
 only the agent's own edits are ever committed.
+
+``PATH`` leaves out Tiltmeter's own virtual environment when it lives outside the
+repository, as with ``uvx``, ``pipx`` or the GitHub Action: ``python`` must be the
+project's, not the one Tiltmeter runs on.
 """
 
 from __future__ import annotations
@@ -59,11 +63,22 @@ def offline_prefix() -> tuple[str, ...] | None:
     return None
 
 
-def test_environment(names: Sequence[str], home: Path) -> dict[str, str]:
+def test_environment(names: Sequence[str], home: Path, project: Path) -> dict[str, str]:
     """The environment the tests run with: the base variables, the named ones, a new home."""
     env = {name: os.environ[name] for name in (*BASE_ENV, *names) if name in os.environ}
     env |= {"HOME": str(home), "USERPROFILE": str(home), "TMPDIR": str(home)}
+    if "PATH" in env:
+        env["PATH"] = _without_own_environment(env["PATH"], project)
     return env
+
+
+def _without_own_environment(path: str, project: Path) -> str:
+    prefix = Path(sys.prefix).resolve()
+    if sys.prefix == sys.base_prefix or prefix.is_relative_to(project.resolve()):
+        return path  # no virtual environment, or the project's own
+    scripts = prefix / ("Scripts" if os.name == "nt" else "bin")
+    kept = [entry for entry in path.split(os.pathsep) if entry and Path(entry).resolve() != scripts]
+    return os.pathsep.join(kept)
 
 
 def run_tests(
@@ -74,8 +89,12 @@ def run_tests(
     env_names: Sequence[str] = (),
     network: bool = False,
     home: Path,
+    project: Path,
 ) -> TestRun:
-    """Run ``command`` on the worktree's current edits and put the edits back as they were."""
+    """Run ``command`` on the worktree's current edits and put the edits back as they were.
+
+    ``project`` is the user's checkout, which tells a project's virtual environment from
+    Tiltmeter's own."""
     shown = shlex.join(command)
     prefix: tuple[str, ...] = ()
     if not network:
@@ -90,14 +109,17 @@ def run_tests(
         prefix = found
     home.mkdir(parents=True, exist_ok=True)
     worktree.stage_all()  # the agent's edits, to restore once the tests are done
-    env = test_environment(env_names, home)
+    env = test_environment(env_names, home, project)
     try:
         passed, output = _run([*prefix, *command], worktree.root, env, timeout)
     finally:
         worktree.run("checkout", "--", ".")
         worktree.run("clean", "-f", "-d", "-x", "-q")
     return TestRun(
-        command=shown, status="passed" if passed else "failed", output=output[-MAX_OUTPUT:]
+        command=shown,
+        status="passed" if passed else "failed",
+        output=output[-MAX_OUTPUT:],
+        offline=not network,
     )
 
 

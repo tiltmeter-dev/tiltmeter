@@ -201,7 +201,8 @@ it gets as little as possible:
   (AppArmor's `apparmor_restrict_unprivileged_userns`); there the tests are skipped too.
 - **No secrets.** Only `PATH`, the locale and the names in `test_env` are passed, with an
   empty folder as `HOME`, so tokens in your environment or your home folder's config files
-  are not there.
+  are not there. When Tiltmeter itself runs from an isolated environment (`uvx`, `pipx`,
+  the GitHub Action), that environment is left out of `PATH`, so `python` is yours.
 - **No leftovers.** It runs without a shell, in the worktree, and everything it writes
   there is thrown away afterwards: only the agent's edits are committed.
 - **Not a full sandbox.** It runs as your user and can read your files. In CI that is the
