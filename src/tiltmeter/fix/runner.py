@@ -17,6 +17,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from types import TracebackType
 from typing import Any, Final
+from urllib.parse import urlsplit
 
 from tiltmeter.core.models import ChangeKind
 from tiltmeter.errors import FixError
@@ -177,13 +178,25 @@ def _notice_section(request: FixRequest, notice: NoticeSource) -> list[str]:
     for api, shown in zip(request.apis, request.shown(MAX_CHANGES_IN_BODY), strict=True):
         lines += ["", f"**{_code(f'{api.method} {api.url}')}**", ""]
         lines += _changes_table(api, shown, announced=True)
-    notes = [f"{t.path}: {t.note}" for t in request.targets if t.note]
+    # A note on a whole endpoint names it; the same note on several endpoints shows once.
+    notes = list(
+        dict.fromkeys(
+            f"{_where(api, target)}: {target.note}"
+            for api in request.apis
+            for target in api.targets
+            if target.note
+        )
+    )
     if notes:
         lines += ["", noted, "", *_plain_text(notes)]
     if notice.sdks:
         releases = ", ".join(f"{s.ecosystem} `{s.name}` {s.fixed_in}" for s in notice.sdks)
         lines += ["", f"SDK releases that already follow the change: {releases}."]
     return lines
+
+
+def _where(api: FixApi, target: FixTarget) -> str:
+    return f"{api.method} {urlsplit(api.url).path}" if target.path == "$" else target.path
 
 
 def _spec_section(request: FixRequest, notice: NoticeSource, spec: SpecInfo) -> list[str]:

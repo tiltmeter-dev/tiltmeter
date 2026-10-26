@@ -374,3 +374,32 @@ def test_pull_requests_show_moves_and_retired_values() -> None:
         "| breaking | value_retired | `$.model` | `billing-3-5-20240620` "
         "| (no longer accepted), send `billing-4` instead |" in body
     )
+
+
+def test_removed_endpoints_come_first_and_shared_notes_show_once() -> None:
+    from tests.notices.kit import notice as make_notice
+
+    note = "Pages are fetched with nextPageToken."
+    endpoints = [
+        {
+            "method": method,
+            "url": "https://api.billing.test/v1/search",
+            "changes": [
+                {"path": "$.startAt", "kind": "field_removed", "note": note},
+                {
+                    "path": "$",
+                    "kind": "endpoint_removed",
+                    "moved_to": {"method": method, "url": "https://api.billing.test/v1/search/jql"},
+                    "note": f"{method} takes the same parameters.",
+                },
+            ],
+        }
+        for method in ("GET", "POST")
+    ]
+    model = ApiChangeNotice.model_validate(signed(make_notice(endpoints=endpoints)))
+    request = build_notice_request(model, location="x", verified=True, read=["startAt"])
+    assert [t.kind.value for t in request.apis[0].targets] == ["endpoint_removed", "field_removed"]
+    body = pull_request_body(request, notice_preview(), model_name="m")
+    assert body.count("$.startAt: Pages are fetched with nextPageToken.") == 1
+    assert "GET /v1/search: GET takes the same parameters." in body
+    assert "POST /v1/search: POST takes the same parameters." in body

@@ -158,12 +158,14 @@ def notice_targets(endpoint: NoticeEndpoint) -> list[FixTarget]:
     return targets
 
 
-def _relevance(target: FixTarget, read: set[str]) -> tuple[bool, int]:
+def _relevance(target: FixTarget, read: set[str]) -> tuple[bool, bool, int]:
+    """A removed endpoint first, since the rest is about the endpoint it moved to."""
     try:
         depth = len(parse_path(target.path))
     except PathSyntaxError:
         depth = len(target.path)
-    return (target.field not in read, depth)
+    gone = target.kind is ChangeKind.ENDPOINT_REMOVED
+    return (not gone, target.field not in read, depth)
 
 
 def build_notice_request(
