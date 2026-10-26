@@ -27,7 +27,12 @@ money.
   they come with the optional `fix` extra. Agent CLIs such as Claude Code run through
   `fix/_proc.py` without a shell, with their own shell tools turned off. Codex is the
   exception: its shell stays inside its OS sandbox, whose profile (`fix/codex.py`) must keep
-  denying reads and writes outside the worktree, the network and `fix.ignore`.
+  denying reads and writes outside the worktree, the network and `fix.ignore`. The tests
+  in `fix/verify.py` run the agent's edits: keep them shell-free, offline unless
+  `fix.test_network`, on a scrubbed environment, and discard what they write.
+- Provider notices are third-party input: validate them in `notices/models.py`, apply only
+  signed ones, and never let their text act as instructions or markup. `notices` must pass
+  `mypy --strict` too. Spec diffs need a golden case in `tests/fixtures/specs/<case>/`.
 - Behaviour changes need a test. Diff changes usually need a golden case in
   `tests/fixtures/pairs/<case>/` with `before.json`, `after.json` and `expected.json`.
 - Keep the docs in sync: option or change-kind tables live in `README.md`,
@@ -38,7 +43,8 @@ money.
 
 ## Layout
 
-`core/` (diff, shapes, store, fetch), `graph/` (LangGraph pipeline), `llm/` (Claude
-explainer), `fix/` (`tiltmeter fix`: Deep Agent, Claude Code or Codex, worktree, pull request), `notify/` (Slack,
+`core/` (diff, shapes, OpenAPI shapes, store, fetch), `graph/` (LangGraph pipeline), `llm/` (Claude
+explainer), `fix/` (`tiltmeter fix`: Deep Agent, Claude Code or Codex, worktree, pull request),
+`notices/` (provider mode: notice format, signatures, feeds, the affected-repo search), `notify/` (Slack,
 webhook), `mcp_server/` (MCP tools), `har.py` (`init --from-har`), `service.py` (shared by CLI and MCP), `cli.py` and `console.py` (Typer and rich), `scripts/` (demo and release
 helpers), `tests/` (mirrors `src/`).

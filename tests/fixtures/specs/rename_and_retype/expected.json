@@ -1,0 +1,88 @@
+{
+  "base_url": "https://api.partner.example",
+  "operations": [
+    {
+      "method": "GET",
+      "path": "/v1/customers",
+      "changes": [
+        {
+          "path": "$.data[*].balance",
+          "kind": "type_changed",
+          "severity": "breaking",
+          "before": "integer",
+          "after": "string"
+        },
+        {
+          "path": "$.data[*].nickname",
+          "kind": "field_removed",
+          "severity": "breaking",
+          "before": "string"
+        },
+        {
+          "path": "$.data[*].phone",
+          "kind": "field_removed",
+          "severity": "breaking",
+          "before": "string",
+          "hint": "possibly renamed to $.data[*].phone_number"
+        },
+        {
+          "path": "$.data[*].phone_number",
+          "kind": "field_added",
+          "severity": "info",
+          "after": "string",
+          "hint": "possibly replaces $.data[*].phone"
+        },
+        {
+          "path": "$.data[*].status",
+          "kind": "enum_value_added",
+          "severity": "warning",
+          "before": "active, past_due",
+          "after": "suspended"
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/v1/customers/{id}",
+      "changes": [
+        {
+          "path": "$.balance",
+          "kind": "type_changed",
+          "severity": "breaking",
+          "before": "integer",
+          "after": "string"
+        },
+        {
+          "path": "$.nickname",
+          "kind": "field_removed",
+          "severity": "breaking",
+          "before": "string"
+        },
+        {
+          "path": "$.phone",
+          "kind": "field_removed",
+          "severity": "breaking",
+          "before": "string",
+          "hint": "possibly renamed to $.phone_number"
+        },
+        {
+          "path": "$.phone_number",
+          "kind": "field_added",
+          "severity": "info",
+          "after": "string",
+          "hint": "possibly replaces $.phone"
+        },
+        {
+          "path": "$.status",
+          "kind": "enum_value_added",
+          "severity": "warning",
+          "before": "active, past_due",
+          "after": "suspended"
+        }
+      ]
+    }
+  ],
+  "removed": [
+    "GET /v1/legacy"
+  ]
+}

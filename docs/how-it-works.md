@@ -13,6 +13,8 @@ differences it reports, and how the pieces fit together.
 - [The pipeline](#the-pipeline)
 - [Storage](#storage)
 - [Explanations](#explanations)
+- [Fixing](#fixing)
+- [Provider notices](#provider-notices)
 - [Privacy by design](#privacy-by-design)
 - [Limitations](#limitations)
 
@@ -73,8 +75,12 @@ normal variation. Seeing something the baseline never saw is.
 When a removed field and an added field share the same parent object and the same
 non-null type, Tiltmeter marks them as a **probable rename**. It pairs them when their
 names are similar (one contains the other once case, `_` and `-` are ignored, or they are
-at least 70% alike), or when they are the only candidates under that parent. The hint is
-evidence for a human or an LLM to weigh; the two changes are still reported separately.
+at least 70% alike), or when they are the only candidates under that parent. A removed
+field left without a pair is a **probable move** when one field with the same name and
+type appears nearby, at most three path segments away, and no other field of that name and
+type goes or appears: `$.current_period_end` moving to
+`$.items.data[*].current_period_end`, as in Stripe's 2025 API. The hint is evidence for a
+human or an LLM to weigh; the two changes are still reported separately.
 
 `ignore_paths` removes whole subtrees from the walk. See the
 [configuration reference](configuration.md#paths-and-ignore-patterns).
@@ -162,13 +168,17 @@ With `LANGSMITH_TRACING=true` and a `LANGSMITH_API_KEY`, each run appears in Lan
 ## Storage
 
 The history is one SQLite file, `.tiltmeter/tiltmeter.db`, in WAL mode so the MCP server
-can read while a scheduled check writes. It holds three tables:
+can read while a scheduled check writes. It holds these tables:
 
 | Table | Rows |
 |---|---|
 | `shapes` | Observed shapes, stored once per distinct content and keyed by the SHA-256 of their canonical JSON. An API that keeps returning the same structure costs one row. |
 | `checks` | One row per check: time, status, media type, latency, outcome details, notes, explanation and a reference to its shape. |
 | `changes` | One row per reported change, linked to its check. |
+| `notices` | One row per provider notice handled: its provider and id, what was done (not affected, pull request opened, failed...), and how many attempts it took. |
+| `subscriptions` | When each notice feed was first followed, so a first run skips old history. |
+| `spec_baselines` | The last version of each followed OpenAPI spec, compressed, which the next run compares against. |
+| `spec_changes` | Each change found in a followed spec, kept as it was found until it is handled. |
 
 After each check, Tiltmeter keeps the newest `keep_checks` checks of that endpoint, never
 fewer than its `baseline_window`, and deletes shapes nothing refers to anymore.
@@ -217,6 +227,50 @@ check pipeline and only runs when you ask:
 
 The [fix guide](fix.md) has the flags and the review checklist.
 
+## Provider notices
+
+A provider can announce a change before it ships, in a signed
+[change notice](notice-spec.md) that uses the same paths and change kinds as drift. On the
+provider's side, `tiltmeter notice create --from-openapi` turns each operation's success
+response schema into a shape, as if responses had been observed: required properties in
+every object, optional ones in some, enums with their values, `nullable` as `null`. The two
+versions then go through the same diff as two checks, in a mode that also reports an
+optional field that disappeared, since a spec lists every field. `--from-check` reuses a
+stored check instead.
+
+Large specs reuse their named schemas everywhere: Stripe makes most fields "an id or the
+expanded object", and copying every `$ref` into place would build millions of nodes for a
+single operation. So a reference stays a leaf: each named schema is flattened once, each
+pair of old and new schemas is compared once, and an operation reports the changes of
+every pair it reaches at the shortest path that reaches it, through at most one "id or
+object" field. A month of changes to Stripe's 1,500 schemas compares in under a second.
+
+A reference that points at another file, or at a schema the spec does not define (real
+specs have both), stands for an unknown schema: it is compared with nothing, so neither
+side reports changes below it, and the output counts such references.
+
+A customer can follow a spec too (`openapi:` in `subscriptions`). The first apply keeps it
+as a baseline, or compares it with the `baseline` URL the subscription names; later runs
+compare the latest version with the stored one in the same way, pick the endpoints the
+repository uses, and keep the change as it was found, with the baseline moved past it, so
+a retry works on the same change.
+
+On the customer's side, `tiltmeter notices apply`:
+
+1. downloads each subscribed feed and validates every notice on its own;
+2. checks each signature against the key file on the provider's domain, and drops
+   unsigned notices, tampered ones and those already handled;
+3. searches the tracked files for the notice's hosts, endpoint paths and SDKs, then for the
+   changed field names near those uses, with no LLM. A repository that does not use them
+   is recorded as not affected;
+4. otherwise turns the notice into the same fix request a check would produce (the
+   renames come from `renamed_to`, the severities from the default rules) and runs the
+   fix, with the matching files as starting points and the provider's text marked as
+   untrusted data;
+5. records the outcome, so each notice is handled once.
+
+The [notices guide](notices.md) walks through both sides.
+
 ## Privacy by design
 
 - **Secrets** are expanded only inside the request code, then scrubbed from error messages
@@ -230,12 +284,14 @@ The [fix guide](fix.md) has the flags and the review checklist.
 - **Fixes** send the change list and the files the agent reads to Anthropic, never response
   values or `${VAR}` values. The agent works in a fresh worktree, which holds no untracked
   files such as `.env`, and the `fix.ignore` paths are denied to its file tools.
+- **Notices** are public files fetched without credentials. Only signed ones are applied,
+  and the search that decides whether a repository is affected runs locally.
 
 ## Limitations
 
 - JSON over HTTP only. XML, CSV, binary and streaming responses are not supported.
-- Tiltmeter sees what the API returns for the requests you declare. It does not read the
-  vendor's OpenAPI spec or changelog.
+- Checks see what the API returns for the requests you declare. A vendor's OpenAPI spec
+  is only read when you follow it as a subscription, and its changelog never is.
 - It watches responses, not requests: it cannot tell you that a parameter became
   mandatory, only what that did to the response.
 - A field that is already optional in the baseline can disappear without an alert.

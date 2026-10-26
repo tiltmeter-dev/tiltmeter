@@ -6,8 +6,9 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from tiltmeter.core.models import ChangeKind, Explanation, Severity
+from tiltmeter.core.models import ChangeKind, Explanation, NoticeStatus, Severity
 from tiltmeter.llm.explainer import AffectedObject
+from tiltmeter.notices.models import Impact, SdkRelease, SpecInfo
 
 
 class FixTarget(BaseModel):
@@ -27,22 +28,114 @@ class FixTarget(BaseModel):
     new_field: str | None = Field(
         default=None, description="The property name at the end of renamed_to."
     )
+    note: str | None = Field(
+        default=None, description="The provider's own words on the change, from a notice."
+    )
 
 
-class FixRequest(BaseModel):
-    """Everything the agent learns about one drift event. Never holds secrets or values."""
+type TestStatus = Literal["passed", "failed", "skipped"]
+
+
+class TestRun(BaseModel):
+    """The repository's tests, run on the agent's edits before they are committed."""
+
+    __test__ = False  # not a pytest test class
+
+    command: str
+    status: TestStatus
+    rounds: int = Field(default=1, description="How many times the agent edited the code.")
+    output: str = Field(default="", description="The end of the test output.")
+    reason: str | None = Field(default=None, description="Why the tests were skipped.")
+
+
+class FixApi(BaseModel):
+    """One endpoint whose responses changed, and the changes code has to follow."""
 
     model_config = ConfigDict(frozen=True)
 
-    check_id: int
-    endpoint_id: str
+    endpoint_id: str | None = Field(default=None, description="The endpoint's id in the config.")
     method: str
     url: str
     description: str | None = None
     targets: list[FixTarget]
     affected: list[AffectedObject] = Field(default_factory=list)
+
+
+class NoticeSource(BaseModel):
+    """The provider's change notice a request was built from, or the spec diff behind it."""
+
+    model_config = ConfigDict(frozen=True)
+
+    kind: Literal["notice", "spec"] = Field(
+        default="notice",
+        description="notice: the provider published it; spec: Tiltmeter compared its spec.",
+    )
+    id: str
+    provider: str
+    summary: str
+    published_at: str
+    effective_at: str | None = None
+    location: str = Field(description="The file or URL the notice was read from.")
+    key: str | None = Field(
+        default=None, description="The provider's key the signature was checked against."
+    )
+    sdks: list[SdkRelease] = Field(default_factory=list)
+    spec: SpecInfo | None = None
+
+
+class FixRequest(BaseModel):
+    """Everything the agent learns about one API change. Never holds secrets or values.
+
+    It comes from a stored check (``check_id``) or from a provider's notice (``notice``).
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    check_id: int | None = None
+    notice: NoticeSource | None = None
+    apis: list[FixApi]
     explanation: Explanation | None = None
     search_terms: list[str] = Field(default_factory=list)
+    candidate_files: list[str] = Field(
+        default_factory=list, description="Files a text search found the API's use in."
+    )
+    test_failure: TestRun | None = Field(
+        default=None, description="The tests that failed on the agent's previous edits."
+    )
+
+    @property
+    def targets(self) -> list[FixTarget]:
+        return [target for api in self.apis for target in api.targets]
+
+    def shown(self, total: int) -> list[list[FixTarget]]:
+        """The first targets of each API, ``total`` in all, shared out evenly: what a
+        prompt or a pull request lists when there are too many to show."""
+        sizes = [len(api.targets) for api in self.apis]
+        quota = [0] * len(sizes)
+        left = total
+        while left > 0 and any(q < s for q, s in zip(quota, sizes, strict=True)):
+            for i, size in enumerate(sizes):
+                if left > 0 and quota[i] < size:
+                    quota[i] += 1
+                    left -= 1
+        return [api.targets[:q] for api, q in zip(self.apis, quota, strict=True)]
+
+    @property
+    def subject(self) -> str:
+        """What changed, in a few words: the endpoint id or the provider."""
+        if self.notice is not None:
+            return self.notice.provider
+        endpoint_id = self.apis[0].endpoint_id if self.apis else None
+        return endpoint_id or "API"
+
+    @property
+    def source(self) -> str:
+        """Where the change came from, for traces and notes."""
+        if self.notice is not None and self.notice.kind == "spec":
+            return f"spec diff {self.notice.id} for {self.notice.provider}"
+        if self.notice is not None:
+            return f"notice {self.notice.id} from {self.notice.provider}"
+        return f"check #{self.check_id}"
 
 
 class FixReport(BaseModel):
@@ -78,6 +171,7 @@ class FixPreview(BaseModel):
     ignored: list[str] = Field(
         default_factory=list, description="Changed files that match fix.ignore."
     )
+    tests: TestRun | None = None
 
     @property
     def empty(self) -> bool:
@@ -91,8 +185,10 @@ class FixOutcome(BaseModel):
     """How a ``tiltmeter fix`` run ended."""
 
     status: FixStatus
-    check_id: int
-    endpoint_id: str
+    check_id: int | None = None
+    endpoint_id: str | None = None
+    notice_id: str | None = None
+    provider: str | None = None
     branch: str | None = None
     base: str | None = None
     pr_url: str | None = None
@@ -102,3 +198,14 @@ class FixOutcome(BaseModel):
     notes: list[str] = Field(default_factory=list)
     error: str | None = None
     preview: FixPreview | None = None
+
+
+class AppliedNotice(BaseModel):
+    """What ``tiltmeter notices apply`` did about one notice."""
+
+    provider: str
+    notice_id: str
+    status: NoticeStatus | Literal["discarded"]
+    detail: str | None = None
+    impact: Impact | None = None
+    outcome: FixOutcome | None = None

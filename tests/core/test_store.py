@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sqlite3
 from pathlib import Path
 
@@ -8,7 +9,7 @@ import pytest
 from tests.helpers import explanation
 from tiltmeter.core.models import Change, ChangeKind, CheckResult, Severity
 from tiltmeter.core.shape import Shape
-from tiltmeter.core.store import Store, StoreError
+from tiltmeter.core.store import _NOTICES_SCHEMA, _SCHEMA, SCHEMA_VERSION, Store, StoreError
 
 
 def result(
@@ -174,3 +175,110 @@ def test_refuses_a_newer_schema(tmp_path: Path) -> None:
     connection.close()
     with pytest.raises(StoreError, match="newer Tiltmeter"):
         Store(path)
+
+
+def test_notices_are_recorded_once_and_count_attempts(store: Store) -> None:
+    assert store.notice_record("api.billing.test", "n1") is None
+    first = store.record_notice(
+        "api.billing.test",
+        "n1",
+        published_at="2026-11-03T12:00:00Z",
+        status="failed",
+        detail="overloaded",
+        at="2026-11-03T13:00:00Z",
+    )
+    assert (first.status, first.attempts, first.done) == ("failed", 1, False)
+    again = store.record_notice(
+        "api.billing.test",
+        "n1",
+        published_at="2026-11-03T12:00:00Z",
+        status="opened",
+        detail="https://github.test/pr/2",
+        at="2026-11-03T19:00:00Z",
+    )
+    assert (again.status, again.attempts, again.done) == ("opened", 2, True)
+    assert again.detail == "https://github.test/pr/2"
+    store.record_notice(
+        "other.test", "n1", published_at="t", status="unaffected", detail=None, at="2026-11-04"
+    )
+    assert [r.provider for r in store.notice_records()] == ["other.test", "api.billing.test"]
+
+
+def test_failed_notices_stop_after_three_attempts(store: Store) -> None:
+    for _ in range(3):
+        record = store.record_notice(
+            "p.test", "n", published_at="t", status="blocked", detail=None, at="t"
+        )
+    assert (record.attempts, record.done) == (3, True)
+
+
+def test_a_version_1_history_gains_the_new_tables(tmp_path: Path) -> None:
+    path = tmp_path / "tiltmeter.db"
+    connection = sqlite3.connect(path)
+    connection.executescript(_SCHEMA)
+    connection.execute("PRAGMA user_version = 1")
+    connection.execute(
+        "INSERT INTO checks (endpoint_id, checked_at, first_run, notes) VALUES ('a', 't', 1, '[]')"
+    )
+    connection.commit()
+    connection.close()
+    with Store(path) as db:
+        assert len(db.list_checks()) == 1
+        db.record_notice("p.test", "n", published_at="t", status="opened", detail=None, at="t")
+        version = db._db.execute("PRAGMA user_version").fetchone()[0]
+        assert db.remember_subscription("https://a.test/f", "t") == "t"
+    assert version == SCHEMA_VERSION == 3
+
+
+def test_a_version_2_development_history_is_upgraded(tmp_path: Path) -> None:
+    path = tmp_path / "tiltmeter.db"
+    connection = sqlite3.connect(path)
+    connection.executescript(_SCHEMA + _NOTICES_SCHEMA)
+    connection.execute("PRAGMA user_version = 2")
+    connection.commit()
+    connection.close()
+    with Store(path) as db:
+        db.save_spec_baseline("u", digest="d", version="1", fetched_at="t", body="{}")
+        assert db.spec_baseline("u") is not None
+
+
+def test_subscriptions_remember_when_they_started(store: Store) -> None:
+    assert store.first_seen("https://a.test/feed") is None
+    assert store.remember_subscription("https://a.test/feed", "2026-11-01T00:00:00Z") == (
+        "2026-11-01T00:00:00Z"
+    )
+    assert store.remember_subscription("https://a.test/feed", "2026-12-01T00:00:00Z") == (
+        "2026-11-01T00:00:00Z"
+    )
+
+
+def test_spec_baselines_and_frozen_changes(store: Store) -> None:
+    url = "https://a.test/openapi.json"
+    assert store.spec_baseline(url) is None
+    body = json.dumps({"openapi": "3.1.0", "paths": {"/x": {}}} | {"pad": "x" * 10_000})
+    store.save_spec_baseline(url, digest="d1", version="1.0", fetched_at="t1", body=body)
+    first = store.spec_baseline(url)
+    assert first is not None
+    assert (first.digest, first.version, first.generation, first.body) == ("d1", "1.0", 1, body)
+    stored = store._db.execute("SELECT length(body) FROM spec_baselines").fetchone()[0]
+    assert stored < len(body) / 10  # compressed
+    store.freeze_spec_change(
+        url,
+        provider="a.test",
+        notice_id="spec-1",
+        entry='{"id": "spec-1"}',
+        digest="d2",
+        version="1.1",
+        fetched_at="t2",
+        body="{}",
+    )
+    second = store.spec_baseline(url)
+    assert second is not None
+    assert (second.digest, second.generation) == ("d2", 2)
+    [change] = store.spec_changes(url)
+    assert (change.notice_id, change.entry, change.created_at) == (
+        "spec-1",
+        '{"id": "spec-1"}',
+        "t2",
+    )
+    assert store.spec_changes("https://other.test/openapi.json") == []

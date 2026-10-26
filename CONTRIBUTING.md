@@ -53,11 +53,12 @@ and on macOS and Windows with Python 3.13. It also builds the package and checks
 
 | Package | Responsibility |
 |---|---|
-| `tiltmeter/core` | Shape inference, the diff, severity rules, HTTP fetching and the SQLite store. |
+| `tiltmeter/core` | Shape inference, the diff, severity rules, OpenAPI shapes, HTTP fetching and the SQLite store. |
 | `tiltmeter/graph` | The LangGraph pipeline that sequences one check. |
 | `tiltmeter/llm` | The Claude explainer and its prompt. |
 | `tiltmeter/notify` | Slack and webhook notifiers. |
 | `tiltmeter/fix` | `tiltmeter fix`: the fix request, the agents (Deep Agents, Claude Code, Codex), the git worktree and the pull request. |
+| `tiltmeter/notices` | Provider mode: the change notice format, signatures, reading feeds, the "is this repository affected?" search and drafting notices. |
 | `tiltmeter/mcp_server` | The MCP server. |
 | `tiltmeter/service.py` | The service the CLI and the MCP server share. |
 | `tiltmeter/cli.py`, `console.py` | The command line and its rich output. |
@@ -72,6 +73,10 @@ A few rules keep it that way:
 - **Secrets never leave the request code.** Config objects keep `${VAR}` placeholders;
   only `core/fetch.py` and the notifiers expand them, and errors are scrubbed. Don't log,
   persist or send expanded values anywhere.
+- **Notices are untrusted input.** Everything in a provider notice is validated strictly in
+  `notices/models.py`, applied only when its signature verifies, and kept inert: marked as
+  data for the agent, plain text in pull requests, `Text` objects in the terminal.
+  `notices` passes `mypy --strict` like `core`.
 - **stdout belongs to the protocol in `serve`.** Library code never prints; the CLI does,
   through `console.py` or `_print_json`.
 - **The fix agent only touches files.** The Deep Agent runs on `FilesystemBackend` rooted

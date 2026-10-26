@@ -245,6 +245,40 @@ class SchemaReport(BaseModel):
     )
 
 
+type NoticeStatus = Literal[
+    "unaffected", "opened", "pushed", "committed", "unchanged", "exists", "blocked", "failed"
+]
+
+MAX_NOTICE_ATTEMPTS: Final = 3
+# A pushed branch is retried too: the next run only opens its missing pull request.
+_RETRIED: Final = frozenset({"blocked", "failed", "pushed"})
+
+
+class NoticeRecord(BaseModel):
+    """What was done about one provider change notice, so it is handled only once."""
+
+    provider: str
+    notice_id: str
+    published_at: str
+    status: NoticeStatus = Field(
+        description=(
+            "unaffected: nothing here uses the API; opened, pushed or committed: how far the "
+            "fix got; unchanged: the agent found nothing to edit; exists: the fix branch was "
+            "already on the remote; blocked or failed: the fix did not work out."
+        )
+    )
+    detail: str | None = Field(
+        default=None, description="The pull request, the branch or what went wrong."
+    )
+    attempts: int = 1
+    updated_at: str
+
+    @property
+    def done(self) -> bool:
+        """False while a failed fix still has attempts left."""
+        return self.status not in _RETRIED or self.attempts >= MAX_NOTICE_ATTEMPTS
+
+
 @dataclass(frozen=True, slots=True)
 class Observation:
     """What one round of requests to an endpoint returned."""

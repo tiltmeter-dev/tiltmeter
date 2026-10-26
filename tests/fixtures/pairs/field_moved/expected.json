@@ -1,0 +1,14 @@
+[
+  {
+    "path": "$.current_period_end",
+    "kind": "field_removed",
+    "severity": "breaking",
+    "hint": "possibly renamed to $.items.data[*].current_period_end"
+  },
+  {
+    "path": "$.items.data[*].current_period_end",
+    "kind": "field_added",
+    "severity": "info",
+    "hint": "possibly replaces $.current_period_end"
+  }
+]

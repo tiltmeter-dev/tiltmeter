@@ -5,8 +5,20 @@ from pathlib import Path
 import pytest
 
 from tests.fix.kit import PR_URL, FakeFixAgent, FakeGitHub, git, make_repo, rename_request, report
+from tests.fix.test_request import notice_request, spec_request
+from tests.notices.kit import notice, signed
 from tiltmeter.errors import FixError
-from tiltmeter.fix.runner import FixSession, default_branch, pull_request_body
+from tiltmeter.fix.models import FixPreview
+from tiltmeter.fix.request import build_notice_request
+from tiltmeter.fix.runner import (
+    MAX_CHANGES_IN_BODY,
+    FixSession,
+    commit_body,
+    commit_title,
+    default_branch,
+    pull_request_body,
+)
+from tiltmeter.notices.models import ApiChangeNotice
 
 BRANCH = "tiltmeter/fix-billing-customers-12"
 
@@ -183,8 +195,6 @@ async def test_uncommitted_changes_stay_out_of_the_fix(tmp_path: Path) -> None:
 
 
 def test_pull_request_body_lists_what_is_left() -> None:
-    from tiltmeter.fix.models import FixPreview
-
     preview = FixPreview(
         branch=BRANCH,
         base="main",
@@ -201,3 +211,139 @@ def test_pull_request_body_lists_what_is_left() -> None:
     assert "The phone field was renamed." in body  # Claude's explanation of the drift
     assert "${BILLING_KEY}" not in body
     assert "api_key" not in body
+
+
+def test_pull_request_bodies_list_a_bounded_number_of_changes() -> None:
+    endpoints = [
+        {
+            "method": "GET",
+            "url": f"https://api.billing.test/v1/r{n}/{{id}}",
+            "changes": [{"path": f"$.field_{i}", "kind": "field_removed"} for i in range(150)],
+        }
+        for n in range(3)
+    ]
+    request = build_notice_request(
+        ApiChangeNotice.model_validate(signed(notice(endpoints=endpoints))),
+        location="x",
+        verified=True,
+    )
+    body = pull_request_body(request, notice_preview(), model_name="claude-sonnet-5-5")
+    assert body.count("| breaking | field_removed |") == MAX_CHANGES_IN_BODY
+    assert body.count("And 116 more changes, not listed.") == 1  # 34, 33 and 33 listed
+    assert body.count("And 117 more changes, not listed.") == 2
+    assert len(body) < 65_536
+
+
+def notice_preview() -> FixPreview:
+    return FixPreview(
+        branch="b",
+        base="main",
+        files=["client.py"],
+        additions=1,
+        deletions=1,
+        diff="",
+        report=report(unresolved=["The format of balance: the provider says decimal strings."]),
+    )
+
+
+def test_notice_branches_titles_and_commits() -> None:
+    request = notice_request()
+    branch = default_branch(request)
+    assert branch.startswith("tiltmeter/fix-api-billing-test-2026-11-03-phone-rename-")
+    assert len(branch) == len("tiltmeter/fix-api-billing-test-2026-11-03-phone-rename-") + 8
+    look_alikes = [
+        notice_request(id="2026-11-03_phone.rename"),
+        notice_request(id="2026.11.03.Phone.Rename"),
+        notice_request(id="x" * 99 + "a"),
+        notice_request(id="x" * 99 + "b"),
+    ]
+    branches = {default_branch(r) for r in [request, *look_alikes]}
+    assert len(branches) == 5  # slugs collide, branches do not
+    assert all(len(b) <= len("tiltmeter/fix-") + 80 + 9 for b in branches)
+    assert commit_title(request) == "Adapt to the api.billing.test API change effective 2026-12-01"
+    assert commit_title(notice_request(effective_at=None)) == (
+        "Adapt to the api.billing.test API change"
+    )
+    assert commit_body(request, report()).endswith(
+        "api.billing.test announced the change in notice 2026-11-03-phone-rename."
+    )
+
+
+def test_notice_pull_requests_quote_the_provider_as_plain_text() -> None:
+    hostile = "Thanks @octocat! See [docs](https://evil.test) ![x](https://evil.test/p.png) `x`"
+    request = notice_request(summary=hostile)
+    body = pull_request_body(request, notice_preview(), model_name="claude-sonnet-5-5")
+    assert "`api.billing.test` announced this change in notice `2026-11-03-phone-rename`" in body
+    assert "published 2026-11-03 and effective 2026-12-01" in body
+    assert "verified against `https://api.billing.test/.well-known/api-change-key`" in body
+    quoted = body.split("```text\n", 1)[1].split("\n```", 1)[0]
+    assert "@octocat" in quoted  # inside a code block: no mention, link or image
+    assert "`" not in quoted
+    assert (
+        "| breaking | field_removed | `$.phone` | — | (absent), renamed to `$.phone_number` |"
+        in body
+    )
+    assert "| breaking | type_changed | `$.balance` | `integer` | `string` |" in body
+    assert "**`GET https://api.billing.test/v1/customers/{id}`**" in body
+    assert "probably renamed" not in body
+    assert "$.balance: Decimal string in the account currency" in body
+    assert "SDK releases that already follow the change: pypi `billing-sdk` 3.0.0." in body
+    assert "## Left for a human" in body
+    assert "from api.billing.test's change notice `2026-11-03-phone-rename`" in body
+    unsigned = pull_request_body(notice_request(verified=False), notice_preview(), model_name="m")
+    assert "It was not signed" in unsigned
+
+
+async def test_notice_outcomes_name_the_notice(tmp_path: Path) -> None:
+    repo, _ = make_repo(tmp_path)
+    with FixSession.open(repo, notice_request()) as session:
+        outcome = session.outcome("discarded", None)
+    assert (outcome.notice_id, outcome.provider, outcome.check_id, outcome.endpoint_id) == (
+        "2026-11-03-phone-rename",
+        "api.billing.test",
+        None,
+        None,
+    )
+
+
+def test_notice_values_cannot_render_markup() -> None:
+    data = notice()
+    data["endpoints"][0]["changes"] = [
+        {
+            "path": "$.balance",
+            "kind": "type_changed",
+            "before": "integer @octocat",
+            "after": "`string` <img src=x> [Approve](https://evil.test)",
+        }
+    ]
+    body = pull_request_body(
+        notice_request(endpoints=data["endpoints"]), notice_preview(), model_name="m"
+    )
+    row = next(line for line in body.splitlines() if line.startswith("| breaking"))
+    assert row == (
+        "| breaking | type_changed | `$.balance` | `integer @octocat` "
+        "| `'string' <img src=x> [Approve](https://evil.test)` |"
+    )
+
+
+def test_spec_pull_requests_name_the_spec_and_hedge_renames() -> None:
+    request = spec_request()
+    assert commit_title(request) == "Adapt to the api.billing.test API change in spec 1.1"
+    assert "comparing two versions of api.billing.test's OpenAPI spec" in commit_body(
+        request, report()
+    )
+    body = pull_request_body(request, notice_preview(), model_name="m")
+    assert (
+        "Tiltmeter compared two versions of the OpenAPI spec `api.billing.test` publishes" in body
+    )
+    assert "`1.0 to 1.1`, fetched 2026-10-01 and 2026-11-03" in body
+    assert "probably renamed to `$.phone_number`" in body
+    assert "2 other changed endpoints are left out" in body
+    assert "from a diff of api.billing.test's OpenAPI spec" in body
+    assert "announced this change in notice" not in body
+
+
+def test_the_left_for_a_human_section_is_always_there() -> None:
+    preview = notice_preview().model_copy(update={"report": report(unresolved=[])})
+    body = pull_request_body(rename_request(), preview, model_name="m")
+    assert "## Left for a human\n\nNothing: the agent flagged nothing it could not decide." in body

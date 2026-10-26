@@ -195,7 +195,7 @@ class DeepFixAgent:
                 config={
                     "run_name": "tiltmeter.fix",
                     "tags": ["tiltmeter"],
-                    "metadata": {"endpoint_id": request.endpoint_id, "check_id": request.check_id},
+                    "metadata": {"source": request.source, "subject": request.subject},
                 },
             )
         except ModelCallLimitExceededError as exc:

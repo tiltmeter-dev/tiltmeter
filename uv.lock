@@ -1930,6 +1930,7 @@ wheels = [
 name = "tiltmeter"
 source = { editable = "." }
 dependencies = [
+    { name = "cryptography" },
     { name = "httpx" },
     { name = "langchain-anthropic" },
     { name = "langchain-core" },
@@ -1962,6 +1963,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "cryptography", specifier = ">=42" },
     { name = "deepagents", marker = "extra == 'fix'", specifier = ">=0.7.29,<0.8" },
     { name = "httpx", specifier = ">=0.27,<1" },
     { name = "langchain", marker = "extra == 'fix'", specifier = ">=1.4.6,<2" },

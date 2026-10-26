@@ -1,0 +1,54 @@
+# For API providers. Every pull request that changes openapi.yaml gets a draft notice in a
+# comment; save it in notices/, edit the summary and notes, and merge. On main, the notices
+# are signed into site/.well-known/api-changes.json and published with GitHub Pages.
+#
+# Set it up once:
+#   tiltmeter notice keygen notice-key.pem --public site/.well-known/api-change-key
+#   gh secret set TILTMETER_SIGNING_KEY < notice-key.pem   # then delete or vault the file
+# and serve site/ from your provider domain (Settings > Pages, source: GitHub Actions).
+name: API change notices
+
+on:
+  pull_request:
+    paths: [openapi.yaml]
+  push:
+    branches: [main]
+    paths: [notices/**, site/**]
+  workflow_dispatch:
+
+jobs:
+  draft:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: tiltmeter-dev/tiltmeter-action@v1
+        with:
+          mode: notice-draft
+          spec: openapi.yaml
+
+  publish:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+    steps:
+      - uses: actions/checkout@v7
+      - uses: tiltmeter-dev/tiltmeter-action@v1
+        with:
+          mode: notice-publish
+          site-dir: site
+        env:
+          TILTMETER_SIGNING_KEY: ${{ secrets.TILTMETER_SIGNING_KEY }}
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: site
+          include-hidden-files: true  # .well-known is a hidden folder
+      - uses: actions/deploy-pages@v5

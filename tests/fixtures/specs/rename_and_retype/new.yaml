@@ -1,0 +1,38 @@
+openapi: 3.0.3
+info: {title: Partner API, version: "3.0"}
+servers:
+  - url: https://api.partner.example
+paths:
+  /v1/customers:
+    get:
+      responses:
+        200:
+          description: Customers
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items: {$ref: "#/components/schemas/Customer"}
+  /v1/customers/{id}:
+    get:
+      responses:
+        "200":
+          description: One customer
+          content:
+            application/json; charset=utf-8:
+              schema: {$ref: "#/components/schemas/Customer"}
+components:
+  schemas:
+    Customer:
+      type: object
+      required: [id, phone_number, balance]
+      properties:
+        id: {type: integer}
+        phone_number: {type: string}
+        balance: {type: string, format: decimal}
+        status: {type: string, enum: [active, past_due, suspended]}
+        referrer: {$ref: "#/components/schemas/Customer"}

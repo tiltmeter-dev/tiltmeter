@@ -63,7 +63,7 @@ def classify(
 
 
 def _is_success(status: str | None) -> bool:
-    return status is not None and status.isdigit() and 200 <= int(status) < 300
+    return status is not None and status.isascii() and status.isdigit() and 200 <= int(status) < 300
 
 
 def _status_severity(before: str | None, after: str | None) -> Severity:

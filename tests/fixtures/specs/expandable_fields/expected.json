@@ -1,0 +1,59 @@
+{
+  "base_url": "https://api.ledger.example",
+  "operations": [
+    {
+      "method": "GET",
+      "path": "/v1/nodes/{id}",
+      "changes": [
+        {
+          "path": "$.a.display_name",
+          "kind": "field_added",
+          "severity": "info",
+          "after": "string",
+          "hint": "possibly replaces $.a.name"
+        },
+        {
+          "path": "$.a.name",
+          "kind": "field_removed",
+          "severity": "breaking",
+          "before": "string",
+          "hint": "possibly renamed to $.a.display_name"
+        },
+        {
+          "path": "$.status",
+          "kind": "enum_value_added",
+          "severity": "warning",
+          "before": "active, past_due",
+          "after": "suspended"
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/v1/payments/{id}",
+      "changes": [
+        {
+          "path": "$.currency",
+          "kind": "enum_value_added",
+          "severity": "warning",
+          "before": "eur, usd",
+          "after": "gbp"
+        },
+        {
+          "path": "$.customer.deleted",
+          "kind": "field_added",
+          "severity": "info",
+          "after": "boolean"
+        },
+        {
+          "path": "$.customer.email",
+          "kind": "field_now_optional",
+          "severity": "breaking",
+          "before": "required",
+          "after": "optional"
+        }
+      ]
+    }
+  ],
+  "removed": []
+}

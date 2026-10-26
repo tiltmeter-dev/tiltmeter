@@ -1,0 +1,32 @@
+{
+  "base_url": "https://pay.example",
+  "operations": [
+    {
+      "method": "GET",
+      "path": "/v1/payments/{id}",
+      "changes": [
+        {
+          "path": "$.method.kind",
+          "kind": "enum_value_added",
+          "severity": "warning",
+          "before": "card, card_present",
+          "after": "wallet"
+        },
+        {
+          "path": "$.method.last4",
+          "kind": "field_now_optional",
+          "severity": "breaking",
+          "before": "required",
+          "after": "optional"
+        },
+        {
+          "path": "$.method.wallet",
+          "kind": "field_added",
+          "severity": "info",
+          "after": "string"
+        }
+      ]
+    }
+  ],
+  "removed": []
+}

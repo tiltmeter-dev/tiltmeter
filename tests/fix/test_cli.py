@@ -216,3 +216,74 @@ def test_fix_with_codex_needs_no_api_key(
     assert outcome.exit_code == 0, outcome.output
     assert f"✓ opened {PR_URL}" in flat(outcome.output)
     assert picked == ["codex"]
+
+
+def config_with_tests(tmp_path: Path, rounds: int = 1) -> Path:
+    """Like ``drifted``, with a test command that passes once client.py says FIXED."""
+    import sys
+
+    check = (
+        "import pathlib, sys\n"
+        "text = pathlib.Path('client.py').read_text()\n"
+        "print('AttributeError: not fixed yet' if 'FIXED' not in text else 'ok')\n"
+        "sys.exit(0 if 'FIXED' in text else 1)\n"
+    )
+    command = json.dumps([sys.executable, "-c", check])
+    extra = f"fix:\n  test_command: {command}\n  test_network: true\n  test_rounds: {rounds}\n"
+    config = write_config(tmp_path, extra)
+    with respx.mock:
+        route = respx.get(URL).respond(200, json={"id": 1, "phone": "555"})
+        assert invoke("check", "-c", str(config)).exit_code == 0
+        route.respond(200, json={"id": 1, "phone_number": "555"})
+        assert invoke("check", "-c", str(config), "--no-llm").exit_code == 2
+    return config
+
+
+def test_failing_tests_go_back_to_the_agent_until_they_pass(
+    tmp_path: Path, fakes: tuple[FakeFixAgent, FakeGitHub]
+) -> None:
+    from tests.fix.kit import rename_phone
+
+    agent, github = fakes
+    calls = 0
+
+    def edit(root: Path) -> None:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            rename_phone(root)
+        else:  # the second round, after seeing the failure
+            path = root / "client.py"
+            path.write_text(path.read_text(encoding="utf-8") + "# FIXED\n", encoding="utf-8")
+
+    agent.edit = edit
+    config = config_with_tests(tmp_path)
+    repo, _ = make_repo(tmp_path)
+    outcome = fix(config, repo, "--yes")
+    assert outcome.exit_code == 0, outcome.output
+    first, second = agent.requests
+    assert first.test_failure is None
+    assert second.test_failure is not None
+    assert "AttributeError: not fixed yet" in second.test_failure.output
+    assert "passed after 2 rounds" in flat(outcome.output)
+    [pr] = github.created
+    assert "## Tests" in pr["body"]
+    assert "passed on these edits after the agent saw them fail" in pr["body"]
+    diff = git(repo, "diff", "main", BRANCH)
+    assert "phone_number" in diff and "# FIXED" in diff  # both rounds are in the commit  # noqa: PT018
+
+
+def test_tests_that_still_fail_are_left_for_a_human(
+    tmp_path: Path, fakes: tuple[FakeFixAgent, FakeGitHub]
+) -> None:
+    agent, github = fakes
+    config = config_with_tests(tmp_path, rounds=1)
+    repo, _ = make_repo(tmp_path)
+    outcome = fix(config, repo, "--yes")
+    assert outcome.exit_code == 0, outcome.output
+    assert len(agent.requests) == 2  # the first edit and one more round
+    assert "fails after 2 rounds" in flat(outcome.output)
+    [pr] = github.created
+    assert "fails on these edits. The end of its output:" in pr["body"]
+    left = pr["body"].split("## Left for a human", 1)[1]
+    assert left.lstrip().startswith("- The tests still fail with these edits")

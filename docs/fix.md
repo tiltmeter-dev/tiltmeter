@@ -3,7 +3,8 @@
 A check tells you that `phone` became `phone_number`. Somewhere in your repository, code
 still reads `phone`. `tiltmeter fix` closes that gap: it hands the drift to an agent that
 finds the code reading that API, adapts it, shows you the diff and, once you agree, opens a
-pull request.
+pull request. The change can also come from the API's provider, as a
+[change notice](notices.md): `tiltmeter fix --notice <file or URL>`.
 
 - [Install](#install)
 - [Choosing the agent](#choosing-the-agent)
@@ -102,9 +103,11 @@ removed as if nothing happened.
 
 | Flag | Effect |
 |---|---|
+| `--notice SOURCE` | Fix what a provider's [change notice](notices.md) announces instead of a check: a file or an `https` URL. A notice from a URL must be signed by the provider's domain. |
+| `--allow-unsigned` | With `--notice FILE`: accept a notice without a signature, such as a draft you wrote. |
 | `--repo PATH`, `-r` | The repository to fix. Defaults to the current folder. |
 | `--config PATH`, `-c` | The `tiltmeter.yaml` whose history holds the check. |
-| `--branch NAME` | Name of the new branch. Default: `tiltmeter/fix-<endpoint>-<check id>`. |
+| `--branch NAME` | Name of the new branch. Default: `tiltmeter/fix-<endpoint>-<check id>`, or `tiltmeter/fix-<provider>-<notice id>-<digest>` for a notice. |
 | `--base NAME` | Branch the pull request targets. Default: the branch you are on. |
 | `--yes`, `-y` | Commit, push and open the pull request without asking. |
 | `--no-pr` | Commit to a local branch only. Nothing is pushed. |
@@ -124,12 +127,15 @@ removed as if nothing happened.
 3. **The agent works.** It greps for the old field names and the API's address, reads the
    candidate files, and edits only the code that handles this API. It then reports what it
    changed, what it could not handle safely and how confident it is.
-4. **Review.** Tiltmeter stages the edits and shows you the diff with the agent's report.
-5. **Deliver.** On your approval it commits with your git identity, pushes the branch and
+4. **Tests, if you configured them.** With `fix.test_command`, Tiltmeter runs your tests
+   on the edits. When they fail, the agent gets the output and edits again, up to
+   `fix.test_rounds` more times. The result goes into the pull request.
+5. **Review.** Tiltmeter stages the edits and shows you the diff with the agent's report.
+6. **Deliver.** On your approval it commits with your git identity, pushes the branch and
    opens a pull request with `gh`. Local git hooks are skipped, as for any bot commit; your
    CI runs on the pull request instead. Each step that fails leaves what was already done in
    place and tells you what to run by hand.
-6. **Clean up.** The worktree is always removed. The branch is kept only if it holds a
+7. **Clean up.** The worktree is always removed. The branch is kept only if it holds a
    commit, and the check's notes record the pull request (`tiltmeter show <id>`).
 
 ## What the agent can and cannot do
@@ -173,13 +179,52 @@ now be `"1200"` or `"12.00"`, and only the vendor knows. So for type changes the
 updates the type definitions, avoids conversions that assume a format, and puts the
 question in the "Left for a human" section of the pull request.
 
+## Running the tests
+
+The agent cannot run anything, so it cannot see that `subscription.items` is a method in
+stripe-python and not the field it meant. With `fix.test_command`, Tiltmeter runs the tests
+for it:
+
+```yaml
+fix:
+  test_command: python -m pytest -q   # or ["npm", "test"]
+  test_rounds: 1                      # more edits allowed after a failure
+```
+
+The command runs code the agent just wrote, from a change that a third party described, so
+it gets as little as possible:
+
+- **No network.** On Linux it runs in a network namespace of its own (`unshare --net`), on
+  macOS under `sandbox-exec`. Where neither works the tests are skipped, and the pull
+  request says so; `test_network: true` lets them run with network access instead.
+  Ubuntu 24.04 and later can keep unprivileged users from creating network namespaces
+  (AppArmor's `apparmor_restrict_unprivileged_userns`); there the tests are skipped too.
+- **No secrets.** Only `PATH`, the locale and the names in `test_env` are passed, with an
+  empty folder as `HOME`, so tokens in your environment or your home folder's config files
+  are not there.
+- **No leftovers.** It runs without a shell, in the worktree, and everything it writes
+  there is thrown away afterwards: only the agent's edits are committed.
+- **Not a full sandbox.** It runs as your user and can read your files. In CI that is the
+  runner's; on your own machine, use it for repositories whose tests you would run anyway.
+
+Install the dependencies before Tiltmeter runs, as your CI already does: the tests get no
+network to download them. The worktree is a fresh checkout, so a `node_modules` folder or
+virtual environment inside your checkout is not in it; dependencies installed in the
+environment (`pip install`, a global Go module cache passed with `test_env`) are.
+
+When the agent sees a failure, the output reaches it marked as data, with your earlier
+instructions unchanged: it fixes the code or the fixtures that mirror the API, and must not
+weaken or delete tests. The pull request has a "Tests" section with the command and whether
+it passed, or the end of its output when it still fails, which also goes first in "Left for
+a human".
+
 ## What leaves your machine
 
 Sent to Anthropic, through your API key or your Claude Code login, or to OpenAI with
 `--agent codex`:
 
 - the change list: paths, change kinds and types, plus Claude's earlier explanation if the
-  check has one;
+  check has one, or the provider's summary and notes for a notice;
 - the endpoint id, method and URL without its query string;
 - the content of the files the agent decides to read, and the edits it makes.
 
@@ -209,6 +254,7 @@ fix:
   effort: medium               # low, medium, high, xhigh, max; null turns thinking off
   max_model_calls: 40          # model calls, or Claude Code turns; raise for large repositories
   branch_prefix: tiltmeter/fix
+  test_command: python -m pytest -q   # run the tests on the edits, and retry on a failure
   ignore:                      # never read or written by the agent
     - .env*
     - "*.pem"
@@ -229,7 +275,7 @@ repository root, like `infra/prod`. `.git` is always blocked. Every option is in
 | 0 | The fix was committed (and pushed, and the pull request opened, when asked), discarded on purpose, or not needed. |
 | 1 | The agent changed nothing but left questions for a human, or it touched an ignored path and everything was discarded. |
 | 3 | The agent, the model provider or a git step failed. Anything already committed is kept, and the output says what is left to run. |
-| 4 | Usage error: unknown check, not a git repository, a branch that already exists, no `ANTHROPIC_API_KEY` or `fix` extra for the default agent, or Claude Code or Codex missing or logged out. |
+| 4 | Usage error: unknown check, a notice that is invalid, unsigned or does not verify, not a git repository, a branch that already exists, no `ANTHROPIC_API_KEY` or `fix` extra for the default agent, or Claude Code or Codex missing or logged out. |
 
 ## Limits
 
@@ -237,7 +283,8 @@ repository root, like `infra/prod`. `.git` is always blocked. Every option is in
 - The agent finds code by name. Code that builds field names dynamically, or reads the
   response through a generated client, may need a human.
 - It does not run your tests. Your CI does, on the pull request.
-- It is not available from the GitHub Action or the MCP server yet. Both are on the
+- The GitHub Action runs it for provider notices (`mode: notices`), not yet for drift a
+  scheduled check found, and the MCP server cannot run it yet. Both are on the
   [roadmap](../README.md#roadmap).
 - Codex and OpenCode cannot drive it yet. Codex reads files through its shell, and OpenCode
   has no structured output on the command line. Both are tracked in

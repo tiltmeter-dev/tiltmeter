@@ -1,0 +1,33 @@
+openapi: 3.0.3
+info: {title: Payments, version: "1"}
+servers: [{url: "https://pay.example"}]
+paths:
+  /v1/payments/{id}:
+    get:
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - {$ref: "#/components/schemas/Resource"}
+                  - type: object
+                    required: [amount, method]
+                    properties:
+                      amount: {type: integer}
+                      method: {$ref: "#/components/schemas/Card"}
+components:
+  schemas:
+    Resource:
+      type: object
+      required: [id, created]
+      properties:
+        id: {type: string}
+        created: {type: integer}
+    Card:
+      type: object
+      required: [kind, last4]
+      properties:
+        kind: {type: string, enum: [card, card_present]}
+        last4: {type: string}

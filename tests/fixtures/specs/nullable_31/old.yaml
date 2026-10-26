@@ -1,0 +1,29 @@
+openapi: 3.1.0
+info: {title: Orders, version: "1"}
+servers: [{url: "https://shop.example/api"}]
+paths:
+  /orders:
+    get:
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  required: [id, total, shipped_at, coupon]
+                  properties:
+                    id: {type: string}
+                    total: {type: integer}
+                    shipped_at: {type: string, format: date-time}
+                    coupon: {$ref: "#/components/schemas/Coupon"}
+                    tags: {type: array, items: {type: string}}
+components:
+  schemas:
+    Coupon:
+      type: object
+      required: [code]
+      properties:
+        code: {type: string}

@@ -32,6 +32,7 @@ classifiers = [
     "Typing :: Typed",
 ]
 dependencies = [
+    "cryptography>=42",
     "httpx>=0.27,<1",
     "langchain-anthropic>=1.7,<2",
     "langchain-core>=1.0,<2",
@@ -140,7 +141,7 @@ no_implicit_optional = true
 strict_equality = true
 
 [[tool.mypy.overrides]]
-module = ["tiltmeter.core.*"]
+module = ["tiltmeter.core.*", "tiltmeter.notices.*"]
 strict = true
 
 [tool.pytest.ini_options]

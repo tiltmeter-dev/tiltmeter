@@ -1,0 +1,47 @@
+{
+  "base_url": "https://shop.example/api",
+  "operations": [
+    {
+      "method": "GET",
+      "path": "/orders",
+      "changes": [
+        {
+          "path": "$[*].coupon",
+          "kind": "nullable_introduced",
+          "severity": "breaking",
+          "before": "object",
+          "after": "object | null"
+        },
+        {
+          "path": "$[*].shipped_at",
+          "kind": "field_now_optional",
+          "severity": "breaking",
+          "before": "required",
+          "after": "optional"
+        },
+        {
+          "path": "$[*].shipped_at",
+          "kind": "nullable_introduced",
+          "severity": "breaking",
+          "before": "string",
+          "after": "string | null"
+        },
+        {
+          "path": "$[*].tags[*]",
+          "kind": "type_changed",
+          "severity": "breaking",
+          "before": "string",
+          "after": "integer"
+        },
+        {
+          "path": "$[*].total",
+          "kind": "type_changed",
+          "severity": "breaking",
+          "before": "integer",
+          "after": "number"
+        }
+      ]
+    }
+  ],
+  "removed": []
+}

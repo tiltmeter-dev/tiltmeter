@@ -1,0 +1,41 @@
+{
+  "base_url": "https://legacy.example/api",
+  "operations": [
+    {
+      "method": "POST",
+      "path": "/users",
+      "changes": [
+        {
+          "path": "$",
+          "kind": "status_changed",
+          "severity": "warning",
+          "before": "200",
+          "after": "201"
+        },
+        {
+          "path": "$.email",
+          "kind": "nullable_introduced",
+          "severity": "breaking",
+          "before": "string",
+          "after": "string | null"
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/users/{id}",
+      "changes": [
+        {
+          "path": "$.email",
+          "kind": "nullable_introduced",
+          "severity": "breaking",
+          "before": "string",
+          "after": "string | null"
+        }
+      ]
+    }
+  ],
+  "removed": [
+    "GET /ping"
+  ]
+}
