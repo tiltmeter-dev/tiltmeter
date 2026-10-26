@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import threading
 from pathlib import Path
 
 import pytest
@@ -175,6 +176,45 @@ def test_refuses_a_newer_schema(tmp_path: Path) -> None:
     connection.close()
     with pytest.raises(StoreError, match="newer Tiltmeter"):
         Store(path)
+
+
+def test_runs_that_open_a_new_history_at_once_all_get_it(tmp_path: Path) -> None:
+    path = tmp_path / "tiltmeter.db"
+    start = threading.Barrier(8)
+    errors: list[Exception] = []
+
+    def open_store() -> None:
+        start.wait()
+        try:
+            Store(path).close()
+        except Exception as error:  # collected for the assertion below
+            errors.append(error)
+
+    threads = [threading.Thread(target=open_store) for _ in range(8)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    assert errors == []
+    with Store(path) as db:
+        assert db._db.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION
+
+
+def test_a_migration_that_fails_leaves_the_history_as_it_was(tmp_path: Path) -> None:
+    path = tmp_path / "tiltmeter.db"
+    connection = sqlite3.connect(path)
+    connection.executescript(_SCHEMA + "CREATE TABLE spec_changes (x TEXT);")
+    connection.execute("PRAGMA user_version = 1")
+    connection.commit()
+    connection.close()
+    with pytest.raises(sqlite3.OperationalError, match="spec_changes already exists"):
+        Store(path)
+    connection = sqlite3.connect(path)
+    tables = {row[0] for row in connection.execute("SELECT name FROM sqlite_master")}
+    assert connection.execute("PRAGMA user_version").fetchone()[0] == 1
+    connection.close()
+    assert "notices" not in tables
+    assert "subscriptions" not in tables
 
 
 def test_notices_are_recorded_once_and_count_attempts(store: Store) -> None:

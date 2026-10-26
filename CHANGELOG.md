@@ -14,6 +14,12 @@ a minor release may include breaking changes.
   as a `llama-3.1` shortcut, as it is and reports it, instead of pointing it at the
   replacement: whoever picks that name expects that model.
 
+### Fixed
+
+- Runs started together on a new history file no longer fail with "table shapes already
+  exists": the schema is created under SQLite's write lock, after reading its version
+  again. A migration that fails now leaves the history as it was instead of half upgraded.
+
 ## [0.7.1] - 2026-10-26
 
 ### Changed
