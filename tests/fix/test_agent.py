@@ -105,7 +105,14 @@ def test_parse_report_accepts_models_and_mappings() -> None:
 def test_report_schema_is_strict() -> None:
     schema = FixReport.model_json_schema()
     assert schema["additionalProperties"] is False
-    assert set(schema["required"]) == {"summary", "files_changed", "unresolved", "confidence"}
+    assert set(schema["required"]) == {
+        "summary",
+        "files_changed",
+        "unresolved",
+        "confidence",
+        "commit_title",
+    }
+    assert all("default" not in field for field in schema["properties"].values())
 
 
 def test_from_config_builds_a_claude_model() -> None:

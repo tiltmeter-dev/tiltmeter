@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -118,6 +118,10 @@ class FixRequest(BaseModel):
     previous_report: FixReport | None = Field(
         default=None, description="What the agent reported about those edits."
     )
+    commit_titles: list[str] = Field(
+        default_factory=list,
+        description="The repository's latest commit titles, which show its title convention.",
+    )
 
     @property
     def targets(self) -> list[FixTarget]:
@@ -154,10 +158,19 @@ class FixRequest(BaseModel):
         return f"check #{self.check_id}"
 
 
+def _every_field_required(schema: dict[str, Any]) -> None:
+    # Strict structured output (Codex) needs every property listed as required, with no
+    # defaults; commit_title stays optional in Python and is null when there is none.
+    properties = schema.get("properties", {})
+    schema["required"] = list(properties)
+    for field in properties.values():
+        field.pop("default", None)
+
+
 class FixReport(BaseModel):
     """The agent's own account of its work. Also the structured-output schema it fills in."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", json_schema_extra=_every_field_required)
 
     summary: str = Field(
         description="What you changed and why, in one to three sentences for the pull request."
@@ -171,6 +184,13 @@ class FixReport(BaseModel):
     )
     confidence: Literal["low", "medium", "high"] = Field(
         description="How sure you are that the edits are complete and correct."
+    )
+    commit_title: str | None = Field(
+        default=None,
+        description=(
+            "A one-line commit title in the convention the repository's contribution rules "
+            "or recent commit titles show, such as 'fix(scope): ...'; null when there is none."
+        ),
     )
 
 

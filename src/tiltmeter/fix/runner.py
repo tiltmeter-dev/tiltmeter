@@ -59,7 +59,15 @@ def default_branch(request: FixRequest, prefix: str = DEFAULT_BRANCH_PREFIX) -> 
     return f"{prefix}-{slug}-{request.check_id}"
 
 
-def commit_title(request: FixRequest) -> str:
+MAX_TITLE_LENGTH: Final = 100
+
+
+def commit_title(request: FixRequest, report: FixReport | None = None) -> str:
+    """The agent's title in the repository's convention when it gave a usable one,
+    otherwise Tiltmeter's own."""
+    proposed = _proposed_title(report)
+    if proposed is not None:
+        return proposed
     retired = _retired_title(request)
     if retired is not None:
         return retired
@@ -69,6 +77,19 @@ def commit_title(request: FixRequest) -> str:
         title += f" in spec {notice.spec.new_version}"
     elif notice is not None and notice.effective_at:
         title += f" effective {notice.effective_at[:10]}"
+    return title
+
+
+def _proposed_title(report: FixReport | None) -> str | None:
+    """The agent's commit_title, unless it is too short, too long or could link, mention or
+    format something: the agent wrote it from untrusted repository text."""
+    if report is None or report.commit_title is None:
+        return None
+    title = " ".join(report.commit_title.split())
+    if not 8 <= len(title) <= MAX_TITLE_LENGTH:
+        return None
+    if any(mark in title for mark in ("@", "`", "<", ">", "](", "://")):
+        return None
     return title
 
 
@@ -420,7 +441,8 @@ class FixSession:
             raise FixError("there is nothing to commit")
         if preview.ignored:
             raise FixError(f"refusing to commit ignored files: {', '.join(preview.ignored)}")
-        self.worktree.commit(commit_title(self.request), commit_body(self.request, preview.report))
+        title = commit_title(self.request, preview.report)
+        self.worktree.commit(title, commit_body(self.request, preview.report))
         self._committed = True
         remote = self.repo.remote()
         open_pr = f"gh pr create --head {self.branch} --fill" + (
@@ -449,7 +471,7 @@ class FixSession:
                 cwd=self.repo.root,
                 head=self.branch,
                 base=self.base,
-                title=commit_title(self.request),
+                title=title,
                 body=pull_request_body(self.request, preview, model_name=model_name),
             )
         except FixError as exc:
