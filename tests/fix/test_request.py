@@ -306,3 +306,21 @@ def test_moves_and_retired_values_reach_the_agent() -> None:
     assert '"replaced_by": "billing-4"' in text
     assert "For value_retired, $ is the request instead" in text
     assert "For value_retired" not in render_fix_request(notice_request())
+
+
+def test_only_the_retired_values_the_code_sends_are_kept() -> None:
+    retired = {
+        "method": "POST",
+        "url": "https://api.billing.test/v1/completions",
+        "changes": [
+            {"path": "$.model", "kind": "value_retired", "before": old, "replaced_by": "b-4"}
+            for old in ("b-1", "b-2", "b-3")
+        ],
+    }
+    model = ApiChangeNotice.model_validate(signed(notice(endpoints=[retired])))
+    found = ["api.billing.test", "b-2"]
+    used = build_notice_request(model, location="x", verified=True, found=found)
+    assert [t.before for t in used.targets] == ["b-2"]
+    # Nothing found, nothing left out: the agent searches on its own.
+    every = build_notice_request(model, location="x", verified=True, found=["api.billing.test"])
+    assert [t.before for t in every.targets] == ["b-1", "b-2", "b-3"]

@@ -13,6 +13,9 @@ a minor release may include breaking changes.
 - A fix for a notice that only retires values is titled after them, such as "Replace the
   models api.anthropic.com retired", instead of "Adapt to the api.anthropic.com API
   change".
+- A fix for retired values shows the agent, and lists in the pull request, only the ones
+  the search found in the code, so a repository that sends one retired model gets a
+  pull request about that model. A note on a retired value is labelled with the value.
 
 ## [0.7.0] - 2026-10-26
 

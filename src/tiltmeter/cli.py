@@ -725,6 +725,7 @@ def _fix_notice(
             candidate_files=impact.files,
             endpoints=impact.endpoints or None,
             read=impact.fields,
+            found=impact.anchors,
         )
         if not request.targets:
             return FixOutcome(
@@ -1003,6 +1004,7 @@ def notices_apply(
                 endpoints=impact.endpoints or None,
                 spec=entry.spec,
                 read=impact.fields,
+                found=impact.anchors,
             )
             branch = default_branch(request, settings.branch_prefix)
             remote = git.remote()
