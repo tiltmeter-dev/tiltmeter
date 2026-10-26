@@ -180,13 +180,14 @@ in February 2026. One of them was Stripe's own subscription sample, which no lon
 type-checks against Stripe's SDK. Tiltmeter fixed it and 14 others we checked by hand, and
 the pull requests are open: [the fix for Stripe's sample](https://github.com/stripe-samples/subscription-use-cases/pull/1229).
 
-The first fix to be merged went to Serenity BDD, whose Jira plugin still searched issues on
-`/rest/api/3/search`, an endpoint Jira Cloud has removed. Tiltmeter moved it to
-`/rest/api/3/search/jql` and its page tokens, and the maintainers merged
-[the pull request](https://github.com/serenity-bdd/serenity-core/pull/3756) as it was.
-Hours later ruflo, with 79,000 stars, merged the fix for its Claude model defaults, which
-Anthropic had retired; its maintainer checked that the replacement models were current and
-merged [the pull request](https://github.com/ruvnet/ruflo/pull/4512) as it was.
+Since then Tiltmeter has opened 41 pull requests for changes at Stripe, Jira, Spotify, OpenAI
+and Anthropic. So far 4 have been merged and none closed, each as Tiltmeter wrote it:
+[Serenity BDD](https://github.com/serenity-bdd/serenity-core/pull/3756) moved its Jira plugin off
+`/rest/api/3/search`, an endpoint Jira Cloud removed, and
+[ruflo](https://github.com/ruvnet/ruflo/pull/4512),
+[radare2's r2ai](https://github.com/radareorg/r2ai/pull/249) and
+[mcp-chat](https://github.com/Flux159/mcp-chat/pull/46) moved their defaults off Claude models
+Anthropic has retired.
 
 Subscribe with a few lines of `tiltmeter.yaml`; the [notices guide](docs/notices.md)
 covers both sides.
