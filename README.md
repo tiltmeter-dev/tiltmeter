@@ -5,6 +5,7 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
 <a href="https://devhunt.org/tool/tiltmeter" target="_blank" title="Tiltmeter on DevHunt"><img src="https://devhunt.org/badge/tiltmeter.svg" alt="Tiltmeter - Featured on DevHunt" width="220" height="54" /></a>
+<a href="https://launchnest.io/p/tiltmeter-know-when-the-apis-under-your-agents-move" target="_blank"><img src="https://launchnest.io/badge/tiltmeter-know-when-the-apis-under-your-agents-move.svg?variant=featured" alt="Tiltmeter: know when the APIs under your agents move on LaunchNest" width="220" height="56" /></a>
 
 **An early-warning system for the third-party APIs your AI agents depend on, with the fix as a pull request.** · [tiltmeter.dev](https://tiltmeter.dev)
 
