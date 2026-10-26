@@ -183,6 +183,9 @@ The first fix to be merged went to Serenity BDD, whose Jira plugin still searche
 `/rest/api/3/search`, an endpoint Jira Cloud has removed. Tiltmeter moved it to
 `/rest/api/3/search/jql` and its page tokens, and the maintainers merged
 [the pull request](https://github.com/serenity-bdd/serenity-core/pull/3756) as it was.
+Hours later ruflo, with 79,000 stars, merged the fix for its Claude model defaults, which
+Anthropic had retired; its maintainer checked that the replacement models were current and
+merged [the pull request](https://github.com/ruvnet/ruflo/pull/4512) as it was.
 
 Subscribe with a few lines of `tiltmeter.yaml`; the [notices guide](docs/notices.md)
 covers both sides.
