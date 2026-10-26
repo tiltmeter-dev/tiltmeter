@@ -8,6 +8,8 @@ a minor release may include breaking changes.
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-10-26
+
 ### Changed
 
 - For a retired value, the agent changes what the code sends and leaves alone code that only
