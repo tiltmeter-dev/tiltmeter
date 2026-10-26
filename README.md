@@ -180,14 +180,15 @@ in February 2026. One of them was Stripe's own subscription sample, which no lon
 type-checks against Stripe's SDK. Tiltmeter fixed it and 14 others we checked by hand, and
 the pull requests are open: [the fix for Stripe's sample](https://github.com/stripe-samples/subscription-use-cases/pull/1229).
 
-Since then Tiltmeter has opened 41 pull requests for changes at Stripe, Jira, Spotify, OpenAI
-and Anthropic. So far 4 have been merged and none closed, each as Tiltmeter wrote it:
+Since then Tiltmeter has opened 56 pull requests for changes at Stripe, Jira, Spotify, OpenAI,
+Anthropic and Groq. So far 1 was closed and 4 have been merged, each as Tiltmeter wrote it:
 [Serenity BDD](https://github.com/serenity-bdd/serenity-core/pull/3756) moved its Jira plugin off
 `/rest/api/3/search`, an endpoint Jira Cloud removed, and
 [ruflo](https://github.com/ruvnet/ruflo/pull/4512),
 [radare2's r2ai](https://github.com/radareorg/r2ai/pull/249) and
 [mcp-chat](https://github.com/Flux159/mcp-chat/pull/46) moved their defaults off Claude models
-Anthropic has retired.
+Anthropic has retired. The [migration tracker](https://tiltmeter.dev/migrations/) shows every
+pull request and its status, by provider.
 
 Subscribe with a few lines of `tiltmeter.yaml`; the [notices guide](docs/notices.md)
 covers both sides.
