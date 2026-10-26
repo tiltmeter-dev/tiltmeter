@@ -424,3 +424,41 @@ def test_a_quoted_path_without_its_leading_slash_is_the_path(tmp_path: Path) -> 
     # A key alone is no path: "customers" is not /customers.
     index = index_of(tmp_path / "key", {"app.py": 'data["customers"]\n'})
     assert index.uses([Candidate("https://api.billing.test/v1/customers", ())]) == [0]
+
+
+def test_a_removed_endpoint_behind_a_configured_base_url_is_still_called(
+    tmp_path: Path,
+) -> None:
+    gone = {
+        "endpoints": [
+            {
+                "method": "GET",
+                "url": "https://api.billing.test/v1/artists/{id}/top-tracks",
+                "changes": [{"path": "$", "kind": "endpoint_removed"}],
+            },
+            {
+                "method": "GET",
+                "url": "https://api.billing.test/v1/markets",
+                "changes": [{"path": "$", "kind": "endpoint_removed"}],
+            },
+        ]
+    }
+    gone["endpoints"].insert(
+        0,
+        {
+            "method": "GET",
+            "url": "https://api.billing.test/v1/artists/{id}",
+            "changes": [{"path": "$.followers", "kind": "field_removed"}],
+        },
+    )
+    files = {
+        "api/artists.ts": "get(`${config.baseURL}/artists/${id}/top-tracks`)\n"
+        "get(`https://api.billing.test/v1/artists/${id}`).followers\n",
+        "api/markets.ts": "get(`${config.baseURL}/markets`)\n",
+        "config.ts": 'export const baseURL = "https://api.billing.test/v1"\n',
+    }
+    impact = check(tmp_path, files, **gone)
+    assert impact.affected
+    # /markets may be the app's own route, so only the longer path counts away from the host,
+    # and a call of an endpoint that is gone comes before the others.
+    assert impact.endpoints == [1, 0]
