@@ -416,3 +416,24 @@ def test_retired_values_name_what_they_replace() -> None:
     assert commit_title(notice_request(endpoints=MOVES_AND_RETIREMENTS)).startswith(
         "Adapt to the api.billing.test API change"
     )
+
+
+def test_notes_on_retired_values_name_the_value() -> None:
+    from tests.notices.kit import notice as make_notice
+
+    retired = {
+        "method": "POST",
+        "url": "https://api.billing.test/v1/completions",
+        "changes": [
+            {
+                "path": "$.model",
+                "kind": "value_retired",
+                "before": "b-1",
+                "replaced_by": "b-4",
+                "note": "Retired on May 1.",
+            }
+        ],
+    }
+    model = ApiChangeNotice.model_validate(signed(make_notice(endpoints=[retired])))
+    request = build_notice_request(model, location="x", verified=True)
+    assert "b-1: Retired on May 1." in pull_request_body(request, notice_preview(), model_name="m")

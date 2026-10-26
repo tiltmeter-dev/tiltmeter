@@ -212,6 +212,8 @@ def _notice_section(request: FixRequest, notice: NoticeSource) -> list[str]:
 
 
 def _where(api: FixApi, target: FixTarget) -> str:
+    if target.kind is ChangeKind.VALUE_RETIRED and target.before:
+        return target.before
     return f"{api.method} {urlsplit(api.url).path}" if target.path == "$" else target.path
 
 

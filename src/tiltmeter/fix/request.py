@@ -158,6 +158,13 @@ def notice_targets(endpoint: NoticeEndpoint) -> list[FixTarget]:
     return targets
 
 
+def _in_use(targets: list[FixTarget], used: set[str | None]) -> list[FixTarget]:
+    """The targets without the retired values the code was not found to send."""
+    if not used:
+        return targets
+    return [t for t in targets if t.kind is not ChangeKind.VALUE_RETIRED or t.before in used]
+
+
 def _relevance(target: FixTarget, read: set[str]) -> tuple[bool, bool, int]:
     """A removed endpoint first, since the rest is about the endpoint it moved to."""
     try:
@@ -177,6 +184,7 @@ def build_notice_request(
     endpoints: Sequence[int] | None = None,
     spec: SpecInfo | None = None,
     read: Sequence[str] = (),
+    found: Sequence[str] = (),
 ) -> FixRequest:
     """The request for a provider's notice: its endpoints, changes and SDK releases.
 
@@ -184,8 +192,17 @@ def build_notice_request(
     repository uses. ``spec`` says the notice comes from comparing the provider's spec.
     Changes to the field names in ``read``, which the code reads, come first, the
     shallowest first, so that they are the ones shown when not all of them fit.
+    ``found`` is what the search found in the code: when it holds some of the retired
+    values, the others are left out, so a fix for one retired model lists that model.
     """
     names = set(read)
+    retired = {
+        change.before
+        for endpoint in notice.endpoints
+        for change in endpoint.changes
+        if change.kind is ChangeKind.VALUE_RETIRED
+    }
+    used = retired & set(found)
     picked = (
         [notice.endpoints[i] for i in endpoints if 0 <= i < len(notice.endpoints)]
         if endpoints
@@ -198,7 +215,7 @@ def build_notice_request(
             targets=sorted(targets, key=lambda t: _relevance(t, names)) if names else targets,
         )
         for endpoint in picked
-        if (targets := notice_targets(endpoint))
+        if (targets := _in_use(notice_targets(endpoint), used))
     ]
     terms = [target.field for api in apis for target in api.targets if target.field]
     terms += [
