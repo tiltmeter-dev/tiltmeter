@@ -264,6 +264,7 @@ def test_calls_through_an_sdk_name_their_endpoints(tmp_path: Path) -> None:
                 "intent = stripe.PaymentIntent.create(amount=1)\n"
                 "pulls = await octokit.rest.pulls.list({owner, repo})\n"
                 "session = await stripe.checkout.sessions.create({mode})\n"
+                "const sub = await getStripe().invoices.retrieve(id)\n"
             ),
         },
     )
@@ -272,7 +273,7 @@ def test_calls_through_an_sdk_name_their_endpoints(tmp_path: Path) -> None:
         ("POST", "https://api.stripe.com/v1/subscriptions/{subscription_exposed_id}", 0),
         ("GET", "https://api.stripe.com/v1/subscriptions", 0),  # list, not retrieve
         ("POST", "https://api.stripe.com/v1/payment_intents", 2),
-        ("GET", "https://api.stripe.com/v1/invoices/{invoice}", 0),
+        ("GET", "https://api.stripe.com/v1/invoices/{invoice}", 2),  # through getStripe()
         ("GET", "https://api.github.com/repos/{owner}/{repo}/pulls", 2),
         ("GET", "https://api.github.com/repos/{owner}/{repo}/pulls/{pull_number}", 0),
         ("POST", "https://api.stripe.com/v1/checkout/sessions", 2),

@@ -238,7 +238,10 @@ class RepoIndex:
         code = {name: text for name, text in texts.items() if name not in docs}
         paths = {name: frozenset(_PATH_TOKEN.findall(text)) for name, text in code.items()}
         calls = frozenset(
-            (tuple(_resource(part) for part in re.split(r"\s*\.\s*", chain)), verb.lower())
+            (
+                tuple(_resource(part.rstrip("() \t")) for part in re.split(r"\s*\.\s*", chain)),
+                verb.lower(),
+            )
             for text in code.values()
             for chain, verb in _SDK_CALL.findall(text)
         )
@@ -337,8 +340,9 @@ def _template_pattern(url: str, *, versionless: bool = True) -> re.Pattern[str] 
 
 # Calls through an SDK, as most SDKs name them: stripe.Subscription.retrieve(...),
 # client.messages.create(...), octokit.rest.pulls.list(...).
+# A step of the chain may be a call without arguments, as in getStripe().subscriptions.
 _SDK_CALL: Final = re.compile(
-    r"\b([A-Za-z_]\w*(?:\s*\.\s*[A-Za-z_]\w*)+)\s*\.\s*"
+    r"\b((?:[A-Za-z_]\w*(?:\(\s*\))?\s*\.\s*)*[A-Za-z_]\w*)\s*\.\s*"
     r"(retrieve|get|list|create|new|update|modify|delete|del)\s*\(",
     re.IGNORECASE,
 )
