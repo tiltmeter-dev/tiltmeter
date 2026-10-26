@@ -7,9 +7,9 @@ from typing import Any
 import pytest
 
 from tiltmeter.core.analyze import analyze
-from tiltmeter.core.diff import diff_shapes
-from tiltmeter.core.models import Baseline, ChangeKind, Observation
-from tiltmeter.core.paths import PathMatcher
+from tiltmeter.core.diff import annotate_renames, diff_shapes
+from tiltmeter.core.models import Baseline, ChangeKind, Observation, RawChange
+from tiltmeter.core.paths import PathMatcher, parse_path
 from tiltmeter.core.shape import Shape
 
 PAIRS = Path(__file__).parent.parent / "fixtures" / "pairs"
@@ -175,6 +175,37 @@ def test_a_field_that_moves_under_another_parent_keeps_its_name() -> None:
         Shape.from_samples([{"a": {}, "b": {"x": "1"}}]),
     )
     assert all(c.hint is None for c in other_type)
+
+
+def field(kind: ChangeKind, path: str, *types: str) -> RawChange:
+    segments = tuple(parse_path(path))
+    return RawChange(path, kind, segments=segments, types=frozenset(types or ("string",)))
+
+
+def test_fields_inside_added_ones_are_only_places_to_move_to() -> None:
+    gone, new = ChangeKind.FIELD_REMOVED, ChangeKind.FIELD_ADDED
+    changes = [
+        field(gone, "$.a.x"),
+        field(gone, "$.a.y", "integer"),
+        field(new, "$.a.n", "object"),
+        field(gone, "$.a.far"),
+        field(new, "$.b", "object"),
+    ]
+    inside = [
+        field(new, "$.a.n.list[*].item.x"),  # four segments from $.a.x, all inside $.a.n
+        field(new, "$.a.n.y", "integer", "null"),
+        field(new, "$.b.far"),  # one segment from $.a.far, but $.b was not added beside it
+    ]
+    assert {c.path: c.hint for c in annotate_renames(changes, inside)} == {
+        "$.a.x": "possibly renamed to $.a.n.list[*].item.x",
+        "$.a.y": "possibly renamed to $.a.n.y",
+        "$.a.n": "possibly replaces $.a.x, $.a.y",
+        "$.a.far": None,
+        "$.b": None,
+    }
+    crowded = annotate_renames(changes, [*inside, field(new, "$.b.x")])  # x appears twice
+    assert {c.path: c.hint for c in crowded}["$.a.x"] is None
+    assert [c.path for c in crowded] == [c.path for c in changes]  # never reported
 
 
 def test_no_rename_hint_across_types_or_ambiguous_names() -> None:

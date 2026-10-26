@@ -24,6 +24,7 @@ from __future__ import annotations
 import heapq
 import itertools
 import re
+from collections import defaultdict, deque
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from functools import reduce
@@ -53,6 +54,10 @@ _SOMETIMES: Final = 1
 # Schema nodes and shapes built for one comparison. A hostile or broken spec stops here
 # instead of running for hours.
 MAX_NODES: Final = 1_000_000
+# How deep, in properties, the fields inside a new field are read as places a removed field
+# may have moved to, and how many of them one site keeps.
+_INSIDE_DEPTH: Final = 3
+_INSIDE_LIMIT: Final = 10_000
 _STATUS: Final = re.compile(r"[2-5][0-9][0-9]")
 _PARAMETER: Final = re.compile(r"\{[^}]*\}")
 # Where a change sorts among the others at its path, as the shape diff walks a tree:
@@ -506,10 +511,15 @@ class _Edge:
 
 @dataclass(frozen=True, slots=True)
 class _Local:
-    """The changes found at one location, and the pairs of named schemas below it."""
+    """The changes found at one location, the pairs of named schemas below it, and the
+    new schema of each field added there."""
 
     changes: tuple[RawChange, ...]
     edges: tuple[_Edge, ...]
+    added: tuple[tuple[tuple[Segment, ...], _Child], ...] = ()
+
+
+type _Inside = Mapping[str, tuple[tuple[tuple[Segment, ...], frozenset[str]], ...]]
 
 
 class _Comparison:
@@ -520,6 +530,7 @@ class _Comparison:
         self.new = new
         self._budget = budget
         self._pairs: dict[_Key, _Local] = {}
+        self._inside: dict[_Key, _Inside] = {}
 
     def pair(self, key: _Key) -> _Local:
         local = self._pairs.get(key)
@@ -532,9 +543,15 @@ class _Comparison:
         """Compare two schemas, stopping at pairs of named schemas."""
         edges: list[_Edge] = []
         enums: list[RawChange] = []
-        before, after = self._both(old, new, (), edges, _SEEN, _SEEN, enums)
+        fresh: dict[tuple[Segment, ...], _Child] = {}
+        before, after = self._both(old, new, (), edges, _SEEN, _SEEN, enums, fresh)
         raw = [*diff_shapes(before, after, complete=True, renames=False), *enums]
-        return _Local(tuple(_spec_wording(change) for change in raw), tuple(edges))
+        added = tuple(
+            (change.segments, fresh[change.segments])
+            for change in raw
+            if change.kind is ChangeKind.FIELD_ADDED and change.segments in fresh
+        )
+        return _Local(tuple(_spec_wording(change) for change in raw), tuple(edges), added)
 
     def _both(
         self,
@@ -545,6 +562,7 @@ class _Comparison:
         count_a: int,
         count_b: int,
         enums: list[RawChange],
+        fresh: dict[tuple[Segment, ...], _Child],
     ) -> tuple[Shape, Shape]:
         self._budget.spend()
         if isinstance(a, _Ref) and isinstance(b, _Ref):
@@ -578,19 +596,28 @@ class _Comparison:
             theirs = node_b.properties.get(name) if objects[1] else None
             count_mine = _SEEN if mine and mine[1] else _SOMETIMES
             count_theirs = _SEEN if theirs and theirs[1] else _SOMETIMES
+            child_segments = (*segments, name)
             if mine is not None and theirs is not None:
                 before.properties[name], after.properties[name] = self._both(
-                    mine[0], theirs[0], (*segments, name), edges, count_mine, count_theirs, enums
+                    mine[0],
+                    theirs[0],
+                    child_segments,
+                    edges,
+                    count_mine,
+                    count_theirs,
+                    enums,
+                    fresh,
                 )
             elif mine is not None:
                 before.properties[name] = self._alone(self.old, mine[0], count_mine)
             elif theirs is not None:
                 after.properties[name] = self._alone(self.new, theirs[0], count_theirs)
+                fresh[child_segments] = theirs[0]
         items_a = node_a.items if "array" in node_a.types else None
         items_b = node_b.items if "array" in node_b.types else None
         if items_a is not None and items_b is not None:
             before.items, after.items = self._both(
-                items_a, items_b, (*segments, ITEMS), edges, _SEEN, _SEEN, enums
+                items_a, items_b, (*segments, ITEMS), edges, _SEEN, _SEEN, enums, fresh
             )
         elif items_a is not None:
             before.items = self._alone(self.old, items_a, _SEEN)
@@ -604,6 +631,43 @@ class _Comparison:
         if isinstance(child, _Ref):
             return _placeholder(catalog.root_types(child), count)
         return _bare(child, count)
+
+    def inside(self, local: _Local, key: _Key | None) -> _Inside:
+        """The fields within each field added at a site, by name, a few properties deep.
+
+        They are never reported, only offered as places a removed field moved to. An "id or
+        object" field counts as one field and is not opened: by default it holds an id.
+        """
+        found = self._inside.get(key) if key is not None else None
+        if found is not None:
+            return found
+        fields: defaultdict[str, list[tuple[tuple[Segment, ...], frozenset[str]]]]
+        fields = defaultdict(list)
+        queue: deque[tuple[_Child, tuple[Segment, ...], int, frozenset[frozenset[str]]]]
+        queue = deque(
+            (child, segments, _INSIDE_DEPTH, frozenset()) for segments, child in local.added
+        )
+        kept = 0
+        while queue and kept < _INSIDE_LIMIT:  # breadth first, so a cut keeps the nearest
+            child, segments, depth, seen = queue.popleft()
+            if isinstance(child, _Ref):
+                if child.expandable or child.targets in seen:
+                    continue
+                seen |= {child.targets}
+            node = self.new.node(child)
+            if "object" in node.types and depth:
+                for name, (sub, _) in sorted(node.properties.items()):
+                    inner = (*segments, name)
+                    types = self.new.root_types(sub) if isinstance(sub, _Ref) else sub.types
+                    fields[name].append((inner, types))
+                    kept += 1
+                    queue.append((sub, inner, depth - 1, seen))
+            if "array" in node.types and node.items is not None:
+                queue.append((node.items, (*segments, ITEMS), depth, seen))
+        found = {name: tuple(entries) for name, entries in fields.items()}
+        if key is not None:
+            self._inside[key] = found
+        return found
 
     def emit(self, old: _Child, new: _Child, *, expand_depth: int | None) -> list[RawChange]:
         """Every change an operation's response reaches, once, at its shortest path."""
@@ -631,6 +695,9 @@ class _Comparison:
 
         add((), root.changes)
         push((), 0, root.edges)
+        grown: list[tuple[tuple[Segment, ...], _Local, _Key | None]] = []
+        if root.added:
+            grown.append(((), root, None))
         reached: set[_Key] = set()
         while queue:
             hops, _, _, _, segments, key = heapq.heappop(queue)
@@ -640,7 +707,38 @@ class _Comparison:
             local = self.pair(key)
             add(segments, local.changes)
             push(segments, hops, local.edges)
-        return annotate_renames(sorted(found.values(), key=_traversal))
+            if local.added:
+                grown.append((segments, local, key))
+        changes = sorted(found.values(), key=_traversal)
+        return annotate_renames(changes, self._moved_into(changes, grown))
+
+    def _moved_into(
+        self,
+        changes: Sequence[RawChange],
+        grown: Sequence[tuple[tuple[Segment, ...], _Local, _Key | None]],
+    ) -> list[RawChange]:
+        """The fields inside added fields that share a name with a removed field."""
+        names = {
+            name
+            for change in changes
+            if change.kind is ChangeKind.FIELD_REMOVED
+            and change.segments
+            and isinstance(name := change.segments[-1], str)
+        }
+        if not names:
+            return []
+        found: dict[str, RawChange] = {}
+        for prefix, local, key in grown:
+            fields = self.inside(local, key)
+            for name in sorted(names & fields.keys()):
+                for inner, types in fields[name]:
+                    segments = (*prefix, *inner)
+                    path = format_path(segments)
+                    found.setdefault(
+                        path,
+                        RawChange(path, ChangeKind.FIELD_ADDED, segments=segments, types=types),
+                    )
+        return list(found.values())
 
 
 def _traversal(change: RawChange) -> tuple[tuple[Any, ...], ...]:

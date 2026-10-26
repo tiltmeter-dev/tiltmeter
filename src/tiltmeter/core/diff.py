@@ -179,7 +179,9 @@ def _diff_enum(
     )
 
 
-def annotate_renames(changes: Sequence[RawChange]) -> list[RawChange]:
+def annotate_renames(
+    changes: Sequence[RawChange], inside: Sequence[RawChange] = ()
+) -> list[RawChange]:
     """Pair removed and added fields that look like the same data under a new name.
 
     A pair needs the same parent object and the same non-null type. It is
@@ -190,6 +192,12 @@ def annotate_renames(changes: Sequence[RawChange]) -> list[RawChange]:
     there (``$.current_period_end`` to ``$.items.data[*].current_period_end``)
     when it is the only field of that name and type to go and the only one to
     appear. Nearby means at most three segments added, removed or replaced.
+
+    ``inside`` lists the fields within added fields, which are not reported on their
+    own (a spec's new object is one ``field_added``). They count only as places a field
+    moved to, when the added field that holds them sits beside the removed one:
+    ``$.subscription`` to ``$.parent.subscription_details.subscription``. That added
+    field then says which fields it possibly replaces.
     """
     result = list(changes)
     removed = [i for i, c in enumerate(changes) if c.kind is ChangeKind.FIELD_REMOVED]
@@ -197,7 +205,7 @@ def annotate_renames(changes: Sequence[RawChange]) -> list[RawChange]:
     for i, change in enumerate(changes):
         if change.kind is ChangeKind.FIELD_ADDED and change.segments:
             added_by_parent[change.segments[:-1]].append(i)
-    if not removed or not added_by_parent:
+    if not removed or not (added_by_parent or inside):
         return result
     used: set[int] = set()
     for i in removed:
@@ -228,17 +236,23 @@ def annotate_renames(changes: Sequence[RawChange]) -> list[RawChange]:
         replacement = changes[best]
         result[i] = replace(gone, hint=f"{RENAMED_TO}{replacement.path}")
         result[best] = replace(replacement, hint=f"{REPLACES}{gone.path}")
-    _annotate_moves(changes, result, [i for i in removed if result[i] is changes[i]], used)
+    unpaired = {i for i in removed if result[i] is changes[i]}
+    _annotate_moves(changes, inside, result, unpaired, used)
     return result
 
 
 def _annotate_moves(
-    changes: Sequence[RawChange], result: list[RawChange], unpaired: list[int], used: set[int]
+    changes: Sequence[RawChange],
+    inside: Sequence[RawChange],
+    result: list[RawChange],
+    unpaired: set[int],
+    used: set[int],
 ) -> None:
     """Pair each unpaired removed field with the one added elsewhere under its name."""
     gone: dict[tuple[Segment, frozenset[str]], list[int]] = defaultdict(list)
     appeared: dict[tuple[Segment, frozenset[str]], list[int]] = defaultdict(list)
-    for i, change in enumerate(changes):
+    pool = [*changes, *inside]  # positions past the changes are fields inside added ones
+    for i, change in enumerate(pool):
         if not change.segments or not isinstance(change.segments[-1], str):
             continue
         name = (change.segments[-1], core_types(change.types))
@@ -246,16 +260,51 @@ def _annotate_moves(
             gone[name].append(i)
         elif change.kind is ChangeKind.FIELD_ADDED and i not in used:
             appeared[name].append(i)
+    holders = (
+        {c.segments: k for k, c in enumerate(changes) if c.kind is ChangeKind.FIELD_ADDED}
+        if inside
+        else {}
+    )
     for field, removed in gone.items():
         added = appeared.get(field, [])
-        if len(removed) == 1 and len(added) == 1:
-            i, j = removed[0], added[0]
-            if _distance(changes[i].segments, changes[j].segments) > _MOVE_DISTANCE:
-                continue
-            result[i] = replace(changes[i], hint=f"{RENAMED_TO}{changes[j].path}")
-            result[j] = replace(changes[j], hint=f"{REPLACES}{changes[i].path}")
+        if len(removed) != 1 or len(added) != 1:
+            continue
+        i, j = removed[0], added[0]
+        source, target = changes[i], pool[j]
+        if j < len(changes):
+            holder: int | None = j
+            near = _distance(source.segments, target.segments) <= _MOVE_DISTANCE
+        else:
+            holder = _holder(holders, target.segments)
+            near = holder is not None and changes[holder].segments[:-1] == source.segments[:-1]
+        if near and holder is not None:
+            result[i] = replace(source, hint=f"{RENAMED_TO}{target.path}")
+            _add_replaced(result, holder, source.path)
 
 
+def _holder(holders: dict[tuple[Segment, ...], int], segments: tuple[Segment, ...]) -> int | None:
+    """The reported added field that a field inside an added one lies within."""
+    for end in range(1, len(segments)):
+        found = holders.get(segments[:end])
+        if found is not None:
+            return found
+    return None
+
+
+def _add_replaced(result: list[RawChange], index: int, path: str) -> None:
+    """Say that the added field at ``index`` possibly replaces ``path``, besides others."""
+    change = result[index]
+    hint = change.hint
+    hint = f"{hint}, {path}" if hint and hint.startswith(REPLACES) else f"{REPLACES}{path}"
+    result[index] = replace(change, hint=hint)
+
+
+# How far a field may move into an object that already existed. A field inside a new
+# object is not held to it, since it sits below that object and whatever wraps it: Stripe
+# moved `$.payment_intent` to `$.payments.data[*].payment.payment_intent`, four segments
+# away. It counts instead only when its new object was added beside the removed field, which
+# is stricter: Stripe's `$.last_finalization_error.payment_intent.latest_charge.invoice` did
+# not go to `$.payments.data[*].invoice`, though that is three segments away.
 _MOVE_DISTANCE: Final = 3
 
 

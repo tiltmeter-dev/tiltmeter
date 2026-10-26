@@ -1,0 +1,68 @@
+# Before Stripe's 2025-03-31 API: an invoice names its subscription and its payment
+# intent directly.
+openapi: 3.0.3
+info: {title: Billing API, version: "2024-06-20"}
+servers:
+  - url: https://api.billing.example
+paths:
+  /v1/invoices:
+    get:
+      responses:
+        "200":
+          description: Invoices
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items: {$ref: "#/components/schemas/invoice"}
+  /v1/invoices/{invoice}:
+    get:
+      responses:
+        "200":
+          description: One invoice
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/invoice"}
+components:
+  schemas:
+    invoice:
+      type: object
+      required: [id, type]
+      properties:
+        id: {type: string}
+        type: {type: string, enum: [one_off, recurring]}
+        subscription:
+          anyOf:
+            - {type: string, maxLength: 5000}
+            - $ref: "#/components/schemas/subscription"
+          nullable: true
+        subscription_proration_date: {type: integer}
+        payment_intent:
+          anyOf:
+            - {type: string, maxLength: 5000}
+            - $ref: "#/components/schemas/payment_intent"
+          nullable: true
+        last_error:
+          type: object
+          properties:
+            code: {type: string}
+            charge:
+              type: object
+              properties:
+                id: {type: string}
+                invoice: {type: string}
+    subscription:
+      type: object
+      required: [id, status]
+      properties:
+        id: {type: string}
+        status: {type: string}
+    payment_intent:
+      type: object
+      required: [id]
+      properties:
+        id: {type: string}
