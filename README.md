@@ -179,6 +179,11 @@ in February 2026. One of them was Stripe's own subscription sample, which no lon
 type-checks against Stripe's SDK. Tiltmeter fixed it and 14 others we checked by hand, and
 the pull requests are open: [the fix for Stripe's sample](https://github.com/stripe-samples/subscription-use-cases/pull/1229).
 
+The first fix to be merged went to Serenity BDD, whose Jira plugin still searched issues on
+`/rest/api/3/search`, an endpoint Jira Cloud has removed. Tiltmeter moved it to
+`/rest/api/3/search/jql` and its page tokens, and the maintainers merged
+[the pull request](https://github.com/serenity-bdd/serenity-core/pull/3756) as it was.
+
 Subscribe with a few lines of `tiltmeter.yaml`; the [notices guide](docs/notices.md)
 covers both sides.
 
