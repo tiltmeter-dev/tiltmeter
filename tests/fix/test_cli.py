@@ -266,6 +266,7 @@ def test_failing_tests_go_back_to_the_agent_until_they_pass(
     assert first.test_failure is None
     assert first.test_command is not None
     assert "so do not list running them as unresolved" in render_fix_request(first)
+    assert "say in the summary that you did not run them" in render_fix_request(first)
     assert second.test_failure is not None
     assert "AttributeError: not fixed yet" in second.test_failure.output
     assert second.previous_report == agent.result  # what the first round reported

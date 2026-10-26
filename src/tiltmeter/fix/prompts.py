@@ -231,7 +231,8 @@ def render_fix_request(request: FixRequest) -> str:
         parts.append(
             f"When you are done, Tiltmeter runs the repository's tests with "
             f"`{request.test_command}` and shows you any failure, so do not list running "
-            "them as unresolved."
+            "them as unresolved or say in the summary that you did not run them: the pull "
+            "request reports how they went."
         )
     if request.test_failure is not None:
         failure = request.test_failure
@@ -262,7 +263,8 @@ def render_fix_request(request: FixRequest) -> str:
             "API's responses. Do not weaken or delete tests to make them pass. Then report "
             "everything you changed for this API change, including your earlier edits, and "
             "keep the unresolved items above that still apply. Tiltmeter runs the tests "
-            "again after this round, so do not list running them as unresolved.",
+            "again after this round, so do not list running them as unresolved or mention "
+            "them in the summary.",
             "</test_failure>",
         ]
     return "\n".join(parts)
