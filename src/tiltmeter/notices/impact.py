@@ -4,8 +4,11 @@ Running an agent in every repository for every notice is slow, costs money, and 
 pull requests nobody needs. So Tiltmeter looks first, without an LLM:
 
 1. Anchors: tracked files that mention one of the notice's hosts or endpoint paths, and
-   dependency manifests that list one of its SDKs. Paths alone are not enough, since
-   another vendor's API may use the same ones: the host or an SDK must appear somewhere.
+   dependency manifests that list one of its SDKs. A path may also be quoted without its
+   leading slash ("rest/api/3/search"), as code that joins it to a base URL writes it.
+   Paths alone are not enough, since another vendor's API may use the same ones: the
+   host, the provider's domain or an SDK must appear somewhere, unless the path is long
+   enough (four segments) to be no one else's.
 2. Fields: the old names of the changed fields (also in camelCase and PascalCase), in an
    anchor file or in a file under the folder of one.
 
@@ -90,6 +93,7 @@ _LOCK_FILES: Final = frozenset(
     }
 )
 _VERSION: Final = re.compile(r"v\d+(?:\.\d+)*", re.IGNORECASE)
+_DISTINCTIVE_SEGMENTS: Final = 4
 
 
 def path_anchors(url: str) -> list[str]:
@@ -206,6 +210,16 @@ def _listing(items: Sequence[str], word: str = "or") -> str:
     return f"{', '.join(shown[:-1])} {word} {shown[-1]}"
 
 
+def _spelled(term: str, lowered: str) -> bool:
+    """Whether lowercased text spells a host or a path. A path of two segments or more
+    may also be quoted without its leading slash: "rest/api/3/search"."""
+    term = term.lower()
+    if term in lowered:
+        return True
+    rest = term[1:]
+    return term.startswith("/") and "/" in rest and any(f"{q}{rest}" in lowered for q in "\"'`")
+
+
 def _under(name: str, folders: set[PurePosixPath]) -> bool:
     path = PurePosixPath(name)
     return any(parent in folders for parent in path.parents)
@@ -249,7 +263,11 @@ class RepoIndex:
             if _documentation(name):
                 docs.add(name)
         code = {name: text for name, text in texts.items() if name not in docs}
-        paths = {name: frozenset(_PATH_TOKEN.findall(text)) for name, text in code.items()}
+        paths = {
+            name: frozenset(_PATH_TOKEN.findall(text))
+            | {f"/{path}" for path in _QUOTED_PATH.findall(text)}
+            for name, text in code.items()
+        }
         calls = frozenset(
             (
                 tuple(_resource(part.rstrip("() \t")) for part in re.split(r"\s*\.\s*", chain)),
@@ -333,6 +351,11 @@ class RepoIndex:
 
 # Path-like strings in code: "/v1/customers/" + id, f"/v1/customers/{customer_id}", ...
 _PATH_TOKEN: Final = re.compile(r"(?:/[A-Za-z0-9_\-.{}$:]+)+/?")
+# The same without the leading slash, quoted, as code that joins it to a base URL writes
+# it: "rest/api/3/search". Two segments at least, so that a plain key is no path.
+_QUOTED_PATH: Final = re.compile(
+    r"""(?<=["'`])[A-Za-z0-9_\-.]+(?:/[A-Za-z0-9_\-.{}$:]+)+(?=/?["'`?])"""
+)
 
 
 def _template_pattern(url: str, *, versionless: bool = True) -> re.Pattern[str] | None:
@@ -563,7 +586,7 @@ def _search(
         if name in index.docs and not manifest_of:
             continue
         lowered = text.lower()
-        found = {term for term in texts if term not in short and term.lower() in lowered}
+        found = {term for term in texts if term not in short and _spelled(term, lowered)}
         found |= {sdk for sdk in manifest_of if by_name[sdk][1].search(text)}
         if manifest_of and found & set(manifest_of):
             manifests.add(name)
@@ -572,7 +595,7 @@ def _search(
         if name not in index.docs:
             found |= {value for value, pattern in value_patterns.items() if pattern.search(text)}
         if found & {*hosts, *by_name}:
-            found |= {term for term in short if term.lower() in lowered}
+            found |= {term for term in short if _spelled(term, lowered)}
         if found:
             anchor_hits[name] = found
         read = {field for field, pattern in field_patterns.items() if pattern.search(text)}
@@ -583,7 +606,11 @@ def _search(
     if not anchor_hits:
         return Impact(affected=False, reason=f"no tracked file mentions {_listing(searched)}")
     anchors = sorted({term for hits in anchor_hits.values() for term in hits}, key=searched.index)
-    identities = [*hosts, *by_name, *values]
+    # A literal path of four segments or more, such as /rest/api/3/search, is no app's own
+    # route: it names its API as a host would, which matters when the host comes from the
+    # configuration.
+    distinctive = [path for path in paths if path.count("/") >= _DISTINCTIVE_SEGMENTS]
+    identities = [*hosts, *by_name, *values, *distinctive]
     if not set(anchors) & set(identities):
         return Impact(
             affected=False,

@@ -278,7 +278,9 @@ On the customer's side, `tiltmeter notices apply`:
 2. checks each signature against the key file on the provider's domain, and drops
    unsigned notices, tampered ones and those already handled;
 3. searches the tracked files for the notice's hosts, endpoint paths and SDKs, then for the
-   changed field names near those uses, with no LLM. A retired value, such as a model id,
+   changed field names near those uses, with no LLM. A path also counts quoted without its
+   leading slash (`"rest/api/3/search"`), and one of four segments or more names its API
+   even when the host comes from the configuration. A retired value, such as a model id,
    counts on its own when code spells it whole, and a removed endpoint only where code
    spells its whole path. A repository that does not use them is recorded as not affected;
 4. otherwise turns the notice into the same fix request a check would produce (the

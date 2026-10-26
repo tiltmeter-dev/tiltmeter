@@ -24,7 +24,9 @@ a minor release may include breaking changes.
   id names its API without a host or an SDK. A removed endpoint counts only where code
   spells its whole path, so code already on its replacement is left alone. The provider's
   domain counts as the API's name, for APIs where every customer has a host of its own
-  (`your-domain.atlassian.net`).
+  (`your-domain.atlassian.net`), and so does a literal path of four segments or more, such
+  as `/rest/api/3/search`, when the host comes from the configuration. A path quoted
+  without its leading slash (`"rest/api/3/search"`) counts as that path.
 
 ### Changed
 
