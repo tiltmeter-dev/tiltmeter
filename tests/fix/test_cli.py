@@ -265,6 +265,7 @@ def test_failing_tests_go_back_to_the_agent_until_they_pass(
     assert first.test_failure is None
     assert second.test_failure is not None
     assert "AttributeError: not fixed yet" in second.test_failure.output
+    assert second.previous_report == agent.result  # what the first round reported
     assert "passed after 2 rounds" in flat(outcome.output)
     [pr] = github.created
     assert "## Tests" in pr["body"]

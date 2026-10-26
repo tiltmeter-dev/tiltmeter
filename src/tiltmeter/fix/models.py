@@ -102,6 +102,9 @@ class FixRequest(BaseModel):
     test_failure: TestRun | None = Field(
         default=None, description="The tests that failed on the agent's previous edits."
     )
+    previous_report: FixReport | None = Field(
+        default=None, description="What the agent reported about those edits."
+    )
 
     @property
     def targets(self) -> list[FixTarget]:

@@ -557,7 +557,7 @@ def _test_and_retry(
         if tests.status != "failed" or rounds > settings.test_rounds:
             return report, tests
         rounds += 1
-        retry = request.model_copy(update={"test_failure": tests})
+        retry = request.model_copy(update={"test_failure": tests, "previous_report": report})
         with err.status(f"the tests fail; {agent.model_name} is editing again..."):
             report = asyncio.run(agent.run(retry, session.root))
 

@@ -213,9 +213,25 @@ def render_fix_request(request: FixRequest) -> str:
             "<output>",
             failure.output.replace("</output>", "<\\/output>"),
             "</output>",
+        ]
+        previous = request.previous_report
+        if previous is not None:
+            parts += [
+                "Your report on those edits, which you wrote from the same untrusted input:",
+                "<previous_report>",
+                json.dumps(
+                    {"summary": previous.summary, "unresolved": previous.unresolved},
+                    indent=2,
+                    ensure_ascii=False,
+                ),
+                "</previous_report>",
+            ]
+        parts += [
             "Fix what the failure shows, in the code or in fixtures and mocks that mirror the "
             "API's responses. Do not weaken or delete tests to make them pass. Then report "
-            "everything you changed for this API change, including your earlier edits.",
+            "everything you changed for this API change, including your earlier edits, and "
+            "keep the unresolved items above that still apply. Tiltmeter runs the tests "
+            "again after this round, so do not list running them as unresolved.",
             "</test_failure>",
         ]
     return "\n".join(parts)
