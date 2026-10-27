@@ -107,3 +107,24 @@ def test_pull_requests_of_pushed_branches(tmp_path: Path, monkeypatch: pytest.Mo
         "pr list --head known --state all --json url",
         "pr list --head fresh --state all --json url",
     ]
+
+
+def test_recent_titles_leave_out_merges(tmp_path: Path) -> None:
+    repo, _ = make_repo(tmp_path)
+    git(repo, "checkout", "--quiet", "-b", "side")
+    (repo / "side.txt").write_text("side\n", encoding="utf-8")
+    git(repo, "add", "side.txt")
+    git(repo, "commit", "--quiet", "-m", "fix(side): add a side file")
+    git(repo, "checkout", "--quiet", "main")
+    (repo / "main.txt").write_text("main\n", encoding="utf-8")
+    git(repo, "add", "main.txt")
+    git(repo, "commit", "--quiet", "-m", "docs: note the main file")
+    git(repo, "merge", "--quiet", "--no-ff", "-m", "Merge branch 'side'", "side")
+    main = Git.open(repo)
+    assert main.recent_titles() == [
+        "docs: note the main file",
+        "fix(side): add a side file",
+        "Initial commit",
+    ]
+    assert main.recent_titles("side", count=1) == ["fix(side): add a side file"]
+    assert main.recent_titles("no-such-branch") == []

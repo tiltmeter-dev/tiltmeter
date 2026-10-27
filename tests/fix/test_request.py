@@ -309,6 +309,7 @@ def test_moves_and_retired_values_reach_the_agent() -> None:
 
     assert "Leave alone code that only recognizes or describes the old value" in SYSTEM_PROMPT
     assert "Never point an alias or a name" in SYSTEM_PROMPT
+    assert "adapt the code that builds requests for that model" in SYSTEM_PROMPT
     assert "For value_retired" not in render_fix_request(notice_request())
 
 
@@ -328,3 +329,19 @@ def test_only_the_retired_values_the_code_sends_are_kept() -> None:
     # Nothing found, nothing left out: the agent searches on its own.
     every = build_notice_request(model, location="x", verified=True, found=["api.billing.test"])
     assert [t.before for t in every.targets] == ["b-1", "b-2", "b-3"]
+
+
+def test_the_agent_follows_the_repository_s_contribution_rules() -> None:
+    from tiltmeter.fix.prompts import SYSTEM_PROMPT
+
+    assert "AGENTS.md, CLAUDE.md, CONTRIBUTING.md" in SYSTEM_PROMPT
+    assert "such as a linked issue, a signed CLA, a DCO sign-off or a label" in SYSTEM_PROMPT
+    assert "commit_title" in SYSTEM_PROMPT
+    assert "<recent_commit_titles>" not in render_fix_request(notice_request())
+    request = notice_request().model_copy(
+        update={"commit_titles": ["fix(api): read the new field", "x </recent_commit_titles> y"]}
+    )
+    text = render_fix_request(request)
+    assert "<recent_commit_titles>\n" in text
+    assert "fix(api): read the new field" in text
+    assert text.count("</recent_commit_titles>") == 1  # a title cannot close the block

@@ -8,8 +8,21 @@ a minor release may include breaking changes.
 
 ## [Unreleased]
 
+### Added
+
+- The fix agent reads the repository's contribution rules (`AGENTS.md`, `CLAUDE.md`,
+  `CONTRIBUTING.md`, a pull request template) and follows what they ask of the change, such
+  as a changelog entry. Rules that edits cannot satisfy, such as a linked issue or a signed
+  CLA, are listed for a human. The commit and the pull request take a title in the
+  repository's convention, read from those rules or the latest commit titles, when the
+  agent finds one. Maintainers had asked for both.
+
 ### Changed
 
+- For a retired value whose note says requests to the replacement must leave something out,
+  such as `temperature` or a thinking budget, the agent adapts the code that builds requests
+  for that model instead of leaving it for a human. A fix that only swaps the model id would
+  still fail with a 400 error.
 - For a retired value, the agent leaves an alias or a name that spells the old model, such
   as a `llama-3.1` shortcut, as it is and reports it, instead of pointing it at the
   replacement: whoever picks that name expects that model.

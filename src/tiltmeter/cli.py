@@ -507,6 +507,10 @@ def _attempt_fix(
     except TiltmeterError as exc:
         raise _FixFailed(str(exc), EXIT_USAGE) from exc
     with session:
+        # The agent can't run git: its titles show the repository's commit convention.
+        request = request.model_copy(
+            update={"commit_titles": session.repo.recent_titles(session.base)}
+        )
         if not delivery.as_json:
             intro()
             start = f"{session.base} at " if session.base else ""

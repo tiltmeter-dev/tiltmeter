@@ -66,6 +66,17 @@ class Git:
     def head(self) -> str:
         return self.run("rev-parse", "--short", "HEAD").strip()
 
+    def recent_titles(self, ref: str | None = None, count: int = 15) -> list[str]:
+        """The titles of the latest commits on ``ref`` (HEAD by default), merges left out;
+        empty when git cannot read them."""
+        completed = _call(
+            ["git", "log", "--no-merges", f"-n{count}", "--format=%s", ref or "HEAD", "--"],
+            cwd=self.root,
+        )
+        if completed.returncode != 0:
+            return []
+        return [line.strip()[:200] for line in completed.stdout.splitlines() if line.strip()]
+
     def has_uncommitted_changes(self) -> bool:
         return bool(self.run("status", "--porcelain", "--untracked-files=no").strip())
 

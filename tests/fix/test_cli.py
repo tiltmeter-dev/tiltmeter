@@ -59,6 +59,7 @@ def test_fix_opens_a_pull_request(
     assert f"✓ opened {PR_URL}" in text
     [request] = agent.requests
     assert request.check_id == 2
+    assert request.commit_titles == ["Initial commit"]
     assert [t.renamed_to for t in request.targets] == ["$.phone_number"]
     assert github.created[0]["head"] == BRANCH
     assert git(remote, "branch", "--list", BRANCH).strip()

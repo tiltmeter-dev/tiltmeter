@@ -437,3 +437,34 @@ def test_notes_on_retired_values_name_the_value() -> None:
     model = ApiChangeNotice.model_validate(signed(make_notice(endpoints=[retired])))
     request = build_notice_request(model, location="x", verified=True)
     assert "b-1: Retired on May 1." in pull_request_body(request, notice_preview(), model_name="m")
+
+
+def test_titles_follow_the_repository_convention_when_the_agent_gives_one() -> None:
+    request = notice_request()
+    default = "Adapt to the api.billing.test API change effective 2026-12-01"
+    assert commit_title(request, report(commit_title="fix(billing):  read  phone_number")) == (
+        "fix(billing): read phone_number"
+    )
+    for unusable in [
+        None,
+        "fix",
+        "x" * 101,
+        "fix: thanks @octocat",
+        "fix: see https://evil.test",
+        "fix: [docs](x)",
+        "fix: `code`",
+        "fix: <b>bold</b>",
+    ]:
+        assert commit_title(request, report(commit_title=unusable)) == default
+
+
+async def test_the_commit_and_the_pull_request_use_the_agent_s_title(tmp_path: Path) -> None:
+    repo, _ = make_repo(tmp_path)
+    github = FakeGitHub()
+    with FixSession.open(repo, rename_request()) as session:
+        await agent_pass(session)
+        preview = session.review(report(commit_title="fix(billing): read phone_number"))
+        session.deliver(preview, push=True, github=github, model_name="fake-fixer")
+    [pr] = github.created
+    assert pr["title"] == "fix(billing): read phone_number"
+    assert git(repo, "log", "-1", "--format=%s", BRANCH).strip() == pr["title"]

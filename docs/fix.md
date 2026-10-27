@@ -126,15 +126,22 @@ removed as if nothing happened.
    out as a [git worktree](https://git-scm.com/docs/git-worktree) in a temporary folder.
    Your checkout, your index and your uncommitted changes are never touched, and the
    uncommitted changes are not part of the fix.
-3. **The agent works.** It greps for the old field names and the API's address, reads the
-   candidate files, and edits only the code that handles this API. It then reports what it
-   changed, what it could not handle safely and how confident it is.
+3. **The agent works.** It reads the repository's contribution rules (`AGENTS.md`,
+   `CLAUDE.md`, `CONTRIBUTING.md` and a pull request template) and follows what they ask
+   of a change like this one, such as the code style, the tests to update or a changelog
+   entry. It greps for the old field names and the API's address, reads the candidate
+   files, and edits only the code that handles this API. It then reports what it changed,
+   what it could not handle safely and how confident it is. Rules that edits cannot satisfy,
+   such as a linked issue, a signed CLA or a DCO sign-off, go in the "Left for a human"
+   section.
 4. **Tests, if you configured them.** With `fix.test_command`, Tiltmeter runs your tests
    on the edits. When they fail, the agent gets the output and edits again, up to
    `fix.test_rounds` more times. The result goes into the pull request.
 5. **Review.** Tiltmeter stages the edits and shows you the diff with the agent's report.
 6. **Deliver.** On your approval it commits with your git identity, pushes the branch and
-   opens a pull request with `gh`. Local git hooks are skipped, as for any bot commit; your
+   opens a pull request with `gh`. The title follows the repository's convention, such as
+   `fix(billing): ...`, when the agent found one in the contribution rules or the latest
+   commit titles. Otherwise Tiltmeter writes its own. Local git hooks are skipped, as for any bot commit; your
    CI runs on the pull request instead. Each step that fails leaves what was already done in
    place and tells you what to run by hand.
 7. **Clean up.** The worktree is always removed. The branch is kept only if it holds a
