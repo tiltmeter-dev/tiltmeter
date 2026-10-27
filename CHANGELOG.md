@@ -8,6 +8,12 @@ a minor release may include breaking changes.
 
 ## [Unreleased]
 
+### Fixed
+
+- The affected-repository search finds a path that code joins right after an interpolation
+  holding the slash, such as Semantic Kernel's `$"{endpoint}{separator}pipeline/feature-extraction/{model}"`,
+  so a removed endpoint called that way reaches the agent.
+
 ### Changed
 
 - For a removed endpoint without `moved_to`, the agent uses the replacement the change's note
