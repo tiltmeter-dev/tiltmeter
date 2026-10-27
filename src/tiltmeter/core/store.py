@@ -16,6 +16,7 @@ from __future__ import annotations
 import json
 import sqlite3
 import statistics
+import time
 import zlib
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
@@ -38,6 +39,7 @@ from tiltmeter.core.shape import Shape, fingerprint_of
 
 SCHEMA_VERSION: Final = 3
 DB_FILENAME: Final = "tiltmeter.db"
+BUSY_TIMEOUT_SECONDS: Final = 5
 
 _SCHEMA: Final = """
 CREATE TABLE shapes (
@@ -154,10 +156,24 @@ class Store:
         self._db = sqlite3.connect(self.path, check_same_thread=False)
         self._db.row_factory = sqlite3.Row
         self._db.execute("PRAGMA foreign_keys = ON")
-        self._db.execute("PRAGMA busy_timeout = 5000")
+        self._db.execute(f"PRAGMA busy_timeout = {BUSY_TIMEOUT_SECONDS * 1000}")
         if not in_memory:
-            self._db.execute("PRAGMA journal_mode = WAL")
+            self._use_wal()
         self._migrate()
+
+    def _use_wal(self) -> None:
+        # Switching to WAL takes an exclusive lock, and SQLite reports "database is locked"
+        # at once instead of waiting out busy_timeout when another run holds a lock: retry
+        # for as long as the busy timeout would have waited.
+        deadline = time.monotonic() + BUSY_TIMEOUT_SECONDS
+        while True:
+            try:
+                self._db.execute("PRAGMA journal_mode = WAL")
+                return
+            except sqlite3.OperationalError as exc:
+                if "locked" not in str(exc) or time.monotonic() >= deadline:
+                    raise
+                time.sleep(0.02)
 
     @classmethod
     def in_dir(cls, state_dir: Path) -> Store:

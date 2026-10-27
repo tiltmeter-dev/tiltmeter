@@ -19,6 +19,9 @@ a minor release may include breaking changes.
 - Runs started together on a new history file no longer fail with "table shapes already
   exists": the schema is created under SQLite's write lock, after reading its version
   again. A migration that fails now leaves the history as it was instead of half upgraded.
+- Opening the history while another run holds a lock no longer fails now and then with
+  "database is locked": switching it to WAL, which SQLite does not wait for, is retried for
+  as long as the busy timeout.
 
 ## [0.7.1] - 2026-10-26
 
