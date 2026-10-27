@@ -426,6 +426,18 @@ def test_a_quoted_path_without_its_leading_slash_is_the_path(tmp_path: Path) -> 
     assert index.uses([Candidate("https://api.billing.test/v1/customers", ())]) == [0]
 
 
+def test_a_path_joined_after_an_interpolation_is_the_path(tmp_path: Path) -> None:
+    # Semantic Kernel's Hugging Face client keeps the slash in a field of its own.
+    joined = (
+        'var url = $"{this.Endpoint}{this.Separator}rest/api/3/search?jql={jql}";\n'
+        "var n = page.total;\n"
+    )
+    impact = check(tmp_path, {"Client.cs": joined}, **removed_search())
+    assert impact.affected
+    assert impact.anchors == ["/rest/api/3/search"]
+    assert impact.endpoints == [0]
+
+
 def test_a_removed_endpoint_behind_a_configured_base_url_is_still_called(
     tmp_path: Path,
 ) -> None:

@@ -218,12 +218,13 @@ def _literal_segments(url: str) -> int:
 
 def _spelled(term: str, lowered: str) -> bool:
     """Whether lowercased text spells a host or a path. A path of two segments or more
-    may also be quoted without its leading slash: "rest/api/3/search"."""
+    may also come without its leading slash, quoted ("rest/api/3/search") or right after
+    an interpolation that holds the slash ({separator}rest/api/3/search)."""
     term = term.lower()
     if term in lowered:
         return True
     rest = term[1:]
-    return term.startswith("/") and "/" in rest and any(f"{q}{rest}" in lowered for q in "\"'`")
+    return term.startswith("/") and "/" in rest and any(f"{q}{rest}" in lowered for q in "\"'`}")
 
 
 def _under(name: str, folders: set[PurePosixPath]) -> bool:
@@ -357,10 +358,12 @@ class RepoIndex:
 
 # Path-like strings in code: "/v1/customers/" + id, f"/v1/customers/{customer_id}", ...
 _PATH_TOKEN: Final = re.compile(r"(?:/[A-Za-z0-9_\-.{}$:]+)+/?")
-# The same without the leading slash, quoted, as code that joins it to a base URL writes
-# it: "rest/api/3/search". Two segments at least, so that a plain key is no path.
+# The same without the leading slash, as code that joins it to a base URL writes it:
+# quoted, "rest/api/3/search", or right after an interpolation that holds the slash,
+# $"{endpoint}{separator}pipeline/feature-extraction/{model}". Two segments at least, so
+# that a plain key is no path.
 _QUOTED_PATH: Final = re.compile(
-    r"""(?<=["'`])[A-Za-z0-9_\-.]+(?:/[A-Za-z0-9_\-.{}$:]+)+(?=/?["'`?])"""
+    r"""(?<=["'`}])[A-Za-z0-9_\-.]+(?:/[A-Za-z0-9_\-.{}$:]+)+(?=/?["'`?])"""
 )
 
 
