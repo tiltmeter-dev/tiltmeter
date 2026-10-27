@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
@@ -13,7 +14,10 @@ from tiltmeter.notices.impact import (
     RepoIndex,
     assess,
     choose_endpoints,
+    code_only,
     fields_near,
+    locate,
+    mentions_in_docs,
     name_variants,
     path_anchors,
 )
@@ -474,3 +478,188 @@ def test_a_removed_endpoint_behind_a_configured_base_url_is_still_called(
     # /markets may be the app's own route, so only the longer path counts away from the host,
     # and a call of an endpoint that is gone comes before the others.
     assert impact.endpoints == [1, 0]
+
+
+@pytest.mark.parametrize(
+    ("name", "code"),
+    [
+        ("llm.py", '# model = "billing-3-5-20240620"\nmodel = MODEL\n'),
+        ("llm.ts", '// we moved off "billing-3-5-20240620"\nconst model = MODEL;\n'),
+        ("llm.ts", "/**\n * Was billing-3-5-20240620 until 2026.\n */\nconst model = MODEL;\n"),
+        (
+            "llm.py",
+            'def chat():\n    """Uses billing-3-5-20240620, not\n    four."""\n    return M\n',
+        ),
+        ("llm.py", '"""Module docstring: billing-3-5-20240620."""\nMODEL = "billing-4"\n'),
+    ],
+)
+def test_a_retired_value_in_a_comment_or_docstring_is_not_sent(
+    tmp_path: Path, name: str, code: str
+) -> None:
+    impact = check(tmp_path, {name: code}, **retired_model())
+    assert not impact.affected
+
+
+def test_a_retired_value_next_to_a_comment_is_still_sent(tmp_path: Path) -> None:
+    code = 'MODEL = "billing-3-5-20240620"  # cheaper\n'
+    assert check(tmp_path, {"llm.py": code}, **retired_model()).affected
+    lines = code_only("llm.c", '#define NAME "x"\n#[test]\n# note\n  // note\nint x;\n')
+    assert lines.split("\n") == ['#define NAME "x"', "#[test]", "", "", "int x;", ""]
+
+
+def test_a_removed_endpoint_in_a_comment_is_not_called(tmp_path: Path) -> None:
+    code = (
+        "# Old: GET https://jira.billing.test/rest/api/3/search?jql=...\n"
+        'r = get(f"https://{site}.billing.test/rest/api/3/search/jql?jql={q}")\n'
+    )
+    assert not check(tmp_path, {"jira.py": code}, **removed_search()).affected
+
+
+def moved_host() -> dict[str, object]:
+    """Like Hugging Face's serverless API: the same path, now on another host."""
+    return {
+        "provider": "billing.test",
+        "endpoints": [
+            {
+                "method": "POST",
+                "url": "https://inference.billing.test/v1/chat/completions",
+                "changes": [
+                    {
+                        "path": "$",
+                        "kind": "endpoint_removed",
+                        "moved_to": {
+                            "method": "POST",
+                            "url": "https://router.billing.test/v1/chat/completions",
+                        },
+                    }
+                ],
+            }
+        ],
+        "sdks": [],
+    }
+
+
+@pytest.mark.parametrize(
+    ("code", "affected"),
+    [
+        # Another API with the same path, in a repository that links the provider's site.
+        ('post("https://api.other.test/v1/chat/completions")\n# https://billing.test\n', False),
+        ('URL = "https://api.other.test/v1"\nhome = "https://billing.test/docs"\n', False),
+        # Code that moved already: the same SDK call, on the new host.
+        (
+            'client = OpenAI(base_url="https://router.billing.test/v1")\n'
+            "client.chat.completions.create(model=m)\n",
+            False,
+        ),
+        (
+            'client = OpenAI(base_url="https://inference.billing.test/v1")\n'
+            "client.chat.completions.create(model=m)\n",
+            True,
+        ),
+    ],
+)
+def test_an_endpoint_moved_to_another_host_is_called_only_by_its_old_host(
+    tmp_path: Path, code: str, affected: bool
+) -> None:
+    assert check(tmp_path, {"llm.py": code}, **moved_host()).affected is affected
+
+
+def test_a_bare_removed_path_counts_only_next_to_the_api(tmp_path: Path) -> None:
+    gone = {
+        "provider": "billing.test",
+        "endpoints": [
+            {
+                "method": "POST",
+                "url": "https://inference.billing.test/models/{model}",
+                "changes": [{"path": "$", "kind": "endpoint_removed"}],
+            }
+        ],
+        "sdks": [],
+    }
+    files = {
+        "ui/tabs.ts": 'import { Picker } from "./models/Picker";\n',
+        "config.ts": 'export const docs = "https://billing.test/docs";\n',
+    }
+    assert not check(tmp_path / "app", files, **gone).affected
+    client = "post(`https://inference.billing.test/models/${model}`)\n"
+    assert check(tmp_path / "client", {"hf.ts": client}, **gone).affected
+
+
+def test_a_host_in_front_of_a_removed_path_must_be_the_apis(tmp_path: Path) -> None:
+    other = 'get("https://jira.other.test/rest/api/3/search?jql=x")["total"]\n# billing.test\n'
+    assert not check(tmp_path / "other", {"jira.py": other}, **removed_search()).affected
+    own = 'get("https://acme.billing.test/rest/api/3/search?jql=x")["total"]\n'
+    assert check(tmp_path / "own", {"jira.py": own}, **removed_search()).affected
+
+
+@pytest.mark.parametrize(
+    ("code", "affected"),
+    [
+        ('model = "o1"\n', True),
+        ('model = "openai/o1"\n', True),
+        ("compare(o1, o2)\n", False),
+        ('icon = "data:image/png;base64,iVBO+o1/w8AAA"\n', False),
+    ],
+)
+def test_a_short_value_counts_only_quoted_whole(tmp_path: Path, code: str, affected: bool) -> None:
+    impact = check(tmp_path, {"llm.py": code}, **retired_model(before="o1"))
+    assert impact.affected is affected
+
+
+def test_a_value_followed_by_a_file_extension_is_a_file_name(tmp_path: Path) -> None:
+    code = 'docs = ["billing-3-5-20240620.txt", "notes.md"]\n'
+    assert not check(tmp_path, {"corpus.py": code}, **retired_model()).affected
+
+
+def test_mdx_docs_and_ignore_files_are_not_code(tmp_path: Path) -> None:
+    files = {
+        "docs/quickstart.mdx": 'client.create(model="billing-3-5-20240620")\n',
+        ".dockerignore": "models/billing-3-5-20240620\n",
+    }
+    assert not check(tmp_path, files, **retired_model()).affected
+
+
+def test_book_chapters_and_data_tables_are_not_code(tmp_path: Path) -> None:
+    files = {
+        "book/chapter.qmd": '"billing-3-5-20240620": ("Billing 3.5", (6, 2), "left"),\n',
+        "book/paper.tex": "We compare billing-3-5-20240620 with its successor.\n",
+        "data/benchmark.csv": "model,score\nbilling-3-5-20240620,0.78\n",
+        "figures/scores.svg": "<text>billing-3-5-20240620</text>\n",
+    }
+    assert not check(tmp_path, files, **retired_model()).affected
+
+
+def test_change_notices_and_feeds_are_no_use_of_an_api(tmp_path: Path) -> None:
+    saved = json.dumps(notice(**retired_model()), indent=2)
+    impact = check(tmp_path, {"notices/draft.json": saved}, **retired_model())
+    assert not impact.affected
+    assert impact.reason.startswith("no tracked file mentions")
+
+
+def test_locate_names_the_lines_behind_an_impact(tmp_path: Path) -> None:
+    jira = (
+        "def issues(site, q):\n"
+        "    # GET /rest/api/3/search moved\n"
+        '    r = get(f"https://{site}.billing.test/rest/api/3/search?jql={q}")\n'
+        '    done = get(f"https://{site}.billing.test/rest/api/3/search/jql?jql={q}")\n'
+        '    return r["total"]\n'
+    )
+    repo, _ = make_repo(tmp_path, {"jira.py": jira, "README.md": "See /rest/api/3/search.\n"})
+    index = RepoIndex.read(repo, Git.open(repo).tracked_files())
+    model = ApiChangeNotice.model_validate(notice(**removed_search()))
+    impact = assess(index, model)
+    places = [(p.line, p.kind, p.term) for p in locate(index, model, impact)]
+    # The comment and the call of the replacement are no uses of the old endpoint; lines
+    # that only name the API come last, and documentation never shows up.
+    assert places[:2] == [(3, "endpoint", "GET /rest/api/3/search"), (5, "field", "total")]
+    assert {(line, kind) for line, kind, _ in places[2:]} == {(2, "api"), (4, "api")}
+
+
+def test_mentions_in_docs(tmp_path: Path) -> None:
+    files = {"README.md": "# Models\n\nWe used billing-3-5-20240620.\n", "app.py": "x = 1\n"}
+    repo, _ = make_repo(tmp_path, files)
+    index = RepoIndex.read(repo, Git.open(repo).tracked_files())
+    model = ApiChangeNotice.model_validate(notice(**retired_model()))
+    assert not assess(index, model).affected
+    [place] = mentions_in_docs(index, model)
+    assert (place.file, place.line, place.term) == ("README.md", 3, "billing-3-5-20240620")

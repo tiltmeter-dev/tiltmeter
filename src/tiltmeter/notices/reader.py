@@ -13,12 +13,14 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Final
+from typing import TYPE_CHECKING, Any, Final, Literal
 from urllib.parse import urljoin, urlsplit
 
 import httpx
 from pydantic import ValidationError
 
+from tiltmeter.catalog import LOCATION as CATALOG_LOCATION
+from tiltmeter.catalog import catalog_bytes
 from tiltmeter.core.fetch import USER_AGENT
 from tiltmeter.core.models import NoticeRecord
 from tiltmeter.errors import NoticeError
@@ -85,13 +87,24 @@ def parse_notice(raw: Any) -> ApiChangeNotice:
         raise NoticeError(f"not a valid api-change-notice/v1: {describe(exc)}") from exc
 
 
-def read_json_file(path: Path) -> Any:
+def read_json_file(path: Path, *, limit: int = MAX_JSON_BYTES) -> Any:
     try:
-        if path.stat().st_size > MAX_JSON_BYTES:
-            raise NoticeError(f"{path} is larger than {MAX_JSON_BYTES} bytes")
+        if path.stat().st_size > limit:
+            raise NoticeError(f"{path} is larger than {limit} bytes")
         return parse_json(path.read_bytes())
     except OSError as exc:
         raise NoticeError(f"cannot read {path}: {exc.strerror}") from exc
+
+
+def _named_by(source: str) -> Literal["file", "feed entry", "catalog entry"]:
+    """How ``source`` names a notice: a file or https URL, an entry of a feed there
+    (``FEED#ID``), or the id of an entry of the bundled catalog. A file wins over an id."""
+    feed, _, wanted = source.partition("#")
+    if wanted and (feed.startswith("https://") or Path(feed).is_file()):
+        return "feed entry"
+    if "://" not in source and not Path(source).exists():
+        return "catalog entry"
+    return "file"
 
 
 def _label(item: Any, key: str) -> str | None:
@@ -118,8 +131,11 @@ class NoticeReader:
         return read_json_file(Path(source))
 
     async def load(self, source: str, *, allow_unsigned: bool = False) -> LoadedNotice:
-        """A notice from a file or an https URL. Over the network, only signed ones."""
-        loaded = await self.check(await self.raw(source), source)
+        """A notice from a file or an https URL, an entry of a feed there (``FEED#ID``), or
+        an entry of the catalog bundled with Tiltmeter (its id). Over the network, only
+        signed ones."""
+        raw, location = await self._find(source)
+        loaded = await self.check(raw, location)
         if source.startswith("https://") and not loaded.verified:
             raise NoticeError(f"{source} is not signed: only signed notices are read from URLs")
         if not loaded.verified and not allow_unsigned:
@@ -127,6 +143,27 @@ class NoticeReader:
                 f"{source} is not signed; pass --allow-unsigned to use a notice you trust anyway"
             )
         return loaded
+
+    async def _find(self, source: str) -> tuple[Any, str]:
+        """The raw notice ``source`` names, and where it was found."""
+        match _named_by(source):
+            case "feed entry":
+                feed, _, wanted = source.partition("#")
+                for item in await self.feed(feed):
+                    if isinstance(item, dict) and item.get("id") == wanted:
+                        return item, source
+                raise NoticeError(f"{feed} lists no notice {printable(wanted, _LABEL_CHARS)}")
+            case "catalog entry":
+                item = bundled_entry(source)
+                if item is None:
+                    raise NoticeError(
+                        f"cannot read {source}: there is no such file, and no entry of the "
+                        "catalog bundled with Tiltmeter has that id (`tiltmeter scan --all` "
+                        "lists them)"
+                    )
+                return item, f"{CATALOG_LOCATION}#{source}"
+            case _:
+                return await self.raw(source), source
 
     async def check(
         self, raw: Any, location: str, *, keys: list[Ed25519PublicKey] | None = None
@@ -157,19 +194,15 @@ class NoticeReader:
         return cached
 
     async def feed(self, url: str) -> list[Any]:
-        """The raw notices a feed lists, each still to be validated on its own."""
-        data = parse_json(await self.download(url, limit=MAX_FEED_BYTES))
-        if not isinstance(data, dict) or data.get("spec") != FEED_SPEC:
-            raise NoticeError(f"{url} is not an api-change-feed/v1 document")
-        unknown = sorted(set(data) - {"spec", "notices"})
-        if unknown:
-            raise NoticeError(f"{url} has unknown members: {', '.join(unknown)}")
-        notices = data.get("notices")
-        if not isinstance(notices, list):
-            raise NoticeError(f"{url} has no notices list")
-        if len(notices) > MAX_FEED_NOTICES:
-            raise NoticeError(f"{url} lists more than {MAX_FEED_NOTICES} notices")
-        return notices
+        """The raw notices a feed lists, each still to be validated on its own. Subscriptions
+        read it from an https URL; ``tiltmeter scan --catalog`` from a file too."""
+        if url.startswith("https://"):
+            data = parse_json(await self.download(url, limit=MAX_FEED_BYTES))
+        elif "://" in url:
+            raise NoticeError("a feed is read from a file or an https URL")
+        else:
+            data = read_json_file(Path(url), limit=MAX_FEED_BYTES)
+        return feed_items(data, url)
 
     async def download(
         self, url: str, *, limit: int, domain: str | None = None, path: str | None = None
@@ -225,6 +258,34 @@ class NoticeReader:
                     chunks.append(chunk)
                 return b"".join(chunks)
         raise NoticeError(f"{url} redirected more than {MAX_REDIRECTS} times")
+
+
+def feed_items(data: Any, url: str) -> list[Any]:
+    """The raw notices of an ``api-change-feed/v1`` document, each still to be validated."""
+    if not isinstance(data, dict) or data.get("spec") != FEED_SPEC:
+        raise NoticeError(f"{url} is not an api-change-feed/v1 document")
+    unknown = sorted(set(data) - {"spec", "notices"})
+    if unknown:
+        raise NoticeError(f"{url} has unknown members: {', '.join(unknown)}")
+    notices = data.get("notices")
+    if not isinstance(notices, list):
+        raise NoticeError(f"{url} has no notices list")
+    if len(notices) > MAX_FEED_NOTICES:
+        raise NoticeError(f"{url} lists more than {MAX_FEED_NOTICES} notices")
+    return notices
+
+
+def bundled_feed() -> list[Any]:
+    """The raw entries of the catalog of known API changes bundled with Tiltmeter."""
+    return feed_items(parse_json(catalog_bytes()), CATALOG_LOCATION)
+
+
+def bundled_entry(notice_id: str) -> Any | None:
+    """The raw entry of the bundled catalog with this id, or None."""
+    for item in bundled_feed():
+        if isinstance(item, dict) and item.get("id") == notice_id:
+            return item
+    return None
 
 
 def _never_seen(_: str) -> str | None:

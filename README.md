@@ -51,6 +51,29 @@ fill the gaps with guesses, or retry until the budget is gone.
 
 ## Quickstart
 
+First, see which API changes that already shipped your code still uses, with nothing to
+set up:
+
+```console
+$ uvx tiltmeter scan
+✗ api.groq.com  Groq no longer serves 16 models it retired, the latest on August 16, 2026.  took effect 2026-08-16
+    groq-retired-models-2026-08 · unsigned: drafted by Tiltmeter from the provider's public documentation
+    src/llm.js:37  llama-3.1-8b-instant: retired; use openai/gpt-oss-20b
+        groq: 'llama-3.1-8b-instant',
+    src/store.js:108  llama-3.3-70b-versatile: retired; use openai/gpt-oss-120b
+        groq: { fast: 'llama-3.1-8b-instant', smart: 'llama-3.3-70b-versatile' },
+    fix: tiltmeter fix --notice groq-retired-models-2026-08 --allow-unsigned --repo .
+
+1 of 10 known API changes affects .: 2 lines in 2 files.
+```
+
+It searches the folder for every entry of a [catalog of known changes](docs/scan.md)
+(retired models at Anthropic, OpenAI and Groq, Stripe's moved subscription periods, Jira's
+removed search, and more), drafted by Tiltmeter from each provider's public documentation.
+It records nothing and sends nothing.
+
+Then watch the APIs you call, so the next change does not wait for a catalog:
+
 ```bash
 pip install tiltmeter        # or: uv tool install tiltmeter
 tiltmeter init               # writes tiltmeter.yaml with a public example API
@@ -250,6 +273,23 @@ on drift:
 Anywhere else, keep `.tiltmeter/` between runs. The [CI guide](docs/ci.md) has
 ready-to-copy jobs for GitHub Actions, GitLab CI and cron.
 
+## Commands
+
+| Command | What it does |
+|---|---|
+| `tiltmeter scan [PATH]` | Finds code that still uses known API changes that already shipped. No config needed. |
+| `tiltmeter init` | Writes `tiltmeter.yaml`, from an example or a browser's HAR export (`--from-har`). |
+| `tiltmeter check` | Calls every endpoint once and reports drift. |
+| `tiltmeter watch` | Checks on an interval until stopped. |
+| `tiltmeter history`, `show ID`, `schema ENDPOINT` | The stored checks, one check, and the learned schema. |
+| `tiltmeter explain ID` | Asks Claude what a check's changes mean. |
+| `tiltmeter fix ID` | Lets an agent adapt your code to a check's drift, in a pull request. `--notice` takes a notice file, URL or catalog entry instead. |
+| `tiltmeter notices check`, `notices apply` | Lists, or applies, the new notices and spec changes of the providers you follow. |
+| `tiltmeter notice create`, `sign`, `publish`, `verify` | Writes and publishes change notices, as a provider. |
+| `tiltmeter serve` | Runs the MCP server on stdio. |
+
+Every command takes `--help`, and most take `--json`.
+
 ## How it works
 
 1. **Observe.** A check calls the endpoint and turns the JSON body into a *shape*: for
@@ -342,6 +382,7 @@ Every option is described in the [configuration reference](docs/configuration.md
 ## Documentation
 
 - [Getting started](docs/getting-started.md): a five-minute tour on your machine.
+- [Scanning for known changes](docs/scan.md): `tiltmeter scan`, its catalog and what counts as a use.
 - [Configuration reference](docs/configuration.md): every option, placeholders and ignore patterns.
 - [Agents and MCP](docs/agents.md): Claude Code, Cursor, Claude Desktop and LangChain.
 - [CI and scheduling](docs/ci.md): GitHub Actions, GitLab CI and cron.

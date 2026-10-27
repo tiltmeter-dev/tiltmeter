@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING, Any, Final
 
+from tiltmeter.catalog import from_catalog
 from tiltmeter.core.models import ChangeKind
 
 if TYPE_CHECKING:
@@ -149,6 +150,8 @@ def _notice_block(notice: NoticeSource) -> list[str]:
         parts.append(f"effective: {notice.effective_at}")
     if notice.key:
         parts.append(f"signature: verified against {notice.key}")
+    elif from_catalog(notice.location):
+        parts.append("signature: none (Tiltmeter drafted it from the provider's public docs)")
     else:
         parts.append("signature: none (read from a file the user trusts)")
     for sdk in notice.sdks:

@@ -58,7 +58,8 @@ and on macOS and Windows with Python 3.13. It also builds the package and checks
 | `tiltmeter/llm` | The Claude explainer and its prompt. |
 | `tiltmeter/notify` | Slack and webhook notifiers. |
 | `tiltmeter/fix` | `tiltmeter fix`: the fix request, the agents (Deep Agents, Claude Code, Codex), the git worktree and the pull request. |
-| `tiltmeter/notices` | Provider mode: the change notice format, signatures, reading feeds, the "is this repository affected?" search and drafting notices. |
+| `tiltmeter/notices` | Provider mode: the change notice format, signatures, reading feeds, the "is this repository affected?" search, drafting notices and `tiltmeter scan`. |
+| `tiltmeter/catalog` | The catalog of known API changes that `tiltmeter scan` reads, as package data. |
 | `tiltmeter/mcp_server` | The MCP server. |
 | `tiltmeter/service.py` | The service the CLI and the MCP server share. |
 | `tiltmeter/cli.py`, `console.py` | The command line and its rich output. |
@@ -139,6 +140,16 @@ Add `"hint"` to an expected change when the diff should attach one.
 2. Implement it in `notify/`, subclassing `ThresholdNotifier`, and register it in
    `build_notifiers`. Errors must never include the target URL.
 3. Test it with respx and document it in `docs/configuration.md`.
+
+### An entry in the catalog of known changes
+
+1. Write the notice for a change that already shipped, from the provider's public
+   documentation, and end its summary with "Drafted by Tiltmeter from <Provider>'s public
+   documentation; not signed or endorsed by <Provider>."
+2. Add it with `uv run python scripts/catalog.py notice.json`.
+3. Scan a repository that uses the old API and one that does not, and note what you
+   checked in the pull request. [docs/scan.md](docs/scan.md#adding-an-entry-to-the-catalog)
+   has the details.
 
 ### A new MCP tool
 

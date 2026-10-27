@@ -1,0 +1,1849 @@
+{
+  "spec": "https://tiltmeter.dev/schemas/api-change-feed/v1.json",
+  "notices": [
+    {
+      "spec": "https://tiltmeter.dev/schemas/api-change-notice/v1.json",
+      "id": "hubspot-pipelines-v1-sunset",
+      "provider": "api.hubapi.com",
+      "published_at": "2026-09-15T00:00:00Z",
+      "effective_at": "2026-12-04T00:00:00Z",
+      "summary": "HubSpot sunsets the Pipelines API v1 on December 4, 2026. Calls to /crm-pipelines/v1 stop working then. The pipelines API under /crm/v3/pipelines returns the same pipelines and stages with different field names: id instead of pipelineId and stageId, archived instead of active, and ISO 8601 date-time strings for createdAt and updatedAt. Source: developers.hubspot.com/changelog/pipelines-api-v1-sunset. Drafted by Tiltmeter from HubSpot's public documentation; not signed or endorsed by HubSpot.",
+      "sdks": [],
+      "endpoints": [
+        {
+          "method": "GET",
+          "url": "https://api.hubapi.com/crm-pipelines/v1/pipelines/{objectType}",
+          "changes": [
+            {
+              "path": "$",
+              "kind": "endpoint_removed",
+              "moved_to": {
+                "method": "GET",
+                "url": "https://api.hubapi.com/crm/v3/pipelines/{objectType}"
+              },
+              "note": "Stops working on December 4, 2026. A connector or sync that publishes these records should keep its output fields and their types stable: map the v3 names back (id to pipelineId and stageId, archived to active) and convert the ISO 8601 createdAt and updatedAt of pipelines and stages to epoch milliseconds."
+            },
+            {
+              "path": "$.results[*].pipelineId",
+              "kind": "field_removed",
+              "renamed_to": "$.results[*].id"
+            },
+            {
+              "path": "$.results[*].stages[*].stageId",
+              "kind": "field_removed",
+              "renamed_to": "$.results[*].stages[*].id"
+            },
+            {
+              "path": "$.results[*].active",
+              "kind": "field_removed",
+              "note": "v3 has archived instead, which is true when the pipeline is not active."
+            },
+            {
+              "path": "$.results[*].stages[*].active",
+              "kind": "field_removed",
+              "note": "v3 has archived instead, which is true when the stage is not active."
+            },
+            {
+              "path": "$.results[*].createdAt",
+              "kind": "type_changed",
+              "before": "integer",
+              "after": "string",
+              "note": "Epoch milliseconds in v1, an ISO 8601 date-time string in v3."
+            },
+            {
+              "path": "$.results[*].updatedAt",
+              "kind": "type_changed",
+              "before": "integer",
+              "after": "string",
+              "note": "Epoch milliseconds in v1, an ISO 8601 date-time string in v3."
+            },
+            {
+              "path": "$.results[*].stages[*].createdAt",
+              "kind": "type_changed",
+              "before": "integer",
+              "after": "string",
+              "note": "Epoch milliseconds in v1, an ISO 8601 date-time string in v3."
+            },
+            {
+              "path": "$.results[*].stages[*].updatedAt",
+              "kind": "type_changed",
+              "before": "integer",
+              "after": "string",
+              "note": "Epoch milliseconds in v1, an ISO 8601 date-time string in v3."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "spec": "https://tiltmeter.dev/schemas/api-change-notice/v1.json",
+      "id": "anthropic-retired-models-2026-10-27",
+      "provider": "api.anthropic.com",
+      "published_at": "2026-08-05T00:00:00Z",
+      "summary": "Anthropic has retired 12 Claude model versions, the latest on August 5, 2026. Requests that name them fail: Claude 2.0 and 2.1, Claude 3 Sonnet, Opus and Haiku, Claude 3.5 Sonnet and Haiku, Claude 3.7 Sonnet, and Claude Sonnet 4, Opus 4 and Opus 4.1. Each change names the recommended replacement and, in its note, what requests to it must leave out. Source: platform.claude.com model deprecations. Drafted by Tiltmeter from Anthropic's public documentation; not signed or endorsed by Anthropic.",
+      "endpoints": [
+        {
+          "method": "POST",
+          "url": "https://api.anthropic.com/v1/messages",
+          "changes": [
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "claude-opus-4-1-20250805",
+              "replaced_by": "claude-opus-4-8",
+              "note": "Retired on August 5, 2026: requests with this model fail. claude-opus-4-8 is Anthropic's recommended replacement. Requests to it must leave out temperature, top_p, top_k, extended thinking (budget_tokens: use adaptive thinking with output_config.effort) and a prefilled final assistant turn, or they return a 400 error."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "claude-sonnet-4-20250514",
+              "replaced_by": "claude-sonnet-5-5",
+              "note": "Retired on June 15, 2026: requests with this model fail. claude-sonnet-5-5 is Anthropic's recommended replacement. Requests to it must leave out temperature, top_p, top_k, extended thinking (budget_tokens: use adaptive thinking with output_config.effort), thinking type disabled, a prefilled final assistant turn and a forced tool_choice, or they return a 400 error. It thinks by default, so max_tokens covers thinking and answer."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "claude-opus-4-20250514",
+              "replaced_by": "claude-opus-4-8",
+              "note": "Retired on June 15, 2026: requests with this model fail. claude-opus-4-8 is Anthropic's recommended replacement. Requests to it must leave out temperature, top_p, top_k, extended thinking (budget_tokens: use adaptive thinking with output_config.effort) and a prefilled final assistant turn, or they return a 400 error."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "claude-3-haiku-20240307",
+              "replaced_by": "claude-haiku-4-5-20251001",
+              "note": "Retired on April 20, 2026: requests with this model fail. claude-haiku-4-5-20251001 is Anthropic's recommended replacement."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "claude-3-5-haiku-20241022",
+              "replaced_by": "claude-haiku-4-5-20251001",
+              "note": "Retired on February 19, 2026: requests with this model fail. claude-haiku-4-5-20251001 is Anthropic's recommended replacement."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "claude-3-7-sonnet-20250219",
+              "replaced_by": "claude-sonnet-5-5",
+              "note": "Retired on February 19, 2026: requests with this model fail. claude-sonnet-5-5 is Anthropic's recommended replacement. Requests to it must leave out temperature, top_p, top_k, extended thinking (budget_tokens: use adaptive thinking with output_config.effort), thinking type disabled, a prefilled final assistant turn and a forced tool_choice, or they return a 400 error. It thinks by default, so max_tokens covers thinking and answer."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "claude-3-opus-20240229",
+              "replaced_by": "claude-opus-4-8",
+              "note": "Retired on January 5, 2026: requests with this model fail. claude-opus-4-8 is Anthropic's recommended replacement. Requests to it must leave out temperature, top_p, top_k, extended thinking (budget_tokens: use adaptive thinking with output_config.effort) and a prefilled final assistant turn, or they return a 400 error."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "claude-3-5-sonnet-20241022",
+              "replaced_by": "claude-sonnet-5-5",
+              "note": "Retired on October 28, 2025: requests with this model fail. claude-sonnet-5-5 is Anthropic's recommended replacement. Requests to it must leave out temperature, top_p, top_k, extended thinking (budget_tokens: use adaptive thinking with output_config.effort), thinking type disabled, a prefilled final assistant turn and a forced tool_choice, or they return a 400 error. It thinks by default, so max_tokens covers thinking and answer."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "claude-3-5-sonnet-20240620",
+              "replaced_by": "claude-sonnet-5-5",
+              "note": "Retired on October 28, 2025: requests with this model fail. claude-sonnet-5-5 is Anthropic's recommended replacement. Requests to it must leave out temperature, top_p, top_k, extended thinking (budget_tokens: use adaptive thinking with output_config.effort), thinking type disabled, a prefilled final assistant turn and a forced tool_choice, or they return a 400 error. It thinks by default, so max_tokens covers thinking and answer."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "claude-3-sonnet-20240229",
+              "replaced_by": "claude-sonnet-5-5",
+              "note": "Retired on July 21, 2025: requests with this model fail. claude-sonnet-5-5 is Anthropic's recommended replacement. Requests to it must leave out temperature, top_p, top_k, extended thinking (budget_tokens: use adaptive thinking with output_config.effort), thinking type disabled, a prefilled final assistant turn and a forced tool_choice, or they return a 400 error. It thinks by default, so max_tokens covers thinking and answer."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "claude-2.1",
+              "replaced_by": "claude-opus-4-8",
+              "note": "Retired on July 21, 2025: requests with this model fail. claude-opus-4-8 is Anthropic's recommended replacement. Requests to it must leave out temperature, top_p, top_k, extended thinking (budget_tokens: use adaptive thinking with output_config.effort) and a prefilled final assistant turn, or they return a 400 error."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "claude-2.0",
+              "replaced_by": "claude-opus-4-8",
+              "note": "Retired on July 21, 2025: requests with this model fail. claude-opus-4-8 is Anthropic's recommended replacement. Requests to it must leave out temperature, top_p, top_k, extended thinking (budget_tokens: use adaptive thinking with output_config.effort) and a prefilled final assistant turn, or they return a 400 error."
+            }
+          ]
+        }
+      ],
+      "sdks": [],
+      "effective_at": "2026-08-05T00:00:00Z"
+    },
+    {
+      "spec": "https://tiltmeter.dev/schemas/api-change-notice/v1.json",
+      "id": "groq-retired-models-2026-08",
+      "provider": "api.groq.com",
+      "published_at": "2026-06-17T00:00:00Z",
+      "effective_at": "2026-08-16T00:00:00Z",
+      "summary": "Groq no longer serves 16 models it retired, the latest on August 16, 2026. Requests that name them return an error. llama-3.3-70b-versatile and llama-3.1-8b-instant went last, for free and developer-tier keys, after Llama, Mixtral, Gemma, DeepSeek and Qwen models retired between 2024 and 2026. Each change names Groq's recommended replacement. Source: console.groq.com/docs/deprecations. Drafted by Tiltmeter from Groq's public documentation; not signed or endorsed by Groq.",
+      "sdks": [],
+      "endpoints": [
+        {
+          "method": "POST",
+          "url": "https://api.groq.com/openai/v1/chat/completions",
+          "changes": [
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "llama-3.3-70b-versatile",
+              "replaced_by": "openai/gpt-oss-120b",
+              "note": "Shut down on August 16, 2026: requests that name it return an error. The shutdown applies to free and developer-tier keys; Groq enterprise customers with a committed-spend contract keep the model. Groq recommends openai/gpt-oss-120b (its other suggestion, qwen/qwen3.6-27b, was itself shut down on September 14, 2026). openai/gpt-oss-120b and openai/gpt-oss-20b are reasoning models: they reason before they answer, and that reasoning counts toward the completion token limit."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "llama-3.1-8b-instant",
+              "replaced_by": "openai/gpt-oss-20b",
+              "note": "Shut down on August 16, 2026: requests that name it return an error. The shutdown applies to free and developer-tier keys; Groq enterprise customers with a committed-spend contract keep the model. openai/gpt-oss-20b is Groq's recommended replacement. openai/gpt-oss-120b and openai/gpt-oss-20b are reasoning models: they reason before they answer, and that reasoning counts toward the completion token limit."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "llama3-70b-8192",
+              "replaced_by": "openai/gpt-oss-120b",
+              "note": "Shut down on August 30, 2025. Groq's replacement at the time, llama-3.3-70b-versatile, was itself shut down on August 16, 2026; openai/gpt-oss-120b is its recommended replacement."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "llama3-8b-8192",
+              "replaced_by": "openai/gpt-oss-20b",
+              "note": "Shut down on August 30, 2025. Groq's replacement at the time, llama-3.1-8b-instant, was itself shut down on August 16, 2026; openai/gpt-oss-20b is its recommended replacement."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "mixtral-8x7b-32768",
+              "replaced_by": "openai/gpt-oss-120b",
+              "note": "Shut down on March 20, 2025. Both replacements Groq named then (mistral-saba-24b and llama-3.3-70b-versatile) are shut down too; openai/gpt-oss-120b is the current successor."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "gemma2-9b-it",
+              "replaced_by": "openai/gpt-oss-20b",
+              "note": "Shut down on October 8, 2025. Groq's replacement at the time, llama-3.1-8b-instant, was itself shut down on August 16, 2026; openai/gpt-oss-20b is its recommended replacement."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "gemma-7b-it",
+              "replaced_by": "openai/gpt-oss-20b",
+              "note": "Shut down on December 18, 2024. Its replacement, gemma2-9b-it, was shut down on October 8, 2025, and that one's replacement on August 16, 2026; openai/gpt-oss-20b is the current successor."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "llama-3.1-70b-versatile",
+              "replaced_by": "openai/gpt-oss-120b",
+              "note": "Shut down on January 24, 2025. Its replacement, llama-3.3-70b-versatile, was shut down on August 16, 2026; openai/gpt-oss-120b is the current successor."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "deepseek-r1-distill-llama-70b",
+              "replaced_by": "openai/gpt-oss-120b",
+              "note": "Shut down on October 2, 2025. openai/gpt-oss-120b is one of the two replacements Groq named, and the one still served."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "qwen-qwq-32b",
+              "replaced_by": "openai/gpt-oss-120b",
+              "note": "Shut down on July 14, 2025. Its replacement, qwen/qwen3-32b, was shut down on July 17, 2026; openai/gpt-oss-120b is that model's recommended replacement."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "mistral-saba-24b",
+              "replaced_by": "openai/gpt-oss-120b",
+              "note": "Shut down on July 30, 2025. Its replacement, qwen/qwen3-32b, was shut down on July 17, 2026; openai/gpt-oss-120b is that model's recommended replacement."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "llama3-groq-70b-8192-tool-use-preview",
+              "replaced_by": "openai/gpt-oss-120b",
+              "note": "Shut down on January 6, 2025. Its replacement, llama-3.3-70b-versatile, was shut down on August 16, 2026; openai/gpt-oss-120b is the current successor."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "llama3-groq-8b-8192-tool-use-preview",
+              "replaced_by": "openai/gpt-oss-20b",
+              "note": "Shut down on January 6, 2025. Groq pointed it to llama-3.3-70b-versatile, shut down on August 16, 2026; openai/gpt-oss-20b replaces the small 8B model."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "meta-llama/llama-4-scout-17b-16e-instruct",
+              "replaced_by": "openai/gpt-oss-120b",
+              "note": "Shut down on July 17, 2026. The shutdown applies to free and developer-tier keys; Groq enterprise customers with a committed-spend contract keep the model. Groq recommends openai/gpt-oss-120b (its other suggestion, qwen/qwen3.6-27b, was itself shut down on September 14, 2026). Neither replacement reads images."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "meta-llama/llama-4-maverick-17b-128e-instruct",
+              "replaced_by": "openai/gpt-oss-120b",
+              "note": "Shut down on March 9, 2026. openai/gpt-oss-120b is Groq's recommended replacement; it does not read images."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "llama2-70b-4096",
+              "replaced_by": "openai/gpt-oss-120b",
+              "note": "Groq no longer serves this model: it is missing from Groq's model list, and its removal predates Groq's deprecations page. openai/gpt-oss-120b is the current large general-purpose model."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "spec": "https://tiltmeter.dev/schemas/api-change-notice/v1.json",
+      "id": "openai-retired-models-2026-10-23",
+      "provider": "api.openai.com",
+      "published_at": "2026-04-22T00:00:00Z",
+      "effective_at": "2026-10-23T00:00:00Z",
+      "summary": "OpenAI has shut down 36 models, the latest on October 23, 2026. Requests that name them fail. gpt-3.5-turbo, gpt-4, gpt-4-turbo, gpt-4o-2024-05-13, gpt-4.1-nano, o1, o3-mini and o4-mini went last, after earlier GPT-3.5, GPT-4, o1, davinci and DALL-E shutdowns. Each change names the replacement OpenAI recommends, from the GPT-5.6 family. Source: developers.openai.com/api/docs/deprecations. Drafted by Tiltmeter from OpenAI's public documentation; not signed or endorsed by OpenAI.",
+      "endpoints": [
+        {
+          "method": "POST",
+          "url": "https://api.openai.com/v1/chat/completions",
+          "changes": [
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "gpt-3.5-turbo",
+              "replaced_by": "gpt-5.6-terra",
+              "note": "Shut down on October 23, 2026: requests with this model fail. gpt-5.6-terra is the replacement OpenAI's deprecations page names. gpt-5.6-luna costs less."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "gpt-3.5-turbo-0125",
+              "replaced_by": "gpt-5.6-terra",
+              "note": "Shut down on October 23, 2026: requests with this model fail. gpt-5.6-terra is the replacement OpenAI's deprecations page names. gpt-5.6-luna costs less."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "gpt-3.5-turbo-1106",
+              "replaced_by": "gpt-5.6-terra",
+              "note": "Shut down on September 28, 2026: requests with this model fail. gpt-5.6-terra is the replacement OpenAI's deprecations page names. gpt-5.6-luna costs less."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "gpt-3.5-turbo-0613",
+              "replaced_by": "gpt-5.6-terra",
+              "note": "Shut down on September 13, 2024: requests with this model fail. gpt-5.6-terra is the replacement OpenAI's deprecations page names. gpt-5.6-luna costs less."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "gpt-3.5-turbo-16k-0613",
+              "replaced_by": "gpt-5.6-terra",
+              "note": "Shut down on September 13, 2024: requests with this model fail. gpt-5.6-terra is the replacement OpenAI's deprecations page names."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "gpt-3.5-turbo-0301",
+              "replaced_by": "gpt-5.6-terra",
+              "note": "Shut down on September 13, 2024: requests with this model fail. gpt-5.6-terra is the replacement OpenAI's deprecations page names."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "gpt-4",
+              "replaced_by": "gpt-5.6-sol",
+              "note": "Shut down on October 23, 2026: requests with this model fail. gpt-5.6-sol is the replacement OpenAI's deprecations page names."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "gpt-4-0613",
+              "replaced_by": "gpt-5.6-sol",
+              "note": "Shut down on October 23, 2026: requests with this model fail. gpt-5.6-sol is the replacement OpenAI's deprecations page names."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "gpt-4-0314",
+              "replaced_by": "gpt-5.6-sol",
+              "note": "Shut down on March 26, 2026: requests with this model fail. gpt-5.6-sol is the replacement OpenAI's deprecations page names."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "gpt-4-32k",
+              "replaced_by": "gpt-5.6-sol",
+              "note": "Shut down on June 6, 2025: requests with this model fail. gpt-5.6-sol is the replacement OpenAI's deprecations page names."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "gpt-4-turbo",
+              "replaced_by": "gpt-5.6-sol",
+              "note": "Shut down on October 23, 2026: requests with this model fail. gpt-5.6-sol is the replacement OpenAI's deprecations page names."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "gpt-4-turbo-2024-04-09",
+              "replaced_by": "gpt-5.6-sol",
+              "note": "Shut down on October 23, 2026: requests with this model fail. gpt-5.6-sol is the replacement OpenAI's deprecations page names."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "gpt-4-turbo-preview",
+              "replaced_by": "gpt-5.6-sol",
+              "note": "Shut down on March 26, 2026: requests with this model fail. gpt-5.6-sol is the replacement OpenAI's deprecations page names."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "gpt-4-1106-preview",
+              "replaced_by": "gpt-5.6-sol",
+              "note": "Shut down on October 23, 2026: requests with this model fail. gpt-5.6-sol is the replacement OpenAI's deprecations page names."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "gpt-4-0125-preview",
+              "replaced_by": "gpt-5.6-sol",
+              "note": "Shut down on March 26, 2026: requests with this model fail. gpt-5.6-sol is the replacement OpenAI's deprecations page names."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "gpt-4-vision-preview",
+              "replaced_by": "gpt-5.6-sol",
+              "note": "Shut down on December 6, 2024: requests with this model fail. gpt-5.6-sol is the replacement OpenAI's deprecations page names."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "gpt-4o-2024-05-13",
+              "replaced_by": "gpt-5.6-sol",
+              "note": "Shut down on October 23, 2026: requests with this model fail. gpt-5.6-sol is the replacement OpenAI's deprecations page names. gpt-4o itself is not retired."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "gpt-4.1-nano",
+              "replaced_by": "gpt-5.6-luna",
+              "note": "Shut down on October 23, 2026: requests with this model fail. gpt-5.6-luna is the replacement OpenAI's deprecations page names."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "gpt-4.1-nano-2025-04-14",
+              "replaced_by": "gpt-5.6-luna",
+              "note": "Shut down on October 23, 2026: requests with this model fail. gpt-5.6-luna is the replacement OpenAI's deprecations page names."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "gpt-4.5-preview",
+              "replaced_by": "gpt-4.1",
+              "note": "Shut down on July 14, 2025: requests with this model fail. gpt-4.1 is the replacement OpenAI's deprecations page names."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "chatgpt-4o-latest",
+              "replaced_by": "gpt-5.6-sol",
+              "note": "Shut down on February 17, 2026: requests with this model fail. gpt-5.6-sol is the replacement OpenAI's deprecations page names."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "o1",
+              "replaced_by": "gpt-5.6-sol",
+              "note": "Shut down on October 23, 2026: requests with this model fail. gpt-5.6-sol is the replacement OpenAI's deprecations page names."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "o1-2024-12-17",
+              "replaced_by": "gpt-5.6-sol",
+              "note": "Shut down on October 23, 2026: requests with this model fail. gpt-5.6-sol is the replacement OpenAI's deprecations page names."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "o1-preview",
+              "replaced_by": "gpt-5.6-sol",
+              "note": "Shut down on July 28, 2025: requests with this model fail. gpt-5.6-sol is the replacement OpenAI's deprecations page names."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "o1-mini",
+              "replaced_by": "gpt-5.6-terra",
+              "note": "Shut down on October 27, 2025: requests with this model fail. gpt-5.6-terra is the replacement OpenAI's deprecations page names."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "o1-pro",
+              "replaced_by": "gpt-5.6-sol",
+              "note": "Shut down on October 23, 2026: requests with this model fail. gpt-5.6-sol is the replacement OpenAI's deprecations page names. Send reasoning.mode pro for the same effort."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "o3-mini",
+              "replaced_by": "gpt-5.6-sol",
+              "note": "Shut down on October 23, 2026: requests with this model fail. gpt-5.6-sol is the replacement OpenAI's deprecations page names."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "o3-mini-2025-01-31",
+              "replaced_by": "gpt-5.6-sol",
+              "note": "Shut down on October 23, 2026: requests with this model fail. gpt-5.6-sol is the replacement OpenAI's deprecations page names."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "o4-mini",
+              "replaced_by": "gpt-5.6-terra",
+              "note": "Shut down on October 23, 2026: requests with this model fail. gpt-5.6-terra is the replacement OpenAI's deprecations page names."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "o4-mini-2025-04-16",
+              "replaced_by": "gpt-5.6-terra",
+              "note": "Shut down on October 23, 2026: requests with this model fail. gpt-5.6-terra is the replacement OpenAI's deprecations page names."
+            }
+          ]
+        },
+        {
+          "method": "POST",
+          "url": "https://api.openai.com/v1/responses",
+          "changes": [
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "gpt-3.5-turbo",
+              "replaced_by": "gpt-5.6-terra",
+              "note": "Shut down on October 23, 2026: requests with this model fail. gpt-5.6-terra is the replacement OpenAI's deprecations page names. gpt-5.6-luna costs less."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "gpt-3.5-turbo-0125",
+              "replaced_by": "gpt-5.6-terra",
+              "note": "Shut down on October 23, 2026: requests with this model fail. gpt-5.6-terra is the replacement OpenAI's deprecations page names. gpt-5.6-luna costs less."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "gpt-3.5-turbo-1106",
+              "replaced_by": "gpt-5.6-terra",
+              "note": "Shut down on September 28, 2026: requests with this model fail. gpt-5.6-terra is the replacement OpenAI's deprecations page names. gpt-5.6-luna costs less."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "gpt-3.5-turbo-0613",
+              "replaced_by": "gpt-5.6-terra",
+              "note": "Shut down on September 13, 2024: requests with this model fail. gpt-5.6-terra is the replacement OpenAI's deprecations page names. gpt-5.6-luna costs less."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "gpt-3.5-turbo-16k-0613",
+              "replaced_by": "gpt-5.6-terra",
+              "note": "Shut down on September 13, 2024: requests with this model fail. gpt-5.6-terra is the replacement OpenAI's deprecations page names."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "gpt-3.5-turbo-0301",
+              "replaced_by": "gpt-5.6-terra",
+              "note": "Shut down on September 13, 2024: requests with this model fail. gpt-5.6-terra is the replacement OpenAI's deprecations page names."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "gpt-4",
+              "replaced_by": "gpt-5.6-sol",
+              "note": "Shut down on October 23, 2026: requests with this model fail. gpt-5.6-sol is the replacement OpenAI's deprecations page names."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "gpt-4-0613",
+              "replaced_by": "gpt-5.6-sol",
+              "note": "Shut down on October 23, 2026: requests with this model fail. gpt-5.6-sol is the replacement OpenAI's deprecations page names."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "gpt-4-0314",
+              "replaced_by": "gpt-5.6-sol",
+              "note": "Shut down on March 26, 2026: requests with this model fail. gpt-5.6-sol is the replacement OpenAI's deprecations page names."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "gpt-4-32k",
+              "replaced_by": "gpt-5.6-sol",
+              "note": "Shut down on June 6, 2025: requests with this model fail. gpt-5.6-sol is the replacement OpenAI's deprecations page names."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "gpt-4-turbo",
+              "replaced_by": "gpt-5.6-sol",
+              "note": "Shut down on October 23, 2026: requests with this model fail. gpt-5.6-sol is the replacement OpenAI's deprecations page names."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "gpt-4-turbo-2024-04-09",
+              "replaced_by": "gpt-5.6-sol",
+              "note": "Shut down on October 23, 2026: requests with this model fail. gpt-5.6-sol is the replacement OpenAI's deprecations page names."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "gpt-4-turbo-preview",
+              "replaced_by": "gpt-5.6-sol",
+              "note": "Shut down on March 26, 2026: requests with this model fail. gpt-5.6-sol is the replacement OpenAI's deprecations page names."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "gpt-4-1106-preview",
+              "replaced_by": "gpt-5.6-sol",
+              "note": "Shut down on October 23, 2026: requests with this model fail. gpt-5.6-sol is the replacement OpenAI's deprecations page names."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "gpt-4-0125-preview",
+              "replaced_by": "gpt-5.6-sol",
+              "note": "Shut down on March 26, 2026: requests with this model fail. gpt-5.6-sol is the replacement OpenAI's deprecations page names."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "gpt-4-vision-preview",
+              "replaced_by": "gpt-5.6-sol",
+              "note": "Shut down on December 6, 2024: requests with this model fail. gpt-5.6-sol is the replacement OpenAI's deprecations page names."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "gpt-4o-2024-05-13",
+              "replaced_by": "gpt-5.6-sol",
+              "note": "Shut down on October 23, 2026: requests with this model fail. gpt-5.6-sol is the replacement OpenAI's deprecations page names. gpt-4o itself is not retired."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "gpt-4.1-nano",
+              "replaced_by": "gpt-5.6-luna",
+              "note": "Shut down on October 23, 2026: requests with this model fail. gpt-5.6-luna is the replacement OpenAI's deprecations page names."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "gpt-4.1-nano-2025-04-14",
+              "replaced_by": "gpt-5.6-luna",
+              "note": "Shut down on October 23, 2026: requests with this model fail. gpt-5.6-luna is the replacement OpenAI's deprecations page names."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "gpt-4.5-preview",
+              "replaced_by": "gpt-4.1",
+              "note": "Shut down on July 14, 2025: requests with this model fail. gpt-4.1 is the replacement OpenAI's deprecations page names."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "chatgpt-4o-latest",
+              "replaced_by": "gpt-5.6-sol",
+              "note": "Shut down on February 17, 2026: requests with this model fail. gpt-5.6-sol is the replacement OpenAI's deprecations page names."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "o1",
+              "replaced_by": "gpt-5.6-sol",
+              "note": "Shut down on October 23, 2026: requests with this model fail. gpt-5.6-sol is the replacement OpenAI's deprecations page names."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "o1-2024-12-17",
+              "replaced_by": "gpt-5.6-sol",
+              "note": "Shut down on October 23, 2026: requests with this model fail. gpt-5.6-sol is the replacement OpenAI's deprecations page names."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "o1-preview",
+              "replaced_by": "gpt-5.6-sol",
+              "note": "Shut down on July 28, 2025: requests with this model fail. gpt-5.6-sol is the replacement OpenAI's deprecations page names."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "o1-mini",
+              "replaced_by": "gpt-5.6-terra",
+              "note": "Shut down on October 27, 2025: requests with this model fail. gpt-5.6-terra is the replacement OpenAI's deprecations page names."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "o1-pro",
+              "replaced_by": "gpt-5.6-sol",
+              "note": "Shut down on October 23, 2026: requests with this model fail. gpt-5.6-sol is the replacement OpenAI's deprecations page names. Send reasoning.mode pro for the same effort."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "o3-mini",
+              "replaced_by": "gpt-5.6-sol",
+              "note": "Shut down on October 23, 2026: requests with this model fail. gpt-5.6-sol is the replacement OpenAI's deprecations page names."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "o3-mini-2025-01-31",
+              "replaced_by": "gpt-5.6-sol",
+              "note": "Shut down on October 23, 2026: requests with this model fail. gpt-5.6-sol is the replacement OpenAI's deprecations page names."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "o4-mini",
+              "replaced_by": "gpt-5.6-terra",
+              "note": "Shut down on October 23, 2026: requests with this model fail. gpt-5.6-terra is the replacement OpenAI's deprecations page names."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "o4-mini-2025-04-16",
+              "replaced_by": "gpt-5.6-terra",
+              "note": "Shut down on October 23, 2026: requests with this model fail. gpt-5.6-terra is the replacement OpenAI's deprecations page names."
+            }
+          ]
+        },
+        {
+          "method": "POST",
+          "url": "https://api.openai.com/v1/completions",
+          "changes": [
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "gpt-3.5-turbo-instruct",
+              "replaced_by": "gpt-5.6-terra",
+              "note": "Shut down on September 28, 2026: requests with this model fail. gpt-5.6-terra is the replacement OpenAI's deprecations page names. The replacement is a chat model: call /v1/chat/completions or /v1/responses instead."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "text-davinci-003",
+              "replaced_by": "gpt-5.6-terra",
+              "note": "Shut down on January 4, 2024: requests with this model fail. gpt-5.6-terra is the replacement OpenAI's deprecations page names. The replacement is a chat model: call /v1/chat/completions or /v1/responses instead."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "davinci-002",
+              "replaced_by": "gpt-5.6-terra",
+              "note": "Shut down on September 28, 2026: requests with this model fail. gpt-5.6-terra is the replacement OpenAI's deprecations page names. The replacement is a chat model: call /v1/chat/completions or /v1/responses instead."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "babbage-002",
+              "replaced_by": "gpt-5.6-terra",
+              "note": "Shut down on September 28, 2026: requests with this model fail. gpt-5.6-terra is the replacement OpenAI's deprecations page names. The replacement is a chat model: call /v1/chat/completions or /v1/responses instead."
+            }
+          ]
+        },
+        {
+          "method": "POST",
+          "url": "https://api.openai.com/v1/images/generations",
+          "changes": [
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "dall-e-3",
+              "replaced_by": "gpt-image-2",
+              "note": "Shut down on May 12, 2026: requests with this model fail. gpt-image-2 is the replacement OpenAI's deprecations page names. gpt-image-2 returns base64 images by default instead of URLs."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "dall-e-2",
+              "replaced_by": "gpt-image-2",
+              "note": "Shut down on May 12, 2026: requests with this model fail. gpt-image-2 is the replacement OpenAI's deprecations page names. gpt-image-2 returns base64 images by default instead of URLs."
+            }
+          ]
+        }
+      ],
+      "sdks": []
+    },
+    {
+      "spec": "https://tiltmeter.dev/schemas/api-change-notice/v1.json",
+      "id": "spotify-2026-02-development-mode",
+      "provider": "api.spotify.com",
+      "published_at": "2026-02-11T00:00:00Z",
+      "effective_at": "2026-03-09T00:00:00Z",
+      "summary": "Spotify changed its Web API for Development Mode apps in February 2026. Apps without extended quota are affected, existing ones since March 9: playlist /tracks endpoints and the tracks field become items; batch fetches, top tracks, browse and markets are gone; saves go through /me/library; popularity, followers, label, email, country and product are no longer returned. Source: Spotify's migration guide. Drafted by Tiltmeter from Spotify's public documentation; not signed or endorsed by Spotify.",
+      "endpoints": [
+        {
+          "method": "GET",
+          "url": "https://api.spotify.com/v1/playlists/{playlist_id}/tracks",
+          "changes": [
+            {
+              "path": "$",
+              "kind": "endpoint_removed",
+              "moved_to": {
+                "method": "GET",
+                "url": "https://api.spotify.com/v1/playlists/{playlist_id}/items"
+              },
+              "note": "Playlist contents are only returned for playlists the user owns or collaborates on."
+            },
+            {
+              "path": "$.items[*].track",
+              "kind": "field_removed",
+              "renamed_to": "$.items[*].item"
+            }
+          ]
+        },
+        {
+          "method": "POST",
+          "url": "https://api.spotify.com/v1/playlists/{playlist_id}/tracks",
+          "changes": [
+            {
+              "path": "$",
+              "kind": "endpoint_removed",
+              "moved_to": {
+                "method": "POST",
+                "url": "https://api.spotify.com/v1/playlists/{playlist_id}/items"
+              }
+            }
+          ]
+        },
+        {
+          "method": "PUT",
+          "url": "https://api.spotify.com/v1/playlists/{playlist_id}/tracks",
+          "changes": [
+            {
+              "path": "$",
+              "kind": "endpoint_removed",
+              "moved_to": {
+                "method": "PUT",
+                "url": "https://api.spotify.com/v1/playlists/{playlist_id}/items"
+              }
+            }
+          ]
+        },
+        {
+          "method": "DELETE",
+          "url": "https://api.spotify.com/v1/playlists/{playlist_id}/tracks",
+          "changes": [
+            {
+              "path": "$",
+              "kind": "endpoint_removed",
+              "moved_to": {
+                "method": "DELETE",
+                "url": "https://api.spotify.com/v1/playlists/{playlist_id}/items"
+              },
+              "note": "The tracks member of the request body is renamed to items."
+            }
+          ]
+        },
+        {
+          "method": "GET",
+          "url": "https://api.spotify.com/v1/playlists/{playlist_id}",
+          "changes": [
+            {
+              "path": "$.tracks",
+              "kind": "field_removed",
+              "renamed_to": "$.items"
+            },
+            {
+              "path": "$.tracks.items[*].track",
+              "kind": "field_removed",
+              "renamed_to": "$.items.items[*].item"
+            }
+          ]
+        },
+        {
+          "method": "GET",
+          "url": "https://api.spotify.com/v1/me/playlists",
+          "changes": [
+            {
+              "path": "$.items[*].tracks",
+              "kind": "field_removed",
+              "renamed_to": "$.items[*].items"
+            }
+          ]
+        },
+        {
+          "method": "POST",
+          "url": "https://api.spotify.com/v1/users/{user_id}/playlists",
+          "changes": [
+            {
+              "path": "$",
+              "kind": "endpoint_removed",
+              "moved_to": {
+                "method": "POST",
+                "url": "https://api.spotify.com/v1/me/playlists"
+              },
+              "note": "Playlists are created for the current user."
+            }
+          ]
+        },
+        {
+          "method": "GET",
+          "url": "https://api.spotify.com/v1/users/{user_id}/playlists",
+          "changes": [
+            {
+              "path": "$",
+              "kind": "endpoint_removed",
+              "moved_to": {
+                "method": "GET",
+                "url": "https://api.spotify.com/v1/me/playlists"
+              },
+              "note": "Only the current user's playlists remain readable: other users' playlists have no replacement."
+            }
+          ]
+        },
+        {
+          "method": "GET",
+          "url": "https://api.spotify.com/v1/users/{user_id}",
+          "changes": [
+            {
+              "path": "$",
+              "kind": "endpoint_removed",
+              "note": "GET /me returns the current user's profile; other users' profiles have no replacement."
+            }
+          ]
+        },
+        {
+          "method": "GET",
+          "url": "https://api.spotify.com/v1/artists/{id}/top-tracks",
+          "changes": [
+            {
+              "path": "$",
+              "kind": "endpoint_removed",
+              "note": "No replacement."
+            }
+          ]
+        },
+        {
+          "method": "GET",
+          "url": "https://api.spotify.com/v1/browse/new-releases",
+          "changes": [
+            {
+              "path": "$",
+              "kind": "endpoint_removed",
+              "note": "No replacement."
+            }
+          ]
+        },
+        {
+          "method": "GET",
+          "url": "https://api.spotify.com/v1/browse/categories",
+          "changes": [
+            {
+              "path": "$",
+              "kind": "endpoint_removed",
+              "note": "No replacement."
+            }
+          ]
+        },
+        {
+          "method": "GET",
+          "url": "https://api.spotify.com/v1/browse/categories/{category_id}",
+          "changes": [
+            {
+              "path": "$",
+              "kind": "endpoint_removed",
+              "note": "No replacement."
+            }
+          ]
+        },
+        {
+          "method": "GET",
+          "url": "https://api.spotify.com/v1/markets",
+          "changes": [
+            {
+              "path": "$",
+              "kind": "endpoint_removed",
+              "note": "No replacement."
+            }
+          ]
+        },
+        {
+          "method": "GET",
+          "url": "https://api.spotify.com/v1/tracks",
+          "changes": [
+            {
+              "path": "$",
+              "kind": "endpoint_removed",
+              "moved_to": {
+                "method": "GET",
+                "url": "https://api.spotify.com/v1/tracks/{id}"
+              },
+              "note": "Batch fetches are gone: request each id on its own."
+            }
+          ]
+        },
+        {
+          "method": "GET",
+          "url": "https://api.spotify.com/v1/albums",
+          "changes": [
+            {
+              "path": "$",
+              "kind": "endpoint_removed",
+              "moved_to": {
+                "method": "GET",
+                "url": "https://api.spotify.com/v1/albums/{id}"
+              },
+              "note": "Batch fetches are gone: request each id on its own."
+            }
+          ]
+        },
+        {
+          "method": "GET",
+          "url": "https://api.spotify.com/v1/artists",
+          "changes": [
+            {
+              "path": "$",
+              "kind": "endpoint_removed",
+              "moved_to": {
+                "method": "GET",
+                "url": "https://api.spotify.com/v1/artists/{id}"
+              },
+              "note": "Batch fetches are gone: request each id on its own."
+            }
+          ]
+        },
+        {
+          "method": "GET",
+          "url": "https://api.spotify.com/v1/episodes",
+          "changes": [
+            {
+              "path": "$",
+              "kind": "endpoint_removed",
+              "moved_to": {
+                "method": "GET",
+                "url": "https://api.spotify.com/v1/episodes/{id}"
+              },
+              "note": "Batch fetches are gone: request each id on its own."
+            }
+          ]
+        },
+        {
+          "method": "GET",
+          "url": "https://api.spotify.com/v1/shows",
+          "changes": [
+            {
+              "path": "$",
+              "kind": "endpoint_removed",
+              "moved_to": {
+                "method": "GET",
+                "url": "https://api.spotify.com/v1/shows/{id}"
+              },
+              "note": "Batch fetches are gone: request each id on its own."
+            }
+          ]
+        },
+        {
+          "method": "GET",
+          "url": "https://api.spotify.com/v1/audiobooks",
+          "changes": [
+            {
+              "path": "$",
+              "kind": "endpoint_removed",
+              "moved_to": {
+                "method": "GET",
+                "url": "https://api.spotify.com/v1/audiobooks/{id}"
+              },
+              "note": "Batch fetches are gone: request each id on its own."
+            }
+          ]
+        },
+        {
+          "method": "GET",
+          "url": "https://api.spotify.com/v1/chapters",
+          "changes": [
+            {
+              "path": "$",
+              "kind": "endpoint_removed",
+              "moved_to": {
+                "method": "GET",
+                "url": "https://api.spotify.com/v1/chapters/{id}"
+              },
+              "note": "Batch fetches are gone: request each id on its own."
+            }
+          ]
+        },
+        {
+          "method": "PUT",
+          "url": "https://api.spotify.com/v1/me/tracks",
+          "changes": [
+            {
+              "path": "$",
+              "kind": "endpoint_removed",
+              "moved_to": {
+                "method": "PUT",
+                "url": "https://api.spotify.com/v1/me/library"
+              },
+              "note": "Send Spotify URIs in a comma-separated uris query parameter (spotify:track:ID, spotify:album:ID), at most 40, instead of ids."
+            }
+          ]
+        },
+        {
+          "method": "PUT",
+          "url": "https://api.spotify.com/v1/me/albums",
+          "changes": [
+            {
+              "path": "$",
+              "kind": "endpoint_removed",
+              "moved_to": {
+                "method": "PUT",
+                "url": "https://api.spotify.com/v1/me/library"
+              },
+              "note": "Send Spotify URIs in a comma-separated uris query parameter (spotify:track:ID, spotify:album:ID), at most 40, instead of ids."
+            }
+          ]
+        },
+        {
+          "method": "PUT",
+          "url": "https://api.spotify.com/v1/me/following",
+          "changes": [
+            {
+              "path": "$",
+              "kind": "endpoint_removed",
+              "moved_to": {
+                "method": "PUT",
+                "url": "https://api.spotify.com/v1/me/library"
+              },
+              "note": "Send Spotify URIs in a comma-separated uris query parameter (spotify:track:ID, spotify:album:ID), at most 40, instead of ids."
+            }
+          ]
+        },
+        {
+          "method": "PUT",
+          "url": "https://api.spotify.com/v1/playlists/{playlist_id}/followers",
+          "changes": [
+            {
+              "path": "$",
+              "kind": "endpoint_removed",
+              "moved_to": {
+                "method": "PUT",
+                "url": "https://api.spotify.com/v1/me/library"
+              },
+              "note": "Send Spotify URIs in a comma-separated uris query parameter (spotify:track:ID, spotify:album:ID), at most 40, instead of ids."
+            }
+          ]
+        },
+        {
+          "method": "DELETE",
+          "url": "https://api.spotify.com/v1/me/tracks",
+          "changes": [
+            {
+              "path": "$",
+              "kind": "endpoint_removed",
+              "moved_to": {
+                "method": "DELETE",
+                "url": "https://api.spotify.com/v1/me/library"
+              },
+              "note": "Send Spotify URIs in a comma-separated uris query parameter (spotify:track:ID, spotify:album:ID), at most 40, instead of ids."
+            }
+          ]
+        },
+        {
+          "method": "DELETE",
+          "url": "https://api.spotify.com/v1/me/albums",
+          "changes": [
+            {
+              "path": "$",
+              "kind": "endpoint_removed",
+              "moved_to": {
+                "method": "DELETE",
+                "url": "https://api.spotify.com/v1/me/library"
+              },
+              "note": "Send Spotify URIs in a comma-separated uris query parameter (spotify:track:ID, spotify:album:ID), at most 40, instead of ids."
+            }
+          ]
+        },
+        {
+          "method": "DELETE",
+          "url": "https://api.spotify.com/v1/me/following",
+          "changes": [
+            {
+              "path": "$",
+              "kind": "endpoint_removed",
+              "moved_to": {
+                "method": "DELETE",
+                "url": "https://api.spotify.com/v1/me/library"
+              },
+              "note": "Send Spotify URIs in a comma-separated uris query parameter (spotify:track:ID, spotify:album:ID), at most 40, instead of ids."
+            }
+          ]
+        },
+        {
+          "method": "DELETE",
+          "url": "https://api.spotify.com/v1/playlists/{playlist_id}/followers",
+          "changes": [
+            {
+              "path": "$",
+              "kind": "endpoint_removed",
+              "moved_to": {
+                "method": "DELETE",
+                "url": "https://api.spotify.com/v1/me/library"
+              },
+              "note": "Send Spotify URIs in a comma-separated uris query parameter (spotify:track:ID, spotify:album:ID), at most 40, instead of ids."
+            }
+          ]
+        },
+        {
+          "method": "GET",
+          "url": "https://api.spotify.com/v1/me/tracks/contains",
+          "changes": [
+            {
+              "path": "$",
+              "kind": "endpoint_removed",
+              "moved_to": {
+                "method": "GET",
+                "url": "https://api.spotify.com/v1/me/library/contains"
+              },
+              "note": "Pass Spotify URIs in uris instead of ids."
+            }
+          ]
+        },
+        {
+          "method": "GET",
+          "url": "https://api.spotify.com/v1/me/albums/contains",
+          "changes": [
+            {
+              "path": "$",
+              "kind": "endpoint_removed",
+              "moved_to": {
+                "method": "GET",
+                "url": "https://api.spotify.com/v1/me/library/contains"
+              },
+              "note": "Pass Spotify URIs in uris instead of ids."
+            }
+          ]
+        },
+        {
+          "method": "GET",
+          "url": "https://api.spotify.com/v1/me/following/contains",
+          "changes": [
+            {
+              "path": "$",
+              "kind": "endpoint_removed",
+              "moved_to": {
+                "method": "GET",
+                "url": "https://api.spotify.com/v1/me/library/contains"
+              },
+              "note": "Pass Spotify URIs in uris instead of ids."
+            }
+          ]
+        },
+        {
+          "method": "GET",
+          "url": "https://api.spotify.com/v1/tracks/{id}",
+          "changes": [
+            {
+              "path": "$.popularity",
+              "kind": "field_removed"
+            },
+            {
+              "path": "$.available_markets",
+              "kind": "field_removed"
+            },
+            {
+              "path": "$.linked_from",
+              "kind": "field_removed"
+            }
+          ]
+        },
+        {
+          "method": "GET",
+          "url": "https://api.spotify.com/v1/albums/{id}",
+          "changes": [
+            {
+              "path": "$.label",
+              "kind": "field_removed"
+            },
+            {
+              "path": "$.popularity",
+              "kind": "field_removed"
+            },
+            {
+              "path": "$.available_markets",
+              "kind": "field_removed"
+            },
+            {
+              "path": "$.album_group",
+              "kind": "field_removed"
+            }
+          ]
+        },
+        {
+          "method": "GET",
+          "url": "https://api.spotify.com/v1/artists/{id}",
+          "changes": [
+            {
+              "path": "$.followers",
+              "kind": "field_removed"
+            },
+            {
+              "path": "$.popularity",
+              "kind": "field_removed"
+            }
+          ]
+        },
+        {
+          "method": "GET",
+          "url": "https://api.spotify.com/v1/me",
+          "changes": [
+            {
+              "path": "$.country",
+              "kind": "field_removed"
+            },
+            {
+              "path": "$.email",
+              "kind": "field_removed"
+            },
+            {
+              "path": "$.explicit_content",
+              "kind": "field_removed"
+            },
+            {
+              "path": "$.followers",
+              "kind": "field_removed"
+            },
+            {
+              "path": "$.product",
+              "kind": "field_removed"
+            }
+          ]
+        },
+        {
+          "method": "GET",
+          "url": "https://api.spotify.com/v1/me/top/{type}",
+          "changes": [
+            {
+              "path": "$.items[*].popularity",
+              "kind": "field_removed"
+            },
+            {
+              "path": "$.items[*].followers",
+              "kind": "field_removed"
+            }
+          ]
+        },
+        {
+          "method": "GET",
+          "url": "https://api.spotify.com/v1/me/tracks",
+          "changes": [
+            {
+              "path": "$.items[*].track.popularity",
+              "kind": "field_removed"
+            },
+            {
+              "path": "$.items[*].track.available_markets",
+              "kind": "field_removed"
+            }
+          ]
+        },
+        {
+          "method": "GET",
+          "url": "https://api.spotify.com/v1/search",
+          "changes": [
+            {
+              "path": "$.tracks.items[*].popularity",
+              "kind": "field_removed"
+            },
+            {
+              "path": "$.artists.items[*].popularity",
+              "kind": "field_removed"
+            },
+            {
+              "path": "$.artists.items[*].followers",
+              "kind": "field_removed"
+            },
+            {
+              "path": "$.albums.items[*].available_markets",
+              "kind": "field_removed"
+            }
+          ]
+        },
+        {
+          "method": "GET",
+          "url": "https://api.spotify.com/v1/shows/{id}",
+          "changes": [
+            {
+              "path": "$.publisher",
+              "kind": "field_removed"
+            },
+            {
+              "path": "$.available_markets",
+              "kind": "field_removed"
+            }
+          ]
+        },
+        {
+          "method": "GET",
+          "url": "https://api.spotify.com/v1/audiobooks/{id}",
+          "changes": [
+            {
+              "path": "$.publisher",
+              "kind": "field_removed"
+            },
+            {
+              "path": "$.available_markets",
+              "kind": "field_removed"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "spec": "https://tiltmeter.dev/schemas/api-change-notice/v1.json",
+      "id": "huggingface-serverless-inference-api-retired",
+      "provider": "huggingface.co",
+      "published_at": "2025-07-01T00:00:00Z",
+      "summary": "Hugging Face retired the serverless Inference API at api-inference.huggingface.co. Its domain no longer resolves (checked October 27, 2026), so requests fail. HF Inference answers at router.huggingface.co/hf-inference with the same requests and responses per task, and the OpenAI-compatible chat API moved to router.huggingface.co/v1. Source: huggingface.co/docs/inference-providers. Drafted by Tiltmeter from Hugging Face's public documentation; not signed or endorsed by Hugging Face.",
+      "sdks": [],
+      "endpoints": [
+        {
+          "method": "POST",
+          "url": "https://api-inference.huggingface.co/models/{model}",
+          "changes": [
+            {
+              "path": "$",
+              "kind": "endpoint_removed",
+              "moved_to": {
+                "method": "POST",
+                "url": "https://router.huggingface.co/hf-inference/models/{model}"
+              },
+              "note": "Same request body and response for the model's task. HF Inference needs a token (Bearer hf_...) with the Inference Providers permission, and since July 2025 it serves mostly CPU models such as embeddings and classifiers; large chat models are served through router.huggingface.co/v1/chat/completions."
+            }
+          ]
+        },
+        {
+          "method": "POST",
+          "url": "https://api-inference.huggingface.co/pipeline/feature-extraction/{model}",
+          "changes": [
+            {
+              "path": "$",
+              "kind": "endpoint_removed",
+              "moved_to": {
+                "method": "POST",
+                "url": "https://router.huggingface.co/hf-inference/models/{model}/pipeline/feature-extraction"
+              },
+              "note": "The task now comes after the model. Same body (inputs) and the same array of embeddings back. HF Inference needs a token (Bearer hf_...) with the Inference Providers permission, and since July 2025 it serves mostly CPU models such as embeddings and classifiers; large chat models are served through router.huggingface.co/v1/chat/completions."
+            }
+          ]
+        },
+        {
+          "method": "POST",
+          "url": "https://api-inference.huggingface.co/models/{model}/v1/chat/completions",
+          "changes": [
+            {
+              "path": "$",
+              "kind": "endpoint_removed",
+              "moved_to": {
+                "method": "POST",
+                "url": "https://router.huggingface.co/v1/chat/completions"
+              },
+              "note": "Send the model id in the body's model field instead of the path; the router picks a provider that serves it. An OpenAI client's base URL changes from https://api-inference.huggingface.co/v1 to https://router.huggingface.co/v1."
+            }
+          ]
+        },
+        {
+          "method": "POST",
+          "url": "https://api-inference.huggingface.co/v1/chat/completions",
+          "changes": [
+            {
+              "path": "$",
+              "kind": "endpoint_removed",
+              "moved_to": {
+                "method": "POST",
+                "url": "https://router.huggingface.co/v1/chat/completions"
+              },
+              "note": "Same OpenAI-compatible body and response. An OpenAI client's base URL becomes https://router.huggingface.co/v1."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "spec": "https://tiltmeter.dev/schemas/api-change-notice/v1.json",
+      "id": "stripe-2025-03-31-subscription-periods",
+      "provider": "api.stripe.com",
+      "published_at": "2025-03-31T00:00:00Z",
+      "effective_at": "2025-03-31T00:00:00Z",
+      "summary": "Stripe API version 2025-03-31.basil moved subscription billing periods to the items. The Subscription no longer has current_period_start and current_period_end; read them from each item in items.data instead. It applies only to accounts and requests on API version 2025-03-31 or later; older versions still return both on the Subscription. Source: docs.stripe.com/changelog/basil/2025-03-31. Drafted by Tiltmeter from Stripe's public documentation; not signed or endorsed by Stripe.",
+      "endpoints": [
+        {
+          "method": "GET",
+          "url": "https://api.stripe.com/v1/subscriptions/{subscription_exposed_id}",
+          "changes": [
+            {
+              "path": "$.current_period_start",
+              "kind": "field_removed",
+              "renamed_to": "$.items.data[*].current_period_start",
+              "note": "Only on API version 2025-03-31.basil or later, the account's default or the Stripe-Version a request sends; older versions still return it on the Subscription. Each subscription item now has its own billing period. Webhook events carry the Subscription in the webhook endpoint's API version, so customer.subscription events change the same way."
+            },
+            {
+              "path": "$.current_period_end",
+              "kind": "field_removed",
+              "renamed_to": "$.items.data[*].current_period_end",
+              "note": "Only on API version 2025-03-31.basil or later, the account's default or the Stripe-Version a request sends; older versions still return it on the Subscription. Each subscription item now has its own billing period. Webhook events carry the Subscription in the webhook endpoint's API version, so customer.subscription events change the same way."
+            }
+          ]
+        },
+        {
+          "method": "POST",
+          "url": "https://api.stripe.com/v1/subscriptions/{subscription_exposed_id}",
+          "changes": [
+            {
+              "path": "$.current_period_start",
+              "kind": "field_removed",
+              "renamed_to": "$.items.data[*].current_period_start",
+              "note": "Only on API version 2025-03-31.basil or later, the account's default or the Stripe-Version a request sends; older versions still return it on the Subscription. Each subscription item now has its own billing period. Webhook events carry the Subscription in the webhook endpoint's API version, so customer.subscription events change the same way."
+            },
+            {
+              "path": "$.current_period_end",
+              "kind": "field_removed",
+              "renamed_to": "$.items.data[*].current_period_end",
+              "note": "Only on API version 2025-03-31.basil or later, the account's default or the Stripe-Version a request sends; older versions still return it on the Subscription. Each subscription item now has its own billing period. Webhook events carry the Subscription in the webhook endpoint's API version, so customer.subscription events change the same way."
+            }
+          ]
+        },
+        {
+          "method": "DELETE",
+          "url": "https://api.stripe.com/v1/subscriptions/{subscription_exposed_id}",
+          "changes": [
+            {
+              "path": "$.current_period_start",
+              "kind": "field_removed",
+              "renamed_to": "$.items.data[*].current_period_start",
+              "note": "Only on API version 2025-03-31.basil or later, the account's default or the Stripe-Version a request sends; older versions still return it on the Subscription. Each subscription item now has its own billing period. Webhook events carry the Subscription in the webhook endpoint's API version, so customer.subscription events change the same way."
+            },
+            {
+              "path": "$.current_period_end",
+              "kind": "field_removed",
+              "renamed_to": "$.items.data[*].current_period_end",
+              "note": "Only on API version 2025-03-31.basil or later, the account's default or the Stripe-Version a request sends; older versions still return it on the Subscription. Each subscription item now has its own billing period. Webhook events carry the Subscription in the webhook endpoint's API version, so customer.subscription events change the same way."
+            }
+          ]
+        },
+        {
+          "method": "POST",
+          "url": "https://api.stripe.com/v1/subscriptions",
+          "changes": [
+            {
+              "path": "$.current_period_start",
+              "kind": "field_removed",
+              "renamed_to": "$.items.data[*].current_period_start",
+              "note": "Only on API version 2025-03-31.basil or later, the account's default or the Stripe-Version a request sends; older versions still return it on the Subscription. Each subscription item now has its own billing period. Webhook events carry the Subscription in the webhook endpoint's API version, so customer.subscription events change the same way."
+            },
+            {
+              "path": "$.current_period_end",
+              "kind": "field_removed",
+              "renamed_to": "$.items.data[*].current_period_end",
+              "note": "Only on API version 2025-03-31.basil or later, the account's default or the Stripe-Version a request sends; older versions still return it on the Subscription. Each subscription item now has its own billing period. Webhook events carry the Subscription in the webhook endpoint's API version, so customer.subscription events change the same way."
+            }
+          ]
+        },
+        {
+          "method": "GET",
+          "url": "https://api.stripe.com/v1/subscriptions",
+          "changes": [
+            {
+              "path": "$.data[*].current_period_start",
+              "kind": "field_removed",
+              "renamed_to": "$.data[*].items.data[*].current_period_start",
+              "note": "Only on API version 2025-03-31.basil or later, the account's default or the Stripe-Version a request sends; older versions still return it on the Subscription. Each subscription item now has its own billing period. Webhook events carry the Subscription in the webhook endpoint's API version, so customer.subscription events change the same way."
+            },
+            {
+              "path": "$.data[*].current_period_end",
+              "kind": "field_removed",
+              "renamed_to": "$.data[*].items.data[*].current_period_end",
+              "note": "Only on API version 2025-03-31.basil or later, the account's default or the Stripe-Version a request sends; older versions still return it on the Subscription. Each subscription item now has its own billing period. Webhook events carry the Subscription in the webhook endpoint's API version, so customer.subscription events change the same way."
+            }
+          ]
+        },
+        {
+          "method": "GET",
+          "url": "https://api.stripe.com/v1/subscriptions/search",
+          "changes": [
+            {
+              "path": "$.data[*].current_period_start",
+              "kind": "field_removed",
+              "renamed_to": "$.data[*].items.data[*].current_period_start",
+              "note": "Only on API version 2025-03-31.basil or later, the account's default or the Stripe-Version a request sends; older versions still return it on the Subscription. Each subscription item now has its own billing period. Webhook events carry the Subscription in the webhook endpoint's API version, so customer.subscription events change the same way."
+            },
+            {
+              "path": "$.data[*].current_period_end",
+              "kind": "field_removed",
+              "renamed_to": "$.data[*].items.data[*].current_period_end",
+              "note": "Only on API version 2025-03-31.basil or later, the account's default or the Stripe-Version a request sends; older versions still return it on the Subscription. Each subscription item now has its own billing period. Webhook events carry the Subscription in the webhook endpoint's API version, so customer.subscription events change the same way."
+            }
+          ]
+        }
+      ],
+      "sdks": [
+        {
+          "ecosystem": "pypi",
+          "name": "stripe",
+          "fixed_in": "12.0.0"
+        },
+        {
+          "ecosystem": "npm",
+          "name": "stripe",
+          "fixed_in": "18.0.0"
+        },
+        {
+          "ecosystem": "packagist",
+          "name": "stripe/stripe-php",
+          "fixed_in": "17.0.0"
+        },
+        {
+          "ecosystem": "maven",
+          "name": "com.stripe:stripe-java",
+          "fixed_in": "29.0.0"
+        },
+        {
+          "ecosystem": "go",
+          "name": "github.com/stripe/stripe-go",
+          "fixed_in": "82.0.0"
+        },
+        {
+          "ecosystem": "nuget",
+          "name": "Stripe.net",
+          "fixed_in": "48.0.0"
+        }
+      ]
+    },
+    {
+      "spec": "https://tiltmeter.dev/schemas/api-change-notice/v1.json",
+      "id": "jira-cloud-change-2046-search-jql",
+      "provider": "atlassian.net",
+      "published_at": "2024-10-31T00:00:00Z",
+      "effective_at": "2025-05-01T00:00:00Z",
+      "summary": "Jira Cloud removed GET and POST /rest/api/3/search and /rest/api/2/search, which answer 410 Gone. Their replacements, /rest/api/3/search/jql and /rest/api/2/search/jql, page with nextPageToken instead of startAt, return no total, and return only issue ids unless the request names its fields. Jira Server and Data Center keep the old endpoints. Source: developer.atlassian.com/changelog/#CHANGE-2046. Drafted by Tiltmeter from Atlassian's public documentation; not signed or endorsed by Atlassian.",
+      "sdks": [],
+      "endpoints": [
+        {
+          "method": "GET",
+          "url": "https://your-domain.atlassian.net/rest/api/3/search",
+          "changes": [
+            {
+              "path": "$",
+              "kind": "endpoint_removed",
+              "moved_to": {
+                "method": "GET",
+                "url": "https://your-domain.atlassian.net/rest/api/3/search/jql"
+              },
+              "note": "Query parameters: jql, nextPageToken instead of startAt, maxResults, fields, expand. fields defaults to id only: pass the fields the code reads, such as fields=*navigable. Only Jira Cloud (*.atlassian.net, api.atlassian.com/ex/jira) removed it; Server and Data Center sites keep the old endpoint."
+            },
+            {
+              "path": "$.startAt",
+              "kind": "field_removed",
+              "note": "Pages are fetched with nextPageToken: pass the nextPageToken of the previous page; isLast is true on the last page."
+            },
+            {
+              "path": "$.total",
+              "kind": "field_removed",
+              "note": "To count matching issues, POST /rest/api/3/search/approximate-count with body {\"jql\": \"...\"}; it returns {\"count\": n}."
+            },
+            {
+              "path": "$.maxResults",
+              "kind": "field_removed"
+            }
+          ]
+        },
+        {
+          "method": "POST",
+          "url": "https://your-domain.atlassian.net/rest/api/3/search",
+          "changes": [
+            {
+              "path": "$",
+              "kind": "endpoint_removed",
+              "moved_to": {
+                "method": "POST",
+                "url": "https://your-domain.atlassian.net/rest/api/3/search/jql"
+              },
+              "note": "Body: jql, nextPageToken instead of startAt, maxResults, fields (a list), expand (a string). fields defaults to id only: send the fields the code reads, such as [\"*navigable\"]. Only Jira Cloud (*.atlassian.net, api.atlassian.com/ex/jira) removed it; Server and Data Center sites keep the old endpoint."
+            },
+            {
+              "path": "$.startAt",
+              "kind": "field_removed",
+              "note": "Pages are fetched with nextPageToken: pass the nextPageToken of the previous page; isLast is true on the last page."
+            },
+            {
+              "path": "$.total",
+              "kind": "field_removed",
+              "note": "To count matching issues, POST /rest/api/3/search/approximate-count with body {\"jql\": \"...\"}; it returns {\"count\": n}."
+            },
+            {
+              "path": "$.maxResults",
+              "kind": "field_removed"
+            }
+          ]
+        },
+        {
+          "method": "GET",
+          "url": "https://your-domain.atlassian.net/rest/api/2/search",
+          "changes": [
+            {
+              "path": "$",
+              "kind": "endpoint_removed",
+              "moved_to": {
+                "method": "GET",
+                "url": "https://your-domain.atlassian.net/rest/api/2/search/jql"
+              },
+              "note": "Query parameters: jql, nextPageToken instead of startAt, maxResults, fields, expand. fields defaults to id only: pass the fields the code reads, such as fields=*navigable. Only Jira Cloud (*.atlassian.net, api.atlassian.com/ex/jira) removed it; Server and Data Center sites keep the old endpoint."
+            },
+            {
+              "path": "$.startAt",
+              "kind": "field_removed",
+              "note": "Pages are fetched with nextPageToken: pass the nextPageToken of the previous page; isLast is true on the last page."
+            },
+            {
+              "path": "$.total",
+              "kind": "field_removed",
+              "note": "To count matching issues, POST /rest/api/2/search/approximate-count with body {\"jql\": \"...\"}; it returns {\"count\": n}."
+            },
+            {
+              "path": "$.maxResults",
+              "kind": "field_removed"
+            }
+          ]
+        },
+        {
+          "method": "POST",
+          "url": "https://your-domain.atlassian.net/rest/api/2/search",
+          "changes": [
+            {
+              "path": "$",
+              "kind": "endpoint_removed",
+              "moved_to": {
+                "method": "POST",
+                "url": "https://your-domain.atlassian.net/rest/api/2/search/jql"
+              },
+              "note": "Body: jql, nextPageToken instead of startAt, maxResults, fields (a list), expand (a string). fields defaults to id only: send the fields the code reads, such as [\"*navigable\"]. Only Jira Cloud (*.atlassian.net, api.atlassian.com/ex/jira) removed it; Server and Data Center sites keep the old endpoint."
+            },
+            {
+              "path": "$.startAt",
+              "kind": "field_removed",
+              "note": "Pages are fetched with nextPageToken: pass the nextPageToken of the previous page; isLast is true on the last page."
+            },
+            {
+              "path": "$.total",
+              "kind": "field_removed",
+              "note": "To count matching issues, POST /rest/api/2/search/approximate-count with body {\"jql\": \"...\"}; it returns {\"count\": n}."
+            },
+            {
+              "path": "$.maxResults",
+              "kind": "field_removed"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "spec": "https://tiltmeter.dev/schemas/api-change-notice/v1.json",
+      "id": "openweathermap-one-call-2-5-closed",
+      "provider": "api.openweathermap.org",
+      "published_at": "2024-06-27T00:00:00Z",
+      "summary": "OpenWeather closed One Call API 2.5 in June 2024. Requests to /data/2.5/onecall and /data/2.5/onecall/timemachine fail with 401 Unauthorized. One Call API 3.0 serves the same data at /data/3.0/onecall with the same parameters and format; it needs the One Call API subscription, which includes 1,000 free calls a day. Source: openweathermap.org/one-call-transfer. Drafted by Tiltmeter from OpenWeather's public documentation; not signed or endorsed by OpenWeather.",
+      "sdks": [],
+      "endpoints": [
+        {
+          "method": "GET",
+          "url": "https://api.openweathermap.org/data/2.5/onecall",
+          "changes": [
+            {
+              "path": "$",
+              "kind": "endpoint_removed",
+              "moved_to": {
+                "method": "GET",
+                "url": "https://api.openweathermap.org/data/3.0/onecall"
+              },
+              "note": "Closed in June 2024. 3.0 takes the same parameters (lat, lon, exclude, units, lang, appid) and returns the same format. The API key's account needs the One Call API subscription, or requests return 401."
+            }
+          ]
+        },
+        {
+          "method": "GET",
+          "url": "https://api.openweathermap.org/data/2.5/onecall/timemachine",
+          "changes": [
+            {
+              "path": "$",
+              "kind": "endpoint_removed",
+              "moved_to": {
+                "method": "GET",
+                "url": "https://api.openweathermap.org/data/3.0/onecall/timemachine"
+              },
+              "note": "Closed in June 2024. 3.0 takes lat, lon, dt (one Unix timestamp), appid, units and lang, and returns the weather for that single timestamp in a data array instead of current and hourly."
+            },
+            {
+              "path": "$.current",
+              "kind": "field_removed",
+              "renamed_to": "$.data[*]"
+            },
+            {
+              "path": "$.hourly",
+              "kind": "field_removed",
+              "note": "3.0 returns only the requested timestamp: request each hour separately."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "spec": "https://tiltmeter.dev/schemas/api-change-notice/v1.json",
+      "id": "slack-files-upload-sunset",
+      "provider": "slack.com",
+      "published_at": "2024-04-30T00:00:00Z",
+      "effective_at": "2025-11-12T00:00:00Z",
+      "summary": "Slack sunset files.upload on November 12, 2025. An upload now takes three steps: files.getUploadURLExternal with filename and length returns upload_url and file_id; POST the bytes to upload_url; then files.completeUploadExternal with files (a JSON array of id and title) and channel_id or channels. The SDKs wrap this as files_upload_v2 (Python) and files.uploadV2 (Node). Source: docs.slack.dev. Drafted by Tiltmeter from Slack's public documentation; not signed or endorsed by Slack.",
+      "sdks": [],
+      "endpoints": [
+        {
+          "method": "POST",
+          "url": "https://slack.com/api/files.upload",
+          "changes": [
+            {
+              "path": "$",
+              "kind": "endpoint_removed",
+              "note": "Replaced by the three-step upload the summary describes, each step with the same bot token: files.getUploadURLExternal, a POST of the bytes to upload_url (application/octet-stream), and files.completeUploadExternal. completeUploadExternal takes channel_id for one channel or channels for comma-separated IDs, and returns the shared file in files."
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
