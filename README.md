@@ -182,8 +182,8 @@ the pull requests are open: [the fix for Stripe's sample](https://github.com/str
 
 Since then Tiltmeter has opened 84 pull requests for changes at Stripe, Jira, Spotify, OpenAI,
 Anthropic, Groq, Slack, OpenWeatherMap, Hugging Face and HubSpot. So far 9 have been merged, each
-as Tiltmeter wrote it, and 2 were closed, one of them after its maintainer landed the same fix in
-their own commit.
+as Tiltmeter wrote it, and 5 were closed: aicommits landed the same fix in its own commit,
+anything-llm asks for a linked issue first, and three touched code their projects no longer use.
 [Serenity BDD](https://github.com/serenity-bdd/serenity-core/pull/3756) moved its Jira plugin off
 `/rest/api/3/search`, an endpoint Jira Cloud removed.
 [ruflo](https://github.com/ruvnet/ruflo/pull/4512),
