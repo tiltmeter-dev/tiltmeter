@@ -180,19 +180,26 @@ in February 2026. One of them was Stripe's own subscription sample, which no lon
 type-checks against Stripe's SDK. Tiltmeter fixed it and 14 others we checked by hand, and
 the pull requests are open: [the fix for Stripe's sample](https://github.com/stripe-samples/subscription-use-cases/pull/1229).
 
-Since then Tiltmeter has opened 64 pull requests for changes at Stripe, Jira, Spotify, OpenAI,
-Anthropic, Groq, Slack and OpenWeatherMap. So far 1 was closed and 7 have been merged, each as
-Tiltmeter wrote it:
+Since then Tiltmeter has opened 84 pull requests for changes at Stripe, Jira, Spotify, OpenAI,
+Anthropic, Groq, Slack, OpenWeatherMap, Hugging Face and HubSpot. So far 9 have been merged, each
+as Tiltmeter wrote it, and 2 were closed, one of them after its maintainer landed the same fix in
+their own commit.
 [Serenity BDD](https://github.com/serenity-bdd/serenity-core/pull/3756) moved its Jira plugin off
-`/rest/api/3/search`, an endpoint Jira Cloud removed, and
+`/rest/api/3/search`, an endpoint Jira Cloud removed.
 [ruflo](https://github.com/ruvnet/ruflo/pull/4512),
-[radare2's r2ai](https://github.com/radareorg/r2ai/pull/249) and
+[radare2's r2ai](https://github.com/radareorg/r2ai/pull/249),
 [mcp-chat](https://github.com/Flux159/mcp-chat/pull/46), ByteDance's
 [deer-flow](https://github.com/bytedance/deer-flow/pull/7585) and
-[learn-claude-code](https://github.com/shareAI-lab/learn-claude-code/pull/602) moved their defaults off Claude models
-Anthropic has retired, and [KindleEar](https://github.com/cdhigh/KindleEar/pull/747) moved its
-default Groq model off the ones Groq shut down. The [migration tracker](https://tiltmeter.dev/migrations/) shows every
-pull request and its status, by provider.
+[learn-claude-code](https://github.com/shareAI-lab/learn-claude-code/pull/602) moved their
+defaults off Claude models Anthropic has retired.
+[Harvard's Machine Learning Systems book](https://github.com/harvard-edge/cs249r_book/pull/2163)
+and [KindleEar](https://github.com/cdhigh/KindleEar/pull/747) moved off the Groq models Groq shut
+down, and [aicommits](https://github.com/Nutlope/aicommits/commit/98e9c4e4ea025053d4ede2ed4ee08aed9b7e0419)
+made the same change in its own commit.
+[Share-The-Link](https://github.com/Joseyosei/Share-The-Link/pull/112) reads subscription periods
+from subscription items, as Stripe's API has required since 2025-03-31. The
+[migration tracker](https://tiltmeter.dev/migrations/) shows every pull request and its status, by
+provider.
 
 Subscribe with a few lines of `tiltmeter.yaml`; the [notices guide](docs/notices.md)
 covers both sides.
