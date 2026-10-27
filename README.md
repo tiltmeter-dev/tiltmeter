@@ -136,8 +136,11 @@ Commit, push and open a pull request? [y/N]: y
   claude-code` or `--agent codex` runs on your own login, with no API key and no extra
   install.
 
-`--dry-run` shows the diff and throws it away, and `--no-pr` commits to a local branch. The
-[fix guide](docs/fix.md) covers the flags, what the model sees and how to review the result.
+`--dry-run` shows the diff and throws it away, and `--no-pr` commits to a local branch.
+Before anything is committed, Tiltmeter warns about changed files that nothing else in the
+repository imports, and keeps a fix that only touches such code, unchanged for months, in a
+local commit unless you pass `--allow-unused`. The [fix guide](docs/fix.md) covers the flags,
+what the model sees and how to review the result.
 
 ## Provider mode
 

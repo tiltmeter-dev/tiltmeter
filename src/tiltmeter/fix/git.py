@@ -12,6 +12,7 @@ import os
 import shutil
 import subprocess
 from collections.abc import Sequence
+from datetime import datetime
 from pathlib import Path
 from typing import Protocol
 
@@ -101,6 +102,22 @@ class Git:
     def tracked_files(self) -> list[str]:
         """Every file in the index, as repository-relative POSIX paths."""
         return [name for name in self.run("ls-files", "-z").split("\0") if name]
+
+    def last_changed(self, path: str) -> str | None:
+        """When a commit on HEAD last changed ``path``, in ISO 8601; None when none did.
+        In a shallow clone, the oldest commit there stands in for older ones."""
+        completed = _call(
+            ["git", "--literal-pathspecs", "log", "-1", "--format=%cI", "HEAD", "--", path],
+            cwd=self.root,
+        )
+        stamp = completed.stdout.strip() if completed.returncode == 0 else ""
+        if not stamp:
+            return None
+        # Newer git spells UTC as "Z" in %cI, older git as "+00:00"; keep one form.
+        try:
+            return datetime.fromisoformat(stamp).isoformat()
+        except ValueError:
+            return stamp
 
     # -- worktrees ------------------------------------------------------------
 

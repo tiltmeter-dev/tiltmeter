@@ -8,6 +8,8 @@ import pytest
 import respx
 
 from tests.fix.kit import PR_URL, FakeFixAgent, FakeGitHub, git, make_repo
+from tests.fix.test_runner import move_to_one_call_3
+from tests.fix.test_usage import OLD, SOL
 from tests.test_cli import URL, flat, invoke, runner, write_config
 from tiltmeter.cli import app, main
 from tiltmeter.fix.agent import DeepFixAgent
@@ -294,3 +296,93 @@ def test_tests_that_still_fail_are_left_for_a_human(
     assert "fails on these edits. The end of its output:" in pr["body"]
     left = pr["body"].split("## Left for a human", 1)[1]
     assert left.lstrip().startswith("- The tests still fail with these edits")
+
+
+@pytest.fixture
+def sol(tmp_path: Path, fakes: tuple[FakeFixAgent, FakeGitHub]) -> tuple[Path, Path]:
+    """ospfranco/sol: the agent edits src/lib/weather.ts, which nothing imports and nothing
+    changed since January 2024."""
+    agent, _ = fakes
+    agent.edit = move_to_one_call_3
+    return make_repo(tmp_path, SOL, date=OLD)
+
+
+WARNING = (
+    "! possibly unused code: src/lib/weather.ts — nothing else in the repository imports "
+    "or names it; last changed 2024-01-15"
+)
+
+
+def test_old_unused_code_gets_no_pull_request_with_yes(
+    drifted: Path, fakes: tuple[FakeFixAgent, FakeGitHub], sol: tuple[Path, Path]
+) -> None:
+    _, github = fakes
+    repo, remote = sol
+    outcome = fix(drifted, repo, "--yes")
+    assert outcome.exit_code == 1, outcome.output
+    text = flat(outcome.output)
+    assert WARNING in text
+    assert f"! committed to branch {BRANCH}; the pull request was held back" in text
+    assert "pass --allow-unused to open the pull request anyway" in text
+    assert f"git push --set-upstream origin {BRANCH}" in text
+    assert github.created == []
+    assert git(remote, "branch", "--list", BRANCH) == ""
+    assert git(repo, "branch", "--list", BRANCH).strip()
+
+    as_json = json.loads(fix(drifted, repo, "--yes", "--json", "--branch", "fix/json").stdout)
+    assert as_json["held_back"] is True
+    assert as_json["preview"]["likely_dead"] is True
+    [unused] = as_json["preview"]["unused"]
+    assert unused["path"] == "src/lib/weather.ts"
+    assert unused["last_changed"] == OLD
+    assert unused["age_days"] > 180
+
+
+def test_allow_unused_opens_the_pull_request_anyway(
+    drifted: Path, fakes: tuple[FakeFixAgent, FakeGitHub], sol: tuple[Path, Path]
+) -> None:
+    _, github = fakes
+    repo, remote = sol
+    outcome = fix(drifted, repo, "--yes", "--allow-unused")
+    assert outcome.exit_code == 0, outcome.output
+    assert WARNING in flat(outcome.output)
+    assert f"✓ opened {PR_URL}" in flat(outcome.output)
+    [pr] = github.created
+    assert "Possibly unused: nothing else in the repository imports or names" in pr["body"]
+    assert git(remote, "branch", "--list", BRANCH).strip()
+
+
+def test_the_question_about_unused_code_says_why_and_defaults_to_no(
+    drifted: Path, fakes: tuple[FakeFixAgent, FakeGitHub], sol: tuple[Path, Path]
+) -> None:
+    _, github = fakes
+    repo, _ = sol
+    declined = fix(drifted, repo, stdin="\n")
+    assert declined.exit_code == 0, declined.output
+    text = flat(declined.output)
+    assert (
+        "Nothing else in the repository imports or names the changed code, and it has not "
+        "changed in over 180 days. Commit, push and open a pull request anyway? [y/N]"
+    ) in text
+    assert "discarded the edits" in text
+    assert git(repo, "branch", "--list", BRANCH) == ""
+
+    approved = fix(drifted, repo, stdin="y\n")
+    assert approved.exit_code == 0, approved.output
+    assert f"✓ opened {PR_URL}" in flat(approved.output)
+    assert len(github.created) == 1
+
+
+def test_recently_changed_unused_code_warns_but_opens_the_pull_request(
+    tmp_path: Path, drifted: Path, fakes: tuple[FakeFixAgent, FakeGitHub]
+) -> None:
+    agent, github = fakes
+    agent.edit = move_to_one_call_3
+    repo, _ = make_repo(tmp_path, SOL)  # committed today
+    outcome = fix(drifted, repo, "--yes")
+    assert outcome.exit_code == 0, outcome.output
+    text = flat(outcome.output)
+    assert "! possibly unused code: src/lib/weather.ts" in text
+    assert "(today)" in text
+    assert f"✓ opened {PR_URL}" in text
+    assert "Possibly unused" in github.created[0]["body"]

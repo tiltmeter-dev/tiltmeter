@@ -4,13 +4,24 @@ from pathlib import Path
 
 import pytest
 
-from tests.fix.kit import PR_URL, FakeFixAgent, FakeGitHub, git, make_repo, rename_request, report
+from tests.fix.kit import (
+    PR_URL,
+    FakeFixAgent,
+    FakeGitHub,
+    commit_files,
+    git,
+    make_repo,
+    rename_request,
+    report,
+)
 from tests.fix.test_request import notice_request, spec_request
+from tests.fix.test_usage import OLD, SOL, WEATHER_TS
 from tests.notices.kit import notice, signed
 from tiltmeter.errors import FixError
 from tiltmeter.fix.models import FixPreview
 from tiltmeter.fix.request import build_notice_request
 from tiltmeter.fix.runner import (
+    HELD_BACK,
     MAX_CHANGES_IN_BODY,
     FixSession,
     commit_body,
@@ -211,6 +222,70 @@ def test_pull_request_body_lists_what_is_left() -> None:
     assert "The phone field was renamed." in body  # Claude's explanation of the drift
     assert "${BILLING_KEY}" not in body
     assert "api_key" not in body
+    assert "Possibly unused" not in body
+
+
+def move_to_one_call_3(root: Path) -> None:
+    path = root / "src/lib/weather.ts"
+    text = path.read_text(encoding="utf-8")
+    path.write_text(text.replace("data/2.5/onecall", "data/3.0/onecall"), encoding="utf-8")
+
+
+async def test_edits_to_old_unused_code_stay_in_a_local_commit(tmp_path: Path) -> None:
+    repo, remote = make_repo(tmp_path, SOL, date=OLD)
+    github = FakeGitHub()
+    with FixSession.open(repo, rename_request()) as session:
+        await agent_pass(session, FakeFixAgent(edit=move_to_one_call_3))
+        preview = session.review(report())
+        assert [item.path for item in preview.unused] == ["src/lib/weather.ts"]
+        assert preview.likely_dead
+        outcome = session.deliver(preview, push=True, github=github, model_name="fake-fixer")
+    assert outcome.status == "committed"
+    assert outcome.held_back
+    assert outcome.notes == [HELD_BACK]
+    assert "--allow-unused" in HELD_BACK
+    assert outcome.commands == [
+        f"git push --set-upstream origin {BRANCH}",
+        f"gh pr create --head {BRANCH} --fill --base main",
+    ]
+    assert github.created == []
+    assert git(remote, "branch", "--list", BRANCH) == ""
+    assert git(repo, "branch", "--list", BRANCH).strip()  # the commit is kept
+
+
+async def test_allowed_unused_code_gets_its_pull_request_with_a_note(tmp_path: Path) -> None:
+    repo, _ = make_repo(tmp_path, SOL, date=OLD)
+    github = FakeGitHub()
+    with FixSession.open(repo, rename_request()) as session:
+        await agent_pass(session, FakeFixAgent(edit=move_to_one_call_3))
+        outcome = session.deliver(
+            session.review(report()),
+            push=True,
+            github=github,
+            model_name="fake-fixer",
+            allow_unused=True,
+        )
+    assert outcome.status == "opened"
+    assert not outcome.held_back
+    [pr] = github.created
+    assert (
+        "Possibly unused: nothing else in the repository imports or names "
+        "`src/lib/weather.ts` (last changed 2024-01-15)." in pr["body"]
+    )
+
+
+async def test_recent_or_partly_unused_edits_still_open_a_pull_request(tmp_path: Path) -> None:
+    repo, _ = make_repo(tmp_path, SOL, date=OLD)
+    commit_files(repo, {"src/lib/weather.ts": WEATHER_TS + "// touched\n"})
+    github = FakeGitHub()
+    with FixSession.open(repo, rename_request()) as session:
+        await agent_pass(session, FakeFixAgent(edit=move_to_one_call_3))
+        preview = session.review(report())
+        assert [item.path for item in preview.unused] == ["src/lib/weather.ts"]
+        assert not preview.likely_dead
+        outcome = session.deliver(preview, push=True, github=github, model_name="fake-fixer")
+    assert outcome.status == "opened"
+    assert "Possibly unused" in github.created[0]["body"]
 
 
 def test_pull_request_bodies_list_a_bounded_number_of_changes() -> None:

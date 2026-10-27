@@ -206,6 +206,28 @@ def render_fix_preview(console: Console, preview: FixPreview) -> None:
             console.print(Padding(Text("\n".join(tail), style="dim"), (0, 0, 0, 2)))
         else:
             console.print(Text(f"tests skipped: {tests.reason}", style="yellow"))
+    for unused in preview.unused:
+        console.print(
+            Text.assemble(
+                ("! possibly unused code: ", "yellow"),
+                (unused.path, "bold"),
+                (
+                    " — nothing else in the repository imports or names it; last changed "
+                    f"{unused.last_changed[:10]} ({_ago(unused.age_days)})",
+                    "yellow",
+                ),
+            )
+        )
+
+
+def _ago(days: int) -> str:
+    if days < 1:
+        return "today"
+    if days < 60:
+        return f"{days} day{'' if days == 1 else 's'} ago"
+    if days < 730:
+        return f"{days // 30} months ago"
+    return f"{days // 365} years ago"
 
 
 def render_fix_outcome(console: Console, outcome: FixOutcome) -> None:
@@ -218,6 +240,11 @@ def render_fix_outcome(console: Console, outcome: FixOutcome) -> None:
             )
         case "pushed":
             line = Text.assemble(("✓ ", "green"), f"pushed branch {outcome.branch}")
+        case "committed" if outcome.held_back:
+            line = Text(
+                f"! committed to branch {outcome.branch}; the pull request was held back",
+                style="yellow",
+            )
         case "committed":
             line = Text.assemble(("✓ ", "green"), f"committed to branch {outcome.branch}")
         case "discarded":

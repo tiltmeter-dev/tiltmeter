@@ -8,6 +8,18 @@ a minor release may include breaking changes.
 
 ## [Unreleased]
 
+### Added
+
+- `tiltmeter fix` checks whether the code the agent changed is still used, before anything
+  is committed. A changed JavaScript, TypeScript, Python, Rust or Swift file that nothing
+  else in the repository imports or names gets a warning with the date it last changed, and
+  a line in the pull request. When every edit is in such a file and none changed in the last
+  180 days, the confirmation defaults to no and says why, and `--yes` keeps the commit local
+  and exits with code 1; `--allow-unused` opens the pull request anyway, in `fix` and
+  `notices apply`. ospfranco/sol had closed a fix for `src/lib/weather.ts`, which the app
+  stopped using in 2024. Go, Java, Ruby and other languages that find files on their own are
+  never flagged.
+
 ## [0.7.3] - 2026-10-27
 
 ### Fixed

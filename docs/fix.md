@@ -12,6 +12,8 @@ pull request. The change can also come from the API's provider, as a
 - [Flags](#flags)
 - [What happens, step by step](#what-happens-step-by-step)
 - [What the agent can and cannot do](#what-the-agent-can-and-cannot-do)
+- [Running the tests](#running-the-tests)
+- [Code nothing uses](#code-nothing-uses)
 - [What leaves your machine](#what-leaves-your-machine)
 - [Reviewing the pull request](#reviewing-the-pull-request)
 - [Configuration](#configuration)
@@ -112,6 +114,7 @@ removed as if nothing happened.
 | `--yes`, `-y` | Commit, push and open the pull request without asking. |
 | `--no-pr` | Commit to a local branch only. Nothing is pushed. |
 | `--dry-run` | Show the diff, then discard it. |
+| `--allow-unused` | Open the pull request even when the edits touch only [code nothing uses](#code-nothing-uses) that has not changed in over 180 days. Without it, `--yes` keeps such a fix in a local commit. |
 | `--agent NAME` | `deepagents`, `claude-code` or `codex`. Overrides `fix.agent` for this run. |
 | `--json` | Print the outcome, including the diff and the agent's report, as JSON. With `--json`, nothing is committed unless you also pass `--yes`. |
 
@@ -138,8 +141,11 @@ removed as if nothing happened.
    on the edits. When they fail, the agent gets the output and edits again, up to
    `fix.test_rounds` more times. The result goes into the pull request.
 5. **Review.** Tiltmeter stages the edits and shows you the diff with the agent's report.
+   It also checks that the changed code is still used, and warns about each file that
+   nothing else in the repository imports or names ([below](#code-nothing-uses)).
 6. **Deliver.** On your approval it commits with your git identity, pushes the branch and
-   opens a pull request with `gh`. The title follows the repository's convention, such as
+   opens a pull request with `gh`. When every edit is in old code that nothing uses, no
+   pull request goes out unless you ask for it. The title follows the repository's convention, such as
    `fix(billing): ...`, when the agent found one in the contribution rules or the latest
    commit titles. Otherwise Tiltmeter writes its own. Local git hooks are skipped, as for any bot commit; your
    CI runs on the pull request instead. Each step that fails leaves what was already done in
@@ -228,6 +234,93 @@ weaken or delete tests. The pull request has a "Tests" section with the command 
 it passed, or the end of its output when it still fails, which also goes first in "Left for
 a human".
 
+## Code nothing uses
+
+The agent adapts every call it finds, and some of them live in files that nothing imports
+any more. A pull request that updates dead code costs the maintainer a review for nothing:
+ospfranco/sol closed one that moved `src/lib/weather.ts` to a new OpenWeatherMap version,
+because the app had stopped using that file in 2024. So after the agent is done, and before
+anything is committed, Tiltmeter checks each changed source file with a plain text search of
+the rest of the repository. It runs no code and asks no model.
+
+A file counts as used when another file reaches it the way code does:
+
+| Language | What counts |
+|---|---|
+| JavaScript, TypeScript | An import, export, `require` or `import()` of a path that ends in it (`'../lib/weather'`, `'@/lib/weather.js'`), a bare `from 'weather'`, or a mock of it. |
+| Python | `import` and `from ... import` statements, a dotted path in a string or a config file (`"billing.weather:main"`, `handler: billing.weather.handler`), `python -m billing.weather`. |
+| Rust | `mod weather;`, or a `crate::weather` path. |
+| Swift | One of the names the file declares at the top level, such as `struct OneCall`, in another file. Xcode project files, which list every file, do not count. |
+| All of them | The file's name with an extension (`weather.ts`, `weather.js`), in any file that is not documentation: `package.json`, a Dockerfile, a workflow, a Makefile. |
+
+A word alone does not count: `tags: ['weather']` in an emoji table imports nothing. Neither
+does documentation (Markdown and text files, `docs/`, changelogs, `.gitignore`), unless it
+tells people to run the file, as in `python billing/weather.py` or `npx tsx src/weather.ts`.
+Lock files, `node_modules`, `vendor`, `dist`, `build` and minified bundles are not read.
+
+A file that is not used by that measure is flagged, never deleted or skipped:
+
+```console
+! possibly unused code: src/lib/weather.ts — nothing else in the repository imports or names it; last changed 2024-01-15 (2 years ago)
+```
+
+When a pull request goes out anyway, its "What this pull request changes" section names the
+flagged files and when they last changed, so the reviewer knows to check.
+
+When every changed source file is flagged and none of them has changed in more than 180
+days (documentation edits next to them do not matter), the fix is probably for dead code:
+
+- You are asked `Nothing else in the repository imports or names the changed code, and it has not changed in over 180 days. Commit, push and open a pull request anyway? [y/N]`.
+- With `--yes`, Tiltmeter commits to the local branch and stops there, as `--no-pr` does,
+  and exits with code 1. `notices apply` records the notice as committed and does not try
+  it again.
+- `--allow-unused` opens the pull request anyway.
+
+Files changed more recently, or a fix that also touches code that is in use, get the warning
+and the line in the pull request, and go out as usual.
+
+A wrong "unused" would hide a real fix, so whenever the search cannot tell, a file counts as
+used:
+
+- **Languages that find files on their own** are never flagged: Go, Java, Kotlin, C#, Ruby,
+  PHP, Elixir, C and C++, and anything else outside the four above. Their build or framework
+  includes files by folder, package or class name.
+- **Entry points:** `index.*`, `main.*`, `app.*`, `server.*`, `__main__.py`, `__init__.py`,
+  `setup.py`, `manage.py`, `conftest.py`, Django's `models.py`, `urls.py` and `admin.py`,
+  `lib.rs`, `mod.rs`, `build.rs`, config files (`*.config.*`, dotfiles), tests and stories,
+  type declarations (`*.d.ts`), and files that run themselves (a shebang,
+  `if __name__ == "__main__"`, `@main`).
+- **Folders that are listed, not imported:** routes and pages (`pages`, `app`, `routes`,
+  `api`, `functions`), plugin and command folders (`plugins`, `extensions`, `addons`,
+  `handlers`, `commands`, `providers`, `jobs`), Django's `management`, `migrations` and
+  `templatetags`, and `tests`, `scripts`, `bin`, `tools` and `examples`. In Rust and Swift,
+  which compile what their build names, only the last five, plus Cargo's `benches` and
+  Swift's `*Tests` folders.
+- **Files in a series:** a file that shares a prefix or a role with a sibling, such as
+  `plugin_weather.py` next to `plugin_time.py`, or `weather.entity.ts` next to
+  `user.entity.ts`, since loaders find those by pattern.
+- **Computed imports:** ``import(`./widgets/${name}`)``, `import.meta.glob` or
+  `require.context` cover the folder they read, and `importlib.import_module(f"skills.{name}")`
+  covers `skills`. A module loaded by a name built from a folder listing covers every file of
+  that language.
+- **Very large repositories**, of more than 20,000 tracked files, are not checked.
+
+What it cannot see, so some dead code still gets a pull request with the warning or without
+it:
+
+- Code used only from outside the repository: a library's public module that no test,
+  example or file in the repository mentions, a script run from a crontab elsewhere, or a
+  Lambda handler set in the AWS console. Such a file is flagged; check before you hold it back.
+- A use spelled without any of the forms above, such as a bare module name in a JSON config
+  (`"handler": "weather"`), a Ruby-style autoload, or a framework convention it does not
+  know. Those are flagged too.
+- Code that something still imports but that never runs, such as a component nothing
+  renders. That counts as used.
+- In a shallow clone, the last change is the oldest commit in the clone, which can be more
+  recent than the real one. That can only make a file look newer, never older.
+
+## What leaves your machine
+
 ## What leaves your machine
 
 Sent to Anthropic, through your API key or your Claude Code login, or to OpenAI with
@@ -250,6 +343,8 @@ The pull request lists the API changes, the agent's summary, the files it touche
 "Left for a human" section. Review it like any other change:
 
 - Read the "Left for a human" items first. They are the questions the agent would not guess.
+- When the pull request says "Possibly unused", check that the code still runs before you
+  spend time on the change.
 - Confirm the rename or type change with the vendor's changelog when there is one.
 - Let your CI run: the agent does not run your tests.
 
@@ -283,7 +378,7 @@ repository root, like `infra/prod`. `.git` is always blocked. Every option is in
 | Code | Meaning |
 |---|---|
 | 0 | The fix was committed (and pushed, and the pull request opened, when asked), discarded on purpose, or not needed. |
-| 1 | The agent changed nothing but left questions for a human, or it touched an ignored path and everything was discarded. |
+| 1 | The agent changed nothing but left questions for a human, it touched an ignored path and everything was discarded, or every edit is in old code that nothing uses and the pull request was held back. |
 | 3 | The agent, the model provider or a git step failed. Anything already committed is kept, and the output says what is left to run. |
 | 4 | Usage error: unknown check, a notice that is invalid, unsigned or does not verify, not a git repository, a branch that already exists, no `ANTHROPIC_API_KEY` or `fix` extra for the default agent, or Claude Code or Codex missing or logged out. |
 

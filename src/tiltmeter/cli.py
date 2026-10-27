@@ -86,6 +86,13 @@ ConfigOption = Annotated[
     ),
 ]
 JsonOption = Annotated[bool, typer.Option("--json", help="Print JSON instead of tables.")]
+AllowUnusedOption = Annotated[
+    bool,
+    typer.Option(
+        "--allow-unused",
+        help="Open the pull request even when the edits touch only code that looks unused.",
+    ),
+]
 EndpointsOption = Annotated[
     list[str] | None,
     typer.Option("--endpoint", "-e", help="Only these endpoint ids (repeatable)."),
@@ -407,7 +414,7 @@ def fix_exit_code(outcome: FixOutcome) -> int:
     """A failed step beats work left for a human, which beats success."""
     if outcome.error:
         return EXIT_CHECK_FAILED
-    if outcome.status == "blocked":
+    if outcome.status == "blocked" or outcome.held_back:
         return EXIT_WARNING
     if outcome.status == "unchanged" and outcome.preview and outcome.preview.report.unresolved:
         return EXIT_WARNING
@@ -425,6 +432,7 @@ class _Delivery:
     no_pr: bool = False
     dry_run: bool = False
     as_json: bool = False
+    allow_unused: bool = False
 
 
 class _FixFailed(Exception):
@@ -440,6 +448,7 @@ def _decide(
 ) -> FixOutcome:
     """Commit, push and open the pull request, or throw the edits away."""
     from tiltmeter.fix.git import GhCli
+    from tiltmeter.fix.usage import STALE_DAYS
 
     if preview.ignored:
         return session.outcome("blocked", preview)
@@ -451,11 +460,16 @@ def _decide(
         if delivery.as_json:
             note = "pass --yes to commit when printing JSON"
             return session.outcome("discarded", preview, notes=[note])
-        question = (
-            "Commit to a local branch?"
-            if delivery.no_pr
-            else "Commit, push and open a pull request?"
-        )
+        if delivery.no_pr:
+            question = "Commit to a local branch?"
+        elif preview.likely_dead and not delivery.allow_unused:
+            question = (
+                "Nothing else in the repository imports or names the changed code, and it "
+                f"has not changed in over {STALE_DAYS} days. Commit, push and open a pull "
+                "request anyway?"
+            )
+        else:
+            question = "Commit, push and open a pull request?"
         try:
             approved = typer.confirm(question, default=False)
         except typer.Abort:
@@ -467,6 +481,8 @@ def _decide(
         push=not delivery.no_pr,
         github=None if delivery.no_pr else GhCli(),
         model_name=model_name,
+        # A yes to the question above is as good as the flag.
+        allow_unused=delivery.allow_unused or not delivery.yes,
     )
 
 
@@ -618,14 +634,17 @@ def _notice_status(outcome: FixOutcome, delivery: _Delivery) -> NoticeStatus | N
     """What to remember about a notice's fix; None when it stays new (discarded).
 
     A commit that was meant to be pushed and was not counts as failed, so it is tried
-    again: on a CI runner the commit is gone once the job ends.
+    again: on a CI runner the commit is gone once the job ends. A commit held back as
+    unused code is not: another run would find the same code unused.
     """
-    if outcome.status == "committed" and not delivery.no_pr:
+    if outcome.status == "committed" and not delivery.no_pr and not outcome.held_back:
         return "failed"
     return _RECORDED.get(outcome.status)
 
 
 def _detail(outcome: FixOutcome) -> str | None:
+    if outcome.held_back:
+        return f"committed to {outcome.branch}, not pushed: the changed code looks unused"
     if outcome.status == "committed" and outcome.error:
         return f"committed to {outcome.branch} but not pushed: {outcome.error}"
     return outcome.pr_url or outcome.branch or outcome.error
@@ -796,6 +815,7 @@ def fix(
     dry_run: Annotated[
         bool, typer.Option("--dry-run", help="Show the agent's edits, then discard them.")
     ] = False,
+    allow_unused: AllowUnusedOption = False,
     agent_kind: Annotated[
         FixAgentKind | None,
         typer.Option("--agent", help="The agent that edits the code (default: fix.agent)."),
@@ -810,7 +830,14 @@ def fix(
     --agent claude-code or --agent codex runs on your Claude Code or Codex login instead.
     """
     delivery = _Delivery(
-        repo=repo, branch=branch, base=base, yes=yes, no_pr=no_pr, dry_run=dry_run, as_json=as_json
+        repo=repo,
+        branch=branch,
+        base=base,
+        yes=yes,
+        no_pr=no_pr,
+        dry_run=dry_run,
+        as_json=as_json,
+        allow_unused=allow_unused,
     )
     if notice is None:
         if check_id is None:
@@ -940,6 +967,7 @@ def notices_apply(
         bool,
         typer.Option("--dry-run", help="Show what would change, then discard it; record nothing."),
     ] = False,
+    allow_unused: AllowUnusedOption = False,
     agent_kind: Annotated[
         FixAgentKind | None,
         typer.Option("--agent", help="The agent that edits the code (default: fix.agent)."),
@@ -965,7 +993,13 @@ def notices_apply(
     from tiltmeter.fix.runner import default_branch
 
     delivery = _Delivery(
-        repo=repo, base=base, yes=yes, no_pr=no_pr, dry_run=dry_run, as_json=as_json
+        repo=repo,
+        base=base,
+        yes=yes,
+        no_pr=no_pr,
+        dry_run=dry_run,
+        as_json=as_json,
+        allow_unused=allow_unused,
     )
     applied: list[AppliedNotice] = []
     with _opened(config) as service:
