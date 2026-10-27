@@ -181,14 +181,15 @@ type-checks against Stripe's SDK. Tiltmeter fixed it and 14 others we checked by
 the pull requests are open: [the fix for Stripe's sample](https://github.com/stripe-samples/subscription-use-cases/pull/1229).
 
 Since then Tiltmeter has opened 64 pull requests for changes at Stripe, Jira, Spotify, OpenAI,
-Anthropic, Groq, Slack and OpenWeatherMap. So far 1 was closed and 6 have been merged, each as
+Anthropic, Groq, Slack and OpenWeatherMap. So far 1 was closed and 7 have been merged, each as
 Tiltmeter wrote it:
 [Serenity BDD](https://github.com/serenity-bdd/serenity-core/pull/3756) moved its Jira plugin off
 `/rest/api/3/search`, an endpoint Jira Cloud removed, and
 [ruflo](https://github.com/ruvnet/ruflo/pull/4512),
 [radare2's r2ai](https://github.com/radareorg/r2ai/pull/249) and
-[mcp-chat](https://github.com/Flux159/mcp-chat/pull/46) and ByteDance's
-[deer-flow](https://github.com/bytedance/deer-flow/pull/7585) moved their defaults off Claude models
+[mcp-chat](https://github.com/Flux159/mcp-chat/pull/46), ByteDance's
+[deer-flow](https://github.com/bytedance/deer-flow/pull/7585) and
+[learn-claude-code](https://github.com/shareAI-lab/learn-claude-code/pull/602) moved their defaults off Claude models
 Anthropic has retired, and [KindleEar](https://github.com/cdhigh/KindleEar/pull/747) moved its
 default Groq model off the ones Groq shut down. The [migration tracker](https://tiltmeter.dev/migrations/) shows every
 pull request and its status, by provider.
