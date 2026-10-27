@@ -18,6 +18,7 @@ from __future__ import annotations
 import os
 import re
 import shlex
+import subprocess
 from collections.abc import Sequence
 from dataclasses import dataclass
 from fnmatch import fnmatchcase
@@ -370,7 +371,13 @@ def fix_command(loaded: LoadedNotice, catalog: Catalog, repo: str) -> str | None
     command = ["tiltmeter", "fix", "--notice", source]
     if not loaded.verified:
         command.append("--allow-unsigned")
-    return shlex.join([*command, "--repo", repo])
+    return shell_join([*command, "--repo", repo])
+
+
+def shell_join(args: Sequence[str]) -> str:
+    """A command line for the shell it will be pasted in. POSIX quoting would wrap a Windows
+    path in single quotes, which cmd and PowerShell don't read as quotes."""
+    return subprocess.list2cmdline(args) if os.name == "nt" else shlex.join(args)
 
 
 def _match(place: Place, notice: ApiChangeNotice) -> ScanMatch:

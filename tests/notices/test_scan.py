@@ -22,6 +22,7 @@ from tests.test_cli import flat, invoke, runner
 from tiltmeter.catalog import DRAFTED, catalog_bytes
 from tiltmeter.cli import app
 from tiltmeter.fix.agent import DeepFixAgent
+from tiltmeter.notices import scan
 from tiltmeter.notices.models import MAX_FEED_NOTICES, NoticeFeed
 from tiltmeter.notices.scan import headline, is_test
 
@@ -89,6 +90,25 @@ def test_scan_finds_a_retired_groq_model(tmp_path: Path) -> None:
     assert f"fix: tiltmeter fix --notice {GROQ} --allow-unsigned --repo {repo}" in text
     assert f"1 of 10 known API changes affects {repo}: 1 line in 1 file." in text
     assert "no provider signed or endorsed them" in text
+
+
+def test_the_fix_command_is_never_wrapped(tmp_path: Path) -> None:
+    deep = tmp_path / ("a-rather-long-folder-name-" * 4) / "checkout"
+    deep.mkdir(parents=True)
+    repo, _ = make_repo(deep, {"app/llm.py": LLM, "app/main.py": MAIN})
+    output = invoke("scan", str(repo)).output
+    command = f"tiltmeter fix --notice {GROQ} --allow-unsigned --repo {repo}"
+    assert len(command) > 100
+    assert command in output  # on one line, so it pastes whole
+
+
+def test_the_fix_command_is_quoted_for_the_shell(monkeypatch: pytest.MonkeyPatch) -> None:
+    args = ["tiltmeter", "--repo", r"C:\Users\me\My Repo"]
+    monkeypatch.setattr(scan.os, "name", "nt")
+    assert scan.shell_join(args) == r'tiltmeter --repo "C:\Users\me\My Repo"'
+    monkeypatch.setattr(scan.os, "name", "posix")
+    posix = scan.shell_join(["tiltmeter", "--repo", "/tmp/my repo"])
+    assert posix == "tiltmeter --repo '/tmp/my repo'"
 
 
 def test_scan_of_code_with_nothing_to_change_exits_0(tmp_path: Path) -> None:

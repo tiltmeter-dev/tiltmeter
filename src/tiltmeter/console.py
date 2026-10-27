@@ -479,14 +479,16 @@ def render_scan_finding(console: Console, finding: ScanFinding, now: datetime) -
         also = Text(f"also in tests: {_places(finding.tests)}", style="dim")
         console.print(Padding(also, (0, 0, 0, 4)))
     if finding.fix_command is not None:
-        command = Text.assemble(("fix: ", "dim"), (finding.fix_command, "bold"))
+        # Not wrapped, so the command copies and pastes whole even with a long path.
+        command = Text.assemble("    ", ("fix: ", "dim"), (finding.fix_command, "bold"))
+        console.print(command, soft_wrap=True)
     else:
         command = Text(
             "fix: only signed notices are read from URLs; save the catalog to a file and pass "
             "that to --catalog",
             style="dim",
         )
-    console.print(Padding(command, (0, 0, 0, 4)))
+        console.print(Padding(command, (0, 0, 0, 4)))
 
 
 def _places(matches: Sequence[ScanMatch], limit: int = 3) -> str:
@@ -558,7 +560,7 @@ def render_scan(
     for problem in report.rejected:
         name = problem.id or "(no id)"
         console.print(Text.assemble(("✗ ", "red"), name, (f"  rejected: {problem.problem}", "red")))
-    console.print(scan_summary(report, show_all=show_all))
+    console.print(scan_summary(report, show_all=show_all), soft_wrap=True)
     if report.affected and not report.git:
         note = f"note: {report.path} is not a git checkout, and tiltmeter fix needs one"
         console.print(Text(note, style="dim"))

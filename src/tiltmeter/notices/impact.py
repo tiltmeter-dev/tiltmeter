@@ -358,10 +358,11 @@ def _notice_document(name: str, text: str) -> bool:
 
 
 # A line that holds nothing but a comment: #, //, /* and the * of a block comment, -- in SQL
-# and Lua, <!-- in markup. # followed by a preprocessor word or [ is code (#define, #[test]).
+# and Lua. # followed by a preprocessor word or [ is code (#define, #[test]). Lines that open
+# a markup comment are dropped in code_only.
 _COMMENT_LINE: Final = re.compile(
     r"^[ \t]*(?:#(?!!|\[|(?:define|include|if|ifdef|ifndef|elif|else|endif|pragma|import"
-    r"|region|endregion|undef|error|warning|line)\b)|//|/\*|\*(?=[ \t/]|$)|--[ \t]|<!--).*$",
+    r"|region|endregion|undef|error|warning|line)\b)|//|/\*|\*(?=[ \t/]|$)|--[ \t]).*$",
     re.MULTILINE,
 )
 # A Python string that stands alone as a statement: a docstring, or code turned off.
@@ -372,6 +373,9 @@ def code_only(name: str, text: str) -> str:
     """The text without lines that are only comments and, in Python, without docstrings,
     line for line. A retired model named in a comment or a docstring is not sent."""
     text = _COMMENT_LINE.sub("", text)
+    text = "\n".join(
+        "" if line.lstrip(" \t").startswith("<!--") else line for line in text.split("\n")
+    )
     if not name.endswith((".py", ".pyi")):
         return text
     lines = text.split("\n")
