@@ -33,7 +33,8 @@ a minor release may include breaking changes.
 - The affected-repository search behind `notices check --repo` and `notices apply` no
   longer counts a retired value, a removed endpoint's path or a changed field that appears
   only in comment lines or Python docstrings, a short value such as `o1` outside quotes, a
-  value inside a file name (`gpt-4.txt`), `.mdx` docs, ignore files, or change notices and
+  value inside a file name (`gpt-4.txt`), `.mdx`, Quarto and LaTeX docs, data tables such as
+  benchmark `.csv` files, ignore files, or change notices and
   feeds saved in the repository.
 - A removed endpoint counts as called only where a host in front of its path, if any, is on
   the provider's domain and not the one it moved to, so OpenAI's `/v1/chat/completions` is

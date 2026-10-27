@@ -125,7 +125,8 @@ The scan runs each entry through the same plain-text search as `tiltmeter notice
 ([the rules](notices.md#is-my-repository-affected)), with a few more for the line-by-line
 view:
 
-- **Code only.** Docs (`.md`, `.mdx`, `.rst`, `.txt` and the like, changelogs, licenses),
+- **Code only.** Docs (`.md`, `.mdx`, `.rst`, `.txt`, Quarto and LaTeX chapters and the like,
+  changelogs, licenses), data tables and pictures (`.csv`, `.tsv`, `.svg`),
   lock files, ignore files, change notices and feeds (the catalog file included),
   `tiltmeter.yaml`, installed or generated code (`node_modules`, `.venv`, `dist`), binaries,
   files over 1 MB and symbolic links are not read as code.

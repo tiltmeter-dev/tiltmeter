@@ -61,7 +61,11 @@ MANIFESTS: Final[Mapping[str, tuple[str, ...]]] = {
     "cargo": ("Cargo.toml",),
     "packagist": ("composer.json",),
 }
-_DOCS: Final = frozenset({".md", ".mdx", ".markdown", ".rst", ".adoc", ".txt"})
+_DOCS: Final = frozenset(
+    {".md", ".mdx", ".markdown", ".rst", ".adoc", ".txt", ".qmd", ".rmd", ".tex", ".bib", ".org"}
+)
+# Tables and pictures name models and endpoints as data, such as benchmark results.
+_DATA: Final = frozenset({".csv", ".tsv", ".svg"})
 # Tiltmeter's own config names the APIs it follows, which is no use of them.
 _OWN_FILES: Final = frozenset({"tiltmeter.yaml", "tiltmeter.yml"})
 _VERSION: Final = re.compile(r"v\d+(?:\.\d+)*", re.IGNORECASE)
@@ -194,9 +198,10 @@ def _under(name: str, folders: set[PurePosixPath]) -> bool:
 
 
 def _documentation(name: str) -> bool:
-    """Docs, and files such as ``.dockerignore`` that list paths rather than call them."""
+    """Docs, data tables, and files such as ``.dockerignore`` that list paths rather than
+    call them."""
     base = PurePosixPath(name).name
-    if PurePosixPath(base).suffix.lower() in _DOCS or fnmatchcase(base, ".*ignore"):
+    if PurePosixPath(base).suffix.lower() in _DOCS | _DATA or fnmatchcase(base, ".*ignore"):
         return True
     return base.upper().startswith(("CHANGELOG", "LICENSE"))
 

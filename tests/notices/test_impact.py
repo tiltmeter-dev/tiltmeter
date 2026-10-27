@@ -619,6 +619,16 @@ def test_mdx_docs_and_ignore_files_are_not_code(tmp_path: Path) -> None:
     assert not check(tmp_path, files, **retired_model()).affected
 
 
+def test_book_chapters_and_data_tables_are_not_code(tmp_path: Path) -> None:
+    files = {
+        "book/chapter.qmd": '"billing-3-5-20240620": ("Billing 3.5", (6, 2), "left"),\n',
+        "book/paper.tex": "We compare billing-3-5-20240620 with its successor.\n",
+        "data/benchmark.csv": "model,score\nbilling-3-5-20240620,0.78\n",
+        "figures/scores.svg": "<text>billing-3-5-20240620</text>\n",
+    }
+    assert not check(tmp_path, files, **retired_model()).affected
+
+
 def test_change_notices_and_feeds_are_no_use_of_an_api(tmp_path: Path) -> None:
     saved = json.dumps(notice(**retired_model()), indent=2)
     impact = check(tmp_path, {"notices/draft.json": saved}, **retired_model())

@@ -288,7 +288,8 @@ an LLM:
 
 No use of the API, or uses without the fields near them, means not affected. Paths alone
 are not enough, because another vendor's API can have a `/v1/customers` too: the host or
-an SDK has to appear somewhere in the repository. Docs (`.md`, `.mdx`, `.rst`, `.txt`),
+an SDK has to appear somewhere in the repository. Docs (`.md`, `.mdx`, `.rst`, `.txt`, `.qmd`,
+`.tex`), data tables (`.csv`, `.tsv`, `.svg`),
 ignore files, lock files, change notices and feeds, `tiltmeter.yaml`, binaries, files over
 1 MB, symbolic links and anything matching `fix.ignore` are never read.
 
