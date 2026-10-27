@@ -194,6 +194,16 @@ class FixReport(BaseModel):
     )
 
 
+class UnusedFile(BaseModel):
+    """A changed source file that nothing else in the repository seems to import or name."""
+
+    model_config = ConfigDict(frozen=True)
+
+    path: str
+    last_changed: str = Field(description="When a commit last changed it, in ISO 8601.")
+    age_days: int = Field(description="How many days before the review that was.")
+
+
 class FixPreview(BaseModel):
     """The agent's edits as a reviewable diff, before anything is committed."""
 
@@ -208,6 +218,17 @@ class FixPreview(BaseModel):
         default_factory=list, description="Changed files that match fix.ignore."
     )
     tests: TestRun | None = None
+    unused: list[UnusedFile] = Field(
+        default_factory=list,
+        description="Changed source files that nothing else in the repository imports or names.",
+    )
+    likely_dead: bool = Field(
+        default=False,
+        description=(
+            "Whether the edits touch only such files, each unchanged for over 180 days, and "
+            "documentation: no pull request goes out then unless asked for."
+        ),
+    )
 
     @property
     def empty(self) -> bool:
@@ -234,6 +255,11 @@ class FixOutcome(BaseModel):
     notes: list[str] = Field(default_factory=list)
     error: str | None = None
     preview: FixPreview | None = None
+    held_back: bool = Field(
+        default=False,
+        description="Whether the pull request was held back because the edits touch only code "
+        "that looks unused.",
+    )
 
 
 class AppliedNotice(BaseModel):

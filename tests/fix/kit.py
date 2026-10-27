@@ -3,6 +3,7 @@ agent, a fake GitHub and a scripted chat model that drives the real Deep Agent."
 
 from __future__ import annotations
 
+import os
 import subprocess
 from collections.abc import Callable, Sequence
 from pathlib import Path
@@ -40,15 +41,36 @@ class Customer(TypedDict):
 PR_URL = "https://github.test/acme/app/pull/7"
 
 
-def git(cwd: Path, *args: str) -> str:
+def git(cwd: Path, *args: str, date: str | None = None) -> str:
+    """Run git in ``cwd``; with ``date``, as the author and committer date of a commit."""
+    env = {**os.environ, "GIT_AUTHOR_DATE": date, "GIT_COMMITTER_DATE": date} if date else None
     completed = subprocess.run(
-        ["git", *args], cwd=cwd, check=True, capture_output=True, text=True, encoding="utf-8"
+        ["git", *args],
+        cwd=cwd,
+        check=True,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        env=env,
     )
     return completed.stdout
 
 
-def make_repo(tmp_path: Path, files: dict[str, str] | None = None) -> tuple[Path, Path]:
-    """A repository with one commit on main, pushed to a bare ``origin`` next to it."""
+def commit_files(repo: Path, files: dict[str, str], *, date: str | None = None) -> None:
+    """Write ``files`` and commit them, dated ``date`` when given."""
+    for name, text in files.items():
+        path = repo / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+    git(repo, "add", "--all")
+    git(repo, "commit", "--quiet", "-m", "Update files", date=date)
+
+
+def make_repo(
+    tmp_path: Path, files: dict[str, str] | None = None, *, date: str | None = None
+) -> tuple[Path, Path]:
+    """A repository with one commit on main, dated ``date`` when given, pushed to a bare
+    ``origin`` next to it."""
     remote = tmp_path / "remote.git"
     git(tmp_path, "init", "--quiet", "--bare", "-b", "main", str(remote))
     repo = tmp_path / "app"
@@ -67,7 +89,7 @@ def make_repo(tmp_path: Path, files: dict[str, str] | None = None) -> tuple[Path
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(text, encoding="utf-8")
     git(repo, "add", "--all")
-    git(repo, "commit", "--quiet", "-m", "Initial commit")
+    git(repo, "commit", "--quiet", "-m", "Initial commit", date=date)
     git(repo, "remote", "add", "origin", str(remote))
     git(repo, "push", "--quiet", "-u", "origin", "main")
     return repo, remote

@@ -198,8 +198,10 @@ For each new notice or spec change, oldest first:
 Each notice is handled once; the outcome is kept in `.tiltmeter/`. A fix that failed, was
 committed but not pushed, or was pushed without its pull request is tried again on the
 next run, up to three times. Without `--yes`, you are asked before each commit;
-`--dry-run` shows the edits and records nothing; `--no-pr`, `--base` and `--agent` work as
-for [`tiltmeter fix`](fix.md#flags).
+`--dry-run` shows the edits and records nothing; `--no-pr`, `--base`, `--allow-unused` and
+`--agent` work as for [`tiltmeter fix`](fix.md#flags). A fix whose edits are all in old code
+that nothing uses stays in a local commit and is recorded as committed, so it is not tried
+again ([why](fix.md#code-nothing-uses)).
 
 On GitHub, the [Tiltmeter Action](ci.md#provider-notices) runs `notices apply` on a
 schedule, with the state in the Actions cache: a workflow of about 20 lines and no service
@@ -325,5 +327,5 @@ request, shared out between the endpoints).
 | Command | 0 | 1 | 3 | 4 |
 |---|---|---|---|---|
 | `notices check` | nothing new | new notices (that affect `--repo`, when given) | a feed or spec could not be read | usage or config error |
-| `notices apply` | everything handled | an agent changed nothing but left questions, or touched an ignored file | a fix, a feed or a spec failed | usage or config error |
+| `notices apply` | everything handled | an agent changed nothing but left questions, touched an ignored file, or only edited old code that nothing uses | a fix, a feed or a spec failed | usage or config error |
 | `notice verify` | signed and verified | valid but unsigned | invalid, or the signature does not match | usage error |

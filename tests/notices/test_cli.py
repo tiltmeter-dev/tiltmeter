@@ -496,6 +496,35 @@ def test_a_commit_that_was_not_pushed_is_tried_again(
     assert not record.done
 
 
+@respx.mock
+def test_a_fix_of_old_unused_code_is_held_back_and_not_tried_again(
+    tmp_path: Path, fakes: tuple[FakeFixAgent, FakeGitHub]
+) -> None:
+    agent, github = fakes
+
+    def edit_client(root: Path) -> None:  # which nothing imports
+        path = root / "client.py"
+        text = path.read_text(encoding="utf-8")
+        path.write_text(text.replace('["phone"]', '["phone_number"]'), encoding="utf-8")
+
+    agent.edit = edit_client
+    config = subscribed(tmp_path)
+    repo, remote = make_repo(tmp_path, date="2024-01-15T12:00:00+00:00")
+    serve(signed())
+    outcome = invoke("notices", "apply", "-c", str(config), "--repo", str(repo), "--yes")
+    assert outcome.exit_code == 1, outcome.output
+    assert "the pull request was held back" in flat(outcome.output)
+    assert github.created == []
+    assert git(remote, "branch", "--list", BRANCH) == ""
+    [record] = records(config)
+    assert record.status == "committed"
+    assert record.detail == f"committed to {BRANCH}, not pushed: the changed code looks unused"
+    assert record.done
+    again = invoke("notices", "apply", "-c", str(config), "--repo", str(repo), "--yes")
+    assert "No new notices." in again.output
+    assert len(agent.requests) == 1
+
+
 # -- openapi subscriptions --------------------------------------------------------
 
 

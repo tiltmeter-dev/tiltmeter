@@ -102,6 +102,15 @@ class Git:
         """Every file in the index, as repository-relative POSIX paths."""
         return [name for name in self.run("ls-files", "-z").split("\0") if name]
 
+    def last_changed(self, path: str) -> str | None:
+        """When a commit on HEAD last changed ``path``, in ISO 8601; None when none did.
+        In a shallow clone, the oldest commit there stands in for older ones."""
+        completed = _call(
+            ["git", "--literal-pathspecs", "log", "-1", "--format=%cI", "HEAD", "--", path],
+            cwd=self.root,
+        )
+        return (completed.stdout.strip() or None) if completed.returncode == 0 else None
+
     # -- worktrees ------------------------------------------------------------
 
     def add_worktree(self, path: Path, branch: str) -> Git:

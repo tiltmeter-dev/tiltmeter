@@ -33,7 +33,9 @@ from tiltmeter.fix.models import (
     FixTarget,
     NoticeSource,
     TestRun,
+    UnusedFile,
 )
+from tiltmeter.fix.usage import STALE_DAYS, likely_dead, unused_files
 from tiltmeter.notices.models import SpecInfo
 
 PROJECT_URL: Final = "https://github.com/tiltmeter-dev/tiltmeter"
@@ -42,6 +44,11 @@ MAX_SLUG: Final = 80
 PLAIN_WIDTH: Final = 100
 # Rows of change tables in one pull request; GitHub refuses bodies past 65,536 characters.
 MAX_CHANGES_IN_BODY: Final = 100
+HELD_BACK: Final = (
+    "the edits touch only code that nothing else in the repository imports or names, "
+    f"unchanged for over {STALE_DAYS} days, so nothing was pushed; pass --allow-unused to "
+    "open the pull request anyway"
+)
 
 
 def _slug(text: str) -> str:
@@ -297,6 +304,13 @@ def _tests_section(tests: TestRun) -> list[str]:
     return [f"{command} fails on these edits. The end of its output:", "", *_plain_text(tail)]
 
 
+def _unused_line(unused: Sequence[UnusedFile]) -> str:
+    named = ", ".join(
+        f"{_code(item.path)} (last changed {item.last_changed[:10]})" for item in unused
+    )
+    return f"Possibly unused: nothing else in the repository imports or names {named}."
+
+
 def pull_request_body(request: FixRequest, preview: FixPreview, *, model_name: str) -> str:
     notice = request.notice
     if notice is not None and notice.spec is not None:
@@ -307,6 +321,8 @@ def pull_request_body(request: FixRequest, preview: FixPreview, *, model_name: s
         lines = _check_section(request)
     lines += ["", "## What this pull request changes", "", preview.report.summary, ""]
     lines += [f"- `{name}`" for name in preview.files]
+    if preview.unused:
+        lines += ["", _unused_line(preview.unused)]
     if preview.tests is not None:
         lines += ["", "## Tests", "", *_tests_section(preview.tests)]
     unresolved = list(preview.report.unresolved)
@@ -399,10 +415,12 @@ class FixSession:
     def review(
         self, report: FixReport, *, ignore: Sequence[str] = (), tests: TestRun | None = None
     ) -> FixPreview:
-        """Stage everything the agent changed and describe it."""
+        """Stage everything the agent changed and describe it, with the changed files that
+        nothing seems to use."""
         self.worktree.stage_all()
         files = self.worktree.staged_files()
         additions, deletions = self.worktree.staged_counts() if files else (0, 0)
+        unused = unused_files(self.worktree, files, ignore=ignore) if files else []
         return FixPreview(
             branch=self.branch,
             base=self.base,
@@ -413,6 +431,8 @@ class FixSession:
             report=report,
             ignored=[name for name in files if is_ignored(name, ignore)],
             tests=tests,
+            unused=unused,
+            likely_dead=likely_dead(files, unused),
         )
 
     def outcome(self, status: FixStatus, preview: FixPreview | None, **fields: Any) -> FixOutcome:
@@ -430,12 +450,19 @@ class FixSession:
         )
 
     def deliver(
-        self, preview: FixPreview, *, push: bool, github: GitHub | None, model_name: str
+        self,
+        preview: FixPreview,
+        *,
+        push: bool,
+        github: GitHub | None,
+        model_name: str,
+        allow_unused: bool = False,
     ) -> FixOutcome:
         """Commit the reviewed edits, then push and open a pull request when asked to.
 
-        Every step after the commit degrades instead of raising: the outcome says how
-        far it got, why it stopped and what is left to run by hand.
+        Edits that touch only code that looks unused and old stay in the local commit,
+        unless ``allow_unused``. Every step after the commit degrades instead of raising:
+        the outcome says how far it got, why it stopped and what is left to run by hand.
         """
         if preview.empty:
             raise FixError("there is nothing to commit")
@@ -451,6 +478,14 @@ class FixSession:
         push_branch = f"git push --set-upstream {remote or 'origin'} {self.branch}"
         if not push:
             return self.outcome("committed", preview, commands=[push_branch, open_pr])
+        if preview.likely_dead and not allow_unused:
+            return self.outcome(
+                "committed",
+                preview,
+                commands=[push_branch, open_pr],
+                notes=[HELD_BACK],
+                held_back=True,
+            )
         if remote is None:
             error = "the repository has no remote to push to"
             return self.outcome("committed", preview, error=error, commands=[push_branch, open_pr])

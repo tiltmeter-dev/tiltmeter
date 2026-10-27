@@ -230,7 +230,13 @@ check pipeline and only runs when you ask:
    agent ends with a structured report: summary, files changed, what is left for a human,
    and confidence.
 4. Tiltmeter stages the edits, refuses any diff that touches an ignored path, and shows
-   the diff. On approval it commits, pushes and opens the pull request with `gh`.
+   the diff. It also searches the rest of the worktree for each changed JavaScript,
+   TypeScript, Python, Rust or Swift file, the way code reaches it (imports, `mod`
+   declarations, file names in configs, Swift's top-level type names), and reads from git
+   when the files it does not find last changed. On approval it commits, pushes and opens
+   the pull request with `gh`. When every edit is in such a file, unchanged for over 180
+   days, the commit stays local unless `--allow-unused` is passed
+   ([details](fix.md#code-nothing-uses)).
 
 The [fix guide](fix.md) has the flags and the review checklist.
 
