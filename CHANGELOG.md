@@ -8,6 +8,8 @@ a minor release may include breaking changes.
 
 ## [Unreleased]
 
+## [0.7.2] - 2026-10-27
+
 ### Added
 
 - The fix agent reads the repository's contribution rules (`AGENTS.md`, `CLAUDE.md`,
