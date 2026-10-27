@@ -93,7 +93,7 @@ def test_scan_finds_a_retired_groq_model(tmp_path: Path) -> None:
 
 
 def test_the_fix_command_is_never_wrapped(tmp_path: Path) -> None:
-    deep = tmp_path / ("a-rather-long-folder-name-" * 4) / "checkout"
+    deep = tmp_path / ("long-folder-name-" * 2) / "checkout"  # within Windows' MAX_PATH
     deep.mkdir(parents=True)
     repo, _ = make_repo(deep, {"app/llm.py": LLM, "app/main.py": MAIN})
     output = invoke("scan", str(repo)).output
@@ -205,8 +205,9 @@ def test_scan_reads_another_catalog_from_a_file(tmp_path: Path) -> None:
     assert (entry["provider"], entry["signed"], entry["drafted"]) == (PROVIDER, False, False)
     assert entry["matches"][0]["file"] == "client.py"
     assert entry["matches"][0]["detail"] == "renamed to $.phone_number"
-    assert entry["fix_command"] == (
-        f"tiltmeter fix --notice '{path}#{NOTICE_ID}' --allow-unsigned --repo {repo}"
+    source = f"{path}#{NOTICE_ID}"
+    assert entry["fix_command"] == scan.shell_join(
+        ["tiltmeter", "fix", "--notice", source, "--allow-unsigned", "--repo", str(repo)]
     )
     text = flat(invoke("scan", str(repo), "--catalog", str(path)).output)
     assert f"{NOTICE_ID} · unsigned" in text
@@ -222,8 +223,8 @@ def test_scan_reads_a_catalog_from_a_url_and_checks_signatures(tmp_path: Path) -
     assert code == 1
     by_id = {entry["id"]: entry for entry in report["affected"]}
     assert by_id[NOTICE_ID]["signed"] is True
-    assert by_id[NOTICE_ID]["fix_command"] == (
-        f"tiltmeter fix --notice '{FEED_URL}#{NOTICE_ID}' --repo {repo}"
+    assert by_id[NOTICE_ID]["fix_command"] == scan.shell_join(
+        ["tiltmeter", "fix", "--notice", f"{FEED_URL}#{NOTICE_ID}", "--repo", str(repo)]
     )
     # Only signed notices are read from URLs, so there is no command to offer.
     assert by_id["unsigned-one"]["fix_command"] is None
