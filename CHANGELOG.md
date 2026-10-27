@@ -8,6 +8,8 @@ a minor release may include breaking changes.
 
 ## [Unreleased]
 
+## [0.7.3] - 2026-10-27
+
 ### Fixed
 
 - The affected-repository search finds a path that code joins right after an interpolation
