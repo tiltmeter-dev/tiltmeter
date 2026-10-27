@@ -200,6 +200,31 @@ def test_runs_that_open_a_new_history_at_once_all_get_it(tmp_path: Path) -> None
         assert db._db.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION
 
 
+class _LockedTwice:
+    """Answers "database is locked" to the first two statements, as SQLite can when
+    another run holds a lock while this one switches to WAL."""
+
+    def __init__(self, error: str = "database is locked") -> None:
+        self.error, self.calls = error, 0
+
+    def execute(self, statement: str) -> None:
+        self.calls += 1
+        if self.calls <= 2:
+            raise sqlite3.OperationalError(self.error)
+
+
+def test_switching_to_wal_retries_while_another_run_holds_a_lock(tmp_path: Path) -> None:
+    db = Store(tmp_path / "tiltmeter.db")
+    real, locked = db._db, _LockedTwice()
+    db._db = locked  # type: ignore[assignment]
+    db._use_wal()
+    assert locked.calls == 3
+    db._db = _LockedTwice("disk I/O error")  # type: ignore[assignment]
+    with pytest.raises(sqlite3.OperationalError, match="disk I/O"):
+        db._use_wal()  # only a lock is worth waiting for
+    real.close()
+
+
 def test_a_migration_that_fails_leaves_the_history_as_it_was(tmp_path: Path) -> None:
     path = tmp_path / "tiltmeter.db"
     connection = sqlite3.connect(path)
