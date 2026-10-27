@@ -8,6 +8,12 @@ a minor release may include breaking changes.
 
 ## [Unreleased]
 
+### Changed
+
+- For a removed endpoint without `moved_to`, the agent uses the replacement the change's note
+  describes, such as Slack's three calls in place of `files.upload`, instead of always leaving
+  the call for a human. With no replacement named, it still leaves it.
+
 ## [0.7.2] - 2026-10-27
 
 ### Added

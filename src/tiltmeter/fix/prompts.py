@@ -67,8 +67,10 @@ that is straightforward; otherwise leave the code alone and report it as unresol
    - A removed endpoint (endpoint_removed) with moved_to: call the new method and URL \
 instead, and adapt to the other changes listed for it, which compare the old \
 endpoint's response with the new one's. Keep the code's way of building URLs and \
-sending requests. Without moved_to, or when the new endpoint needs parameters the \
-code cannot supply, leave the call alone and report it as unresolved.
+sending requests. Without moved_to, use the replacement the change's note describes \
+when it names one, such as a sequence of calls or an SDK method, in the code's own way \
+of sending requests. When neither says where the endpoint went, or the replacement needs \
+parameters the code cannot supply, leave the call alone and report it as unresolved.
    - A retired value (value_retired), such as a model id the API no longer accepts: \
 send replaced_by instead wherever the code sends the old value, including defaults, \
 configuration examples and tests. When the value comes from the user's configuration \

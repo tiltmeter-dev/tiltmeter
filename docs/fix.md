@@ -120,7 +120,7 @@ removed as if nothing happened.
 1. **Targets.** From the check, Tiltmeter keeps the changes code has to follow: removed
    and renamed fields, type changes, fields that became optional or nullable. New fields
    and status or latency changes are left out. A notice can also remove an endpoint (the
-   agent calls the one it moved to, when the notice names it) or retire a value requests
+   agent calls the one it moved to, or the replacement the change's note describes) or retire a value requests
    send, such as a model id (the agent sends the replacement the notice names).
 2. **A clean workspace.** It creates a new branch from your current commit and checks it
    out as a [git worktree](https://git-scm.com/docs/git-worktree) in a temporary folder.
