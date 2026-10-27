@@ -8,6 +8,8 @@ a minor release may include breaking changes.
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-10-27
+
 ### Added
 
 - `tiltmeter scan [PATH]` finds code that still uses API changes that already shipped, with
