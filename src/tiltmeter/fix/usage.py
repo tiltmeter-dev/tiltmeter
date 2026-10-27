@@ -38,7 +38,7 @@ from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from fnmatch import fnmatchcase
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
 from typing import Final, Literal
 
 from tiltmeter.fix.git import Git
@@ -501,7 +501,23 @@ def unused_files(
 ) -> list[UnusedFile]:
     """The changed source files that nothing else in the worktree imports or names, with
     when a commit last changed them. Files that are new, deleted or never read are left out."""
-    root = worktree.root
+    pending = unreferenced(worktree.root, worktree.tracked_files(), changed, ignore=ignore)
+    moment = now or datetime.now(UTC)
+    unused: list[UnusedFile] = []
+    for name in pending:
+        last = worktree.last_changed(name)
+        if last is None:
+            continue
+        age = (moment - datetime.fromisoformat(last)).days
+        unused.append(UnusedFile(path=name, last_changed=last, age_days=max(age, 0)))
+    return unused
+
+
+def unreferenced(
+    root: Path, files: Sequence[str], changed: Sequence[str], *, ignore: Sequence[str] = ()
+) -> list[str]:
+    """The ``changed`` source files that nothing else among ``files`` imports or names, for
+    a tree with or without git. Empty when the tree is too large to read all of it."""
     candidates: dict[str, _Candidate] = {}
     for name in changed:
         path = PurePosixPath(name)
@@ -511,22 +527,22 @@ def unused_files(
                 candidates[name] = candidate
     if not candidates:
         return []
-    files = [
+    paths = [
         PurePosixPath(name)
-        for name in worktree.tracked_files()
+        for name in files
         if _read(PurePosixPath(name)) and not is_ignored(name, ignore)
     ]
-    if len(files) > MAX_FILES:
+    if len(paths) > MAX_FILES:
         return []  # too large to read all of it, so nothing is sure
     siblings: dict[PurePosixPath, list[PurePosixPath]] = defaultdict(list)
-    for path in files:
+    for path in paths:
         siblings[path.parent].append(path)
     pending = {
         name: candidate
         for name, candidate in candidates.items()
         if not _in_a_series(PurePosixPath(name), siblings[PurePosixPath(name).parent])
     }
-    for path in files:
+    for path in paths:
         if not pending:
             break
         text = read_text(root / path)
@@ -540,15 +556,7 @@ def unused_files(
             for other, candidate in list(pending.items()):
                 if candidate.loaded_from(language, folder):
                     del pending[other]
-    moment = now or datetime.now(UTC)
-    unused: list[UnusedFile] = []
-    for name in pending:
-        last = worktree.last_changed(name)
-        if last is None:
-            continue
-        age = (moment - datetime.fromisoformat(last)).days
-        unused.append(UnusedFile(path=name, last_changed=last, age_days=max(age, 0)))
-    return unused
+    return list(pending)
 
 
 def likely_dead(changed: Sequence[str], unused: Sequence[UnusedFile]) -> bool:

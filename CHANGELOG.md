@@ -8,6 +8,41 @@ a minor release may include breaking changes.
 
 ## [Unreleased]
 
+### Added
+
+- `tiltmeter scan [PATH]` finds code that still uses API changes that already shipped, with
+  no configuration: run `uvx tiltmeter scan`. It searches the folder, a git checkout or any
+  folder, for every entry of a catalog bundled with Tiltmeter: retired models at Anthropic,
+  OpenAI and Groq, Stripe's subscription periods moved in API version 2025-03-31, Jira
+  Cloud's removed search, Hugging Face's serverless Inference API, Spotify's February 2026
+  changes, OpenWeather's One Call 2.5, Slack's `files.upload` and HubSpot's Pipelines v1.
+  Each change it finds comes with its date, the matching lines as `file:line`, a mark on
+  files nothing else imports, and the command that fixes it. Tests and docs are listed
+  apart and never count on their own. The entries are drafted by Tiltmeter from each
+  provider's public documentation, unsigned and not endorsed by the providers, and the
+  output says so. `--catalog` reads another feed from a file or an https URL, `--all` also
+  lists what did not match, and `--json` prints it all. Exit code 0: nothing found; 1: the
+  folder uses a change in the catalog; 3: the catalog could not be read. Nothing is
+  recorded or sent.
+- `tiltmeter fix --notice` also takes the id of a catalog entry, or `FEED#ID` for one entry
+  of a feed, still with `--allow-unsigned` for an unsigned one. The pull request says the
+  entry was drafted by Tiltmeter.
+
+### Changed
+
+- The affected-repository search behind `notices check --repo` and `notices apply` no
+  longer counts a retired value, a removed endpoint's path or a changed field that appears
+  only in comment lines or Python docstrings, a short value such as `o1` outside quotes, a
+  value inside a file name (`gpt-4.txt`), `.mdx` docs, ignore files, or change notices and
+  feeds saved in the repository.
+- A removed endpoint counts as called only where a host in front of its path, if any, is on
+  the provider's domain and not the one it moved to, so OpenAI's `/v1/chat/completions` is
+  not Hugging Face's. An SDK call counts only in a file that names the API, and only when
+  the replacement does not look the same to the SDK; an endpoint that moved to the same
+  path on another host counts wherever code still names the old host.
+- The search is several times faster on large repositories: value and field names are
+  looked for as plain text before their patterns run.
+
 ## [0.7.4] - 2026-10-27
 
 ### Added

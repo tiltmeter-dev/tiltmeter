@@ -141,7 +141,7 @@ no_implicit_optional = true
 strict_equality = true
 
 [[tool.mypy.overrides]]
-module = ["tiltmeter.core.*", "tiltmeter.notices.*"]
+module = ["tiltmeter.core.*", "tiltmeter.notices.*", "tiltmeter.catalog.*"]
 strict = true
 
 [tool.pytest.ini_options]

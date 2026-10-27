@@ -158,7 +158,9 @@ subscriptions:
 
 The first run of a feed brings news, not its whole history: without `since`, a notice
 published more than 30 days before you subscribed, and already in effect then, is
-skipped. Notices whose change is still ahead are kept, however old.
+skipped. Notices whose change is still ahead are kept, however old. For the changes that
+shipped before, run [`tiltmeter scan`](scan.md): it searches your code for every entry of
+a catalog of known changes, whatever their dates.
 
 ### See what is new
 
@@ -212,10 +214,14 @@ of ours.
 ```console
 $ tiltmeter fix --notice https://api.partner.example/notices/2026-11-03-customers.json --repo .
 $ tiltmeter fix --notice draft.json --allow-unsigned --repo . --dry-run
+$ tiltmeter fix --notice groq-retired-models-2026-08 --allow-unsigned --repo .
 ```
 
-A notice from a URL must be signed. An unsigned one is accepted only from a file, and only
-with `--allow-unsigned`: use it for notices you wrote, or got from someone you trust.
+`--notice` takes a file, an https URL, `FEED#ID` for one entry of a feed file or URL, or the
+id of an entry in the catalog [`tiltmeter scan`](scan.md) reads. A notice from a URL must
+be signed. An unsigned one is accepted only from a file or the catalog, and only with
+`--allow-unsigned`: use it for notices you wrote, got from someone you trust, or that
+Tiltmeter drafted.
 `fix --notice` runs the agent even when the text search finds nothing, and records the
 outcome when there is a `tiltmeter.yaml` and the notice is signed.
 
@@ -282,9 +288,19 @@ an LLM:
 
 No use of the API, or uses without the fields near them, means not affected. Paths alone
 are not enough, because another vendor's API can have a `/v1/customers` too: the host or
-an SDK has to appear somewhere in the repository. Docs, lock files, `tiltmeter.yaml`,
-binaries, files over 1 MB, symbolic links and anything matching `fix.ignore` are never
-read.
+an SDK has to appear somewhere in the repository. Docs (`.md`, `.mdx`, `.rst`, `.txt`),
+ignore files, lock files, change notices and feeds, `tiltmeter.yaml`, binaries, files over
+1 MB, symbolic links and anything matching `fix.ignore` are never read.
+
+Retired values, removed endpoints and changed fields count only in code, not in comment
+lines (`#`, `//`, `/* */`, `--`) or Python docstrings. A retired value counts spelled whole:
+`gpt-4` is not in `gpt-4o`, `gpt-4.1` or `gpt-4.txt`, and a short one made of letters and
+digits, such as `o1`, counts only in quotes. A removed endpoint counts where code spells
+its whole path with no host in front of it, or with a host on the provider's domain that
+is not the one it moved to; through an SDK call, only in a file that names the API, and
+only when the replacement does not look the same to the SDK. An endpoint that moved to the
+same path on another host, as Hugging Face's `/v1/chat/completions` did, counts wherever
+code still names the old host.
 
 When it is affected, the agent gets the endpoints the repository uses, and the matching
 files as starting points:
@@ -327,5 +343,6 @@ request, shared out between the endpoints).
 | Command | 0 | 1 | 3 | 4 |
 |---|---|---|---|---|
 | `notices check` | nothing new | new notices (that affect `--repo`, when given) | a feed or spec could not be read | usage or config error |
+| [`scan`](scan.md) | nothing in the catalog affects the folder | the folder uses a change in the catalog | the catalog could not be read | usage error |
 | `notices apply` | everything handled | an agent changed nothing but left questions, touched an ignored file, or only edited old code that nothing uses | a fix, a feed or a spec failed | usage or config error |
 | `notice verify` | signed and verified | valid but unsigned | invalid, or the signature does not match | usage error |

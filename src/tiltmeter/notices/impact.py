@@ -19,7 +19,8 @@ calls its replacement, which often starts the same way, is not affected.
 
 No anchor, or anchors but none of the fields near them, means not affected. When it is
 affected, the matching files are where the agent starts. Paths in ``fix.ignore`` and
-symbolic links are never read, and neither are binaries, large files, docs or lock files.
+symbolic links are never read, and neither are binaries, large files, docs, lock files or
+change notices and feeds, which describe APIs without calling them.
 """
 
 from __future__ import annotations
@@ -30,14 +31,23 @@ from collections.abc import Collection, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from fnmatch import fnmatchcase
 from pathlib import Path, PurePosixPath
-from typing import Final
+from typing import Final, Literal
 from urllib.parse import urlsplit
 
 from tiltmeter.core.models import ChangeKind
 from tiltmeter.fix.ignore import is_ignored
 from tiltmeter.fix.request import field_name, is_target, reads_response
 from tiltmeter.fix.tree import LOCK_FILES, MAX_FILES, is_ours, read_text
-from tiltmeter.notices.models import ApiChangeNotice, Impact, SdkName
+from tiltmeter.notices.models import (
+    FEED_SPEC,
+    NOTICE_SPEC,
+    ApiChangeNotice,
+    Impact,
+    NoticeEndpoint,
+    SdkName,
+    https_host,
+    on_domain,
+)
 
 MAX_LISTED: Final = 20
 
@@ -51,7 +61,7 @@ MANIFESTS: Final[Mapping[str, tuple[str, ...]]] = {
     "cargo": ("Cargo.toml",),
     "packagist": ("composer.json",),
 }
-_DOCS: Final = frozenset({".md", ".markdown", ".rst", ".adoc", ".txt"})
+_DOCS: Final = frozenset({".md", ".mdx", ".markdown", ".rst", ".adoc", ".txt"})
 # Tiltmeter's own config names the APIs it follows, which is no use of them.
 _OWN_FILES: Final = frozenset({"tiltmeter.yaml", "tiltmeter.yml"})
 _VERSION: Final = re.compile(r"v\d+(?:\.\d+)*", re.IGNORECASE)
@@ -123,11 +133,20 @@ def field_pattern(name: str) -> re.Pattern[str]:
     )
 
 
+def _finds(pattern: re.Pattern[str], name: str, text: str) -> bool:
+    """``field_pattern(name).search(text)``, after a quick look for its spellings: a pattern
+    that opens with a lookbehind is tried at every position of a large file."""
+    return any(variant in text for variant in name_variants(name)) and bool(pattern.search(text))
+
+
 def value_pattern(value: str) -> re.Pattern[str]:
     """A retired value as code spells it, quoted or after a prefix such as ``models/`` or
-    ``anthropic/``, but not inside a longer id: ``anthropic.claude-3-opus-20240229-v1:0`` on
-    Bedrock, ``claude-2.1`` for ``claude-2``."""
-    return re.compile(rf"(?<![A-Za-z0-9_.\-]){re.escape(value)}(?![A-Za-z0-9_\-@]|\.\d)")
+    ``anthropic/``, but not inside a longer id (``anthropic.claude-3-opus-20240229-v1:0`` on
+    Bedrock, ``claude-2.1`` for ``claude-2``) or a file name (``gpt-4.txt``). A short value
+    of letters and digits only, such as ``o1``, is a word too often: it counts quoted whole."""
+    if re.fullmatch(r"[A-Za-z0-9]{1,6}", value):
+        return re.compile(rf"(?<=[\"'`/]){re.escape(value)}(?=[\"'`])")
+    return re.compile(rf"(?<![A-Za-z0-9_.\-]){re.escape(value)}(?![A-Za-z0-9_\-@]|\.\w)")
 
 
 def sdk_pattern(sdk: SdkName) -> re.Pattern[str]:
@@ -175,26 +194,29 @@ def _under(name: str, folders: set[PurePosixPath]) -> bool:
 
 
 def _documentation(name: str) -> bool:
+    """Docs, and files such as ``.dockerignore`` that list paths rather than call them."""
     base = PurePosixPath(name).name
-    return PurePosixPath(base).suffix.lower() in _DOCS or base.upper().startswith(
-        ("CHANGELOG", "LICENSE")
-    )
+    if PurePosixPath(base).suffix.lower() in _DOCS or fnmatchcase(base, ".*ignore"):
+        return True
+    return base.upper().startswith(("CHANGELOG", "LICENSE"))
 
 
 @dataclass(frozen=True, slots=True)
 class RepoIndex:
     """A repository's tracked text files, read once for every notice.
 
-    Lock files, Tiltmeter's own config and state, installed or generated code
-    (``node_modules``, ``.venv``, ``.next`` and the like), agents' worktree copies,
-    binaries, large files, links and ``fix.ignore`` paths are left out. Docs
-    are kept apart: they only count when they are dependency manifests.
+    Lock files, Tiltmeter's own config and state, change notices and feeds (such as
+    the catalog ``tiltmeter scan`` reads), installed or generated code (``node_modules``,
+    ``.venv``, ``.next`` and the like), agents' worktree copies, binaries, large files,
+    links and ``fix.ignore`` paths are left out. Docs are kept apart: they only count when
+    they are dependency manifests.
     """
 
     texts: Mapping[str, str]
     docs: frozenset[str] = frozenset()
     _paths: Mapping[str, frozenset[str]] = field(default_factory=dict, compare=False)
-    _calls: frozenset[tuple[tuple[str, ...], str]] = field(default_factory=frozenset, compare=False)
+    _calls: Mapping[str, frozenset[_Call]] = field(default_factory=dict, compare=False)
+    _spoken: Mapping[str, str] = field(default_factory=dict, compare=False)
 
     @classmethod
     def read(cls, root: Path, files: Sequence[str], *, ignore: Sequence[str] = ()) -> RepoIndex:
@@ -206,30 +228,24 @@ class RepoIndex:
             if skipped or not is_ours(path) or is_ignored(name, ignore):
                 continue
             text = read_text(root / name)
-            if text is None:
+            if text is None or _notice_document(name, text):
                 continue
             texts[name] = text
             if _documentation(name):
                 docs.add(name)
-        code = {name: text for name, text in texts.items() if name not in docs}
-        paths = {
-            name: frozenset(_PATH_TOKEN.findall(text))
-            | {f"/{path}" for path in _QUOTED_PATH.findall(text)}
-            for name, text in code.items()
-        }
-        calls = frozenset(
-            (
-                tuple(_resource(part.rstrip("() \t")) for part in re.split(r"\s*\.\s*", chain)),
-                verb.lower(),
-            )
-            for text in code.values()
-            for chain, verb in _SDK_CALL.findall(text)
-        )
-        return cls(texts, frozenset(docs), paths, calls)
+        spoken = {name: code_only(name, text) for name, text in texts.items() if name not in docs}
+        paths = {name: _path_tokens(text) for name, text in spoken.items()}
+        calls = {name: frozenset(_calls_in(text)) for name, text in spoken.items()}
+        return cls(texts, frozenset(docs), paths, calls, spoken)
 
     def code(self) -> Iterator[tuple[str, str]]:
         """Every file that is not documentation, with its text."""
         return ((name, text) for name, text in self.texts.items() if name not in self.docs)
+
+    def spoken(self, name: str) -> str:
+        """A code file's text without its comment lines and docstrings (see
+        :func:`code_only`): what the code does, not what it says about itself."""
+        return self._spoken.get(name, self.texts.get(name, ""))
 
     def mentions(self, text: str) -> bool:
         lowered = text.lower()
@@ -245,6 +261,25 @@ class RepoIndex:
             if any(host in text.lower() for host in lowered)
             or any(pattern.search(text) for pattern in imports)
         )
+
+    def calling(self, gone: Gone, api_files: Collection[str]) -> list[str]:
+        """The code files that call a removed endpoint: where code spells its whole path,
+        or, in ``api_files``, calls it through an SDK."""
+        return [name for name in self._paths if self._calls_gone(gone, name, name in api_files)]
+
+    def _calls_gone(self, gone: Gone, name: str, near: bool) -> bool:
+        if gone.only_with_host:
+            return gone.old_host in self.spoken(name).lower()
+        # Code that keeps the host and version in its configuration spells the rest of the
+        # path anywhere: "${baseURL}/artists/${id}/top-tracks". Two literal segments are no
+        # app route of its own, the way /markets could be; /v1/markets, with its version,
+        # is not either, but a bare /models/{model} is.
+        if not (near or gone.segments >= 2 or gone.versioned):
+            return False
+        versionless = near or gone.segments >= 2
+        if any(gone.spelled(path, versionless=versionless) for path in self._paths[name]):
+            return True
+        return near and gone.called(self._calls.get(name, frozenset()))
 
     def uses_path(self, url: str, method: str | None = None) -> int:
         """2 when code spells the endpoint's path or calls it through an SDK, 1 when it
@@ -285,7 +320,9 @@ class RepoIndex:
         found = []
         for i, candidate in enumerate(candidates):
             shape = _call_shape(candidate)
-            called = shape is not None and any(_reaches(call, shape) for call in self._calls)
+            called = shape is not None and any(
+                _reaches(call, shape) for calls in self._calls.values() for call in calls
+            )
             if called or any(spells(i, path) for path in spelled):
                 found.append(2)
                 continue
@@ -309,10 +346,65 @@ _QUOTED_PATH: Final = re.compile(
 )
 
 
+def _notice_document(name: str, text: str) -> bool:
+    """Whether a file is a change notice or a feed: it names APIs, and calls none."""
+    head = text[:2000]
+    return name.lower().endswith(".json") and (NOTICE_SPEC in head or FEED_SPEC in head)
+
+
+# A line that holds nothing but a comment: #, //, /* and the * of a block comment, -- in SQL
+# and Lua, <!-- in markup. # followed by a preprocessor word or [ is code (#define, #[test]).
+_COMMENT_LINE: Final = re.compile(
+    r"^[ \t]*(?:#(?!!|\[|(?:define|include|if|ifdef|ifndef|elif|else|endif|pragma|import"
+    r"|region|endregion|undef|error|warning|line)\b)|//|/\*|\*(?=[ \t/]|$)|--[ \t]|<!--).*$",
+    re.MULTILINE,
+)
+# A Python string that stands alone as a statement: a docstring, or code turned off.
+_BARE_STRING: Final = re.compile(r"""^[ \t]*[rRuU]?("{3}|'{3})""")
+
+
+def code_only(name: str, text: str) -> str:
+    """The text without lines that are only comments and, in Python, without docstrings,
+    line for line. A retired model named in a comment or a docstring is not sent."""
+    text = _COMMENT_LINE.sub("", text)
+    if not name.endswith((".py", ".pyi")):
+        return text
+    lines = text.split("\n")
+    start = 0
+    while start < len(lines):
+        opened = _BARE_STRING.match(lines[start])
+        if opened is None:
+            start += 1
+            continue
+        quote = opened.group(1)
+        end = start
+        if quote not in lines[start][opened.end() :]:
+            end = next((i for i in range(start + 1, len(lines)) if quote in lines[i]), start)
+        for i in range(start, end + 1):
+            lines[i] = ""
+        start = end + 1
+    return "\n".join(lines)
+
+
+type _Call = tuple[tuple[str, ...], str]
+
+
+def _calls_in(text: str) -> Iterator[_Call]:
+    """The SDK calls in code, as the resource names of the chain and the verb."""
+    for chain, verb in _SDK_CALL.findall(text):
+        parts = re.split(r"\s*\.\s*", chain)
+        yield tuple(_resource(part.rstrip("() \t")) for part in parts), verb.lower()
+
+
+def _path_tokens(text: str) -> frozenset[str]:
+    return frozenset(_PATH_TOKEN.findall(text)) | {f"/{p}" for p in _QUOTED_PATH.findall(text)}
+
+
 def _template_pattern(url: str, *, versionless: bool = True) -> re.Pattern[str] | None:
     """The endpoint's path as a regex: ``{id}`` matches any one segment. Only a host may
-    come before it, so ``/repos/{owner}/{repo}/issues`` does not spell ``/issues``. With
-    ``versionless``, a leading version such as ``/v1`` may be left out."""
+    come before it (the ``hosts`` group), so ``/repos/{owner}/{repo}/issues`` does not
+    spell ``/issues``. With ``versionless``, a leading version such as ``/v1`` may be left
+    out."""
     segments = [segment for segment in urlsplit(url).path.split("/") if segment]
     literal = [segment for segment in segments if "{" not in segment]
     if not literal or all(_VERSION.fullmatch(segment) for segment in literal):
@@ -322,7 +414,92 @@ def _template_pattern(url: str, *, versionless: bool = True) -> re.Pattern[str] 
         body = rf"(?:/{parts[0]})?" + "".join(f"/{part}" for part in parts[1:])
     else:
         body = "".join(f"/{part}" for part in parts)
-    return re.compile(rf"^(?:/[^/]*\.[^/]*)*{body}/?$")
+    return re.compile(rf"^(?P<hosts>(?:/[^/]*\.[^/]*)*){body}/?$")
+
+
+@dataclass(frozen=True, slots=True)
+class Gone:
+    """A removed endpoint, and how code that still calls it can be told from code that
+    calls its replacement or another API with the same paths (``/v1/chat/completions``).
+
+    A host spelled in front of the path must be on the provider's domain and not the host
+    the endpoint moved to. When it moved to the same path on another host, only the old
+    host tells the two apart, so code that names it calls the endpoint. An SDK call counts
+    only when the replacement does not look the same to the SDK.
+    """
+
+    method: str
+    path: str
+    domain: str
+    old_host: str
+    new_host: str | None
+    only_with_host: bool
+    segments: int
+    versioned: bool
+    strict: re.Pattern[str] | None
+    loose: re.Pattern[str] | None
+    shape: _CallShape | None
+
+    @classmethod
+    def of(cls, endpoint: NoticeEndpoint, provider: str) -> Gone:
+        moved = next((c.moved_to for c in endpoint.changes if c.moved_to is not None), None)
+        old_host = (https_host(endpoint.url) or "").lower()
+        new_host = (https_host(moved.url) or "").lower() if moved is not None else None
+        strict = _template_pattern(endpoint.url, versionless=False)
+        first = next((part for part in urlsplit(endpoint.url).path.split("/") if part), "")
+        shape = _call_shape(Candidate(endpoint.url, (), method=endpoint.method))
+        same_path = False
+        if moved is not None:
+            replacement = _template_pattern(moved.url, versionless=False)
+            same_path = (
+                strict is not None
+                and replacement is not None
+                and (strict.pattern == replacement.pattern)
+            )
+            if shape == _call_shape(Candidate(moved.url, (), method=moved.method)):
+                shape = None
+        return cls(
+            method=endpoint.method,
+            path=urlsplit(endpoint.url).path,
+            domain=provider.lower(),
+            old_host=old_host,
+            new_host=new_host if new_host != old_host else None,
+            only_with_host=same_path and new_host != old_host,
+            segments=_literal_segments(endpoint.url),
+            versioned=bool(_VERSION.fullmatch(first)),
+            strict=strict,
+            loose=_template_pattern(endpoint.url, versionless=True),
+            shape=shape,
+        )
+
+    @property
+    def term(self) -> str:
+        """How a place names it: ``GET /rest/api/3/search``."""
+        return f"{self.method} {self.path}"
+
+    def spelled(self, path: str, *, versionless: bool) -> bool:
+        """Whether a path in code is this endpoint's, with a host of its API if any."""
+        for pattern in (self.strict, self.loose if versionless else None):
+            match = pattern.search(path) if pattern is not None else None
+            if match is None:
+                continue
+            hosts = [part.split(":")[0].lower() for part in match["hosts"].split("/") if part]
+            if not hosts or (on_domain(hosts[-1], self.domain) and hosts[-1] != self.new_host):
+                return True
+        return False
+
+    def called(self, calls: Iterable[_Call]) -> bool:
+        """Whether one of these SDK calls reaches the endpoint."""
+        return self.shape is not None and any(_reaches(call, self.shape) for call in calls)
+
+    def in_line(self, line: str, *, near: bool) -> bool:
+        """Whether a line of code calls the endpoint, by :meth:`RepoIndex.calling`'s rules."""
+        if self.only_with_host:
+            return self.old_host in line.lower()
+        versionless = near or self.segments >= 2
+        if any(self.spelled(path, versionless=versionless) for path in _path_tokens(line)):
+            return True
+        return near and self.called(_calls_in(line))
 
 
 # Calls through an SDK, as most SDKs name them: stripe.Subscription.retrieve(...),
@@ -490,26 +667,16 @@ def assess(index: RepoIndex, notice: ApiChangeNotice, *, sdks: Sequence[SdkName]
         if any(c.kind is ChangeKind.ENDPOINT_REMOVED for c in endpoint.changes)
     ]
     if removed and not set(impact.anchors) & {sdk.name for sdk in notice.sdks}:
-        levels = index.uses(candidates, api_files=index.api_files(hosts, names))
-        # Code that keeps the host and version in its configuration spells the rest of the
-        # path anywhere: "${baseURL}/artists/${id}/top-tracks". Two literal segments are
-        # no app route of its own, the way /markets could be.
-        anywhere = index.uses(candidates)
-        called = {
-            i
-            for i in removed
-            if levels[i] == 2 or (anywhere[i] == 2 and _literal_segments(candidates[i].url) >= 2)
-        }
+        api = index.api_files(hosts, names)
+        gone = {i: Gone.of(notice.endpoints[i], notice.provider) for i in removed}
+        called = {i for i in removed if index.calling(gone[i], api)}
         # A call of an endpoint that is gone breaks for certain: those come first.
         chosen = [i for i in removed if i in called] + [i for i in chosen if i not in removed]
         if not chosen:
-            gone = [
-                f"{notice.endpoints[i].method} {urlsplit(notice.endpoints[i].url).path}"
-                for i in removed
-            ]
+            terms = [gone[i].term for i in removed]
             return Impact(
                 affected=False,
-                reason=f"the repository never calls {_listing(gone)}, which the notice removes",
+                reason=f"the repository never calls {_listing(terms)}, which the notice removes",
                 anchors=impact.anchors,
             )
     return impact.model_copy(update={"endpoints": chosen})
@@ -554,12 +721,16 @@ def _search(
         elif name not in index.docs:
             found |= {sdk for sdk, pattern in imports.items() if pattern and pattern.search(text)}
         if name not in index.docs:
-            found |= {value for value, pattern in value_patterns.items() if pattern.search(text)}
+            spoken = index.spoken(name)
+            found |= {
+                v for v, pattern in value_patterns.items() if v in spoken and pattern.search(spoken)
+            }
         if found & {*hosts, *by_name}:
             found |= {term for term in short if _spelled(term, lowered)}
         if found:
             anchor_hits[name] = found
-        read = {field for field, pattern in field_patterns.items() if pattern.search(text)}
+        said = index.spoken(name)
+        read = {f for f, pattern in field_patterns.items() if _finds(pattern, f, said)}
         if read:
             field_hits[name] = read
 
@@ -620,3 +791,153 @@ def _search(
         anchors=anchors,
         fields=found_fields,
     )
+
+
+# -- where, line by line ------------------------------------------------------------
+
+type PlaceKind = Literal["value", "endpoint", "field", "api"]
+
+# The surest sign first: a retired value or a removed endpoint fails for certain.
+_KIND_ORDER: Final[Mapping[PlaceKind, int]] = {"value": 0, "endpoint": 1, "field": 2, "api": 3}
+
+
+@dataclass(frozen=True, slots=True)
+class Place:
+    """A line behind an impact: its text, and the term of the notice it spells."""
+
+    file: str
+    line: int
+    text: str
+    kind: PlaceKind
+    term: str
+
+
+@dataclass(frozen=True, slots=True)
+class _Term:
+    """What one file may spell, line by line: a pattern, an endpoint or a plain term."""
+
+    kind: PlaceKind
+    term: str
+    pattern: re.Pattern[str] | None = None
+    gone: Gone | None = None
+    near: bool = False
+
+    def on(self, line: str) -> bool:
+        if self.gone is not None:
+            return self.gone.in_line(line, near=self.near)
+        if self.pattern is not None:
+            return self.pattern.search(line) is not None
+        return _spelled(self.term, line.lower())
+
+
+def locate(index: RepoIndex, notice: ApiChangeNotice, impact: Impact) -> list[Place]:
+    """The lines behind an impact, the surest first: lines that send a retired value, call
+    a removed endpoint or read a changed field near the API, then lines that only name the
+    API (its host, a path or an SDK). Each line counts once, for its surest kind. The rules
+    are the search's, so docs and lock files never show up, except manifests for an SDK."""
+    retired = _retired(notice)
+    values = {value: retired[value] for value in impact.anchors if value in retired}
+    fields = {name: field_pattern(name) for name in impact.fields}
+    hosts = list(dict.fromkeys([*notice.hosts, notice.provider]))
+    api = index.api_files(hosts, notice.sdks)
+    removed = [
+        Gone.of(notice.endpoints[i], notice.provider)
+        for i in impact.endpoints
+        if any(c.kind is ChangeKind.ENDPOINT_REMOVED for c in notice.endpoints[i].changes)
+    ]
+    calling = {gone.term: set(index.calling(gone, api)) for gone in removed}
+    sdks = {sdk.name: sdk for sdk in notice.sdks}
+    names = [term for term in impact.anchors if term not in retired and term not in sdks]
+    imports = {name: import_pattern(sdk) for name, sdk in sdks.items()}
+    listed = {name: sdk_pattern(sdk) for name, sdk in sdks.items() if name in impact.anchors}
+    near = set(impact.files)
+    found: dict[tuple[str, int], Place] = {}
+
+    def add(name: str, number: int, line: str, kind: PlaceKind, term: str) -> None:
+        current = found.get((name, number))
+        if current is None or _KIND_ORDER[kind] < _KIND_ORDER[current.kind]:
+            found[(name, number)] = Place(name, number, line.strip(), kind, term)
+
+    for name, text in index.texts.items():
+        lowered, spoken = text.lower(), index.spoken(name)
+        terms: list[_Term] = []
+        if name not in index.docs:
+            terms += [
+                _Term("value", v, pattern=p)
+                for v, p in values.items()
+                if v in spoken and p.search(spoken)
+            ]
+            terms += [
+                _Term("endpoint", gone.term, gone=gone, near=name in api)
+                for gone in removed
+                if name in calling[gone.term]
+            ]
+            terms += [_Term("api", t) for t in names if _spelled(t, lowered)]
+            terms += [
+                _Term("api", n, pattern=p)
+                for n, p in imports.items()
+                if p is not None and p.search(text)
+            ]
+        if name in near:
+            terms += [
+                _Term("field", f, pattern=p) for f, p in fields.items() if _finds(p, f, spoken)
+            ]
+        base = PurePosixPath(name).name
+        terms += [
+            _Term("api", n, pattern=p)
+            for n, p in listed.items()
+            if any(fnmatchcase(base, glob) for glob in MANIFESTS[sdks[n].ecosystem])
+            and p.search(text)
+        ]
+        # Only what names the API counts in comments and docstrings too.
+        said = spoken.split("\n")
+        for number, line in enumerate(text.split("\n"), start=1) if terms else ():
+            for term in terms:
+                code = term.kind != "api"
+                if term.on(said[number - 1] if code and number <= len(said) else line):
+                    add(name, number, line, term.kind, term.term)
+    places = list(found.values())
+    # A changed field name read in a file that names the API says more than the same name
+    # in a file next to it, which may read another API's field of that name.
+    named = api | {place.file for place in places if place.kind != "field"}
+    if any(place.file in named for place in places if place.kind == "field"):
+        places = [place for place in places if place.kind != "field" or place.file in named]
+    ranked = {name: i for i, name in enumerate(impact.files)}
+    return sorted(
+        places,
+        key=lambda p: (_KIND_ORDER[p.kind], ranked.get(p.file, len(ranked)), p.file, p.line),
+    )
+
+
+def mentions_in_docs(index: RepoIndex, notice: ApiChangeNotice) -> list[Place]:
+    """Lines of documentation that spell a value the notice retires or one of its hosts.
+    The search never counts them; they show why a repository that mentions an API in its
+    docs is not affected by it."""
+    values = _retired(notice)
+    hosts = [host.lower() for host in notice.hosts]
+    found: list[Place] = []
+    for name in sorted(index.docs):
+        text = index.texts[name]
+        lowered = text.lower()
+        hits = [
+            value for value, pattern in values.items() if value in text and pattern.search(text)
+        ]
+        named = [host for host in hosts if host in lowered]
+        for number, line in enumerate(text.splitlines(), start=1) if hits or named else ():
+            low = line.lower()
+            value = next((v for v in hits if values[v].search(line)), None)
+            host = next((h for h in named if h in low), None)
+            if value is not None:
+                found.append(Place(name, number, line.strip(), "value", value))
+            elif host is not None:
+                found.append(Place(name, number, line.strip(), "api", host))
+    return found
+
+
+def _retired(notice: ApiChangeNotice) -> dict[str, re.Pattern[str]]:
+    return {
+        change.before: value_pattern(change.before)
+        for endpoint in notice.endpoints
+        for change in endpoint.changes
+        if change.kind is ChangeKind.VALUE_RETIRED and change.before
+    }

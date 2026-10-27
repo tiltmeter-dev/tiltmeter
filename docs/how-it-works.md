@@ -15,6 +15,7 @@ differences it reports, and how the pieces fit together.
 - [Explanations](#explanations)
 - [Fixing](#fixing)
 - [Provider notices](#provider-notices)
+- [Scanning for known changes](#scanning-for-known-changes)
 - [Privacy by design](#privacy-by-design)
 - [Limitations](#limitations)
 
@@ -288,7 +289,9 @@ On the customer's side, `tiltmeter notices apply`:
    leading slash (`"rest/api/3/search"`), and one of four segments or more names its API
    even when the host comes from the configuration. A retired value, such as a model id,
    counts on its own when code spells it whole, and a removed endpoint only where code
-   spells its whole path. A repository that does not use them is recorded as not affected;
+   spells its whole path, with no host in front of it or one of the provider's other than
+   the one it moved to. Values, removed paths and fields in comment lines and Python
+   docstrings do not count. A repository that does not use them is recorded as not affected;
 4. otherwise turns the notice into the same fix request a check would produce (the
    renames come from `renamed_to`, the severities from the default rules) and runs the
    fix, with the matching files as starting points and the provider's text marked as
@@ -296,6 +299,29 @@ On the customer's side, `tiltmeter notices apply`:
 5. records the outcome, so each notice is handled once.
 
 The [notices guide](notices.md) walks through both sides.
+
+## Scanning for known changes
+
+A feed brings news from the day you follow it. `tiltmeter scan` covers what shipped before:
+Tiltmeter bundles a catalog of known changes, `src/tiltmeter/catalog/api-changes.json`,
+an ordinary feed of unsigned notices that Tiltmeter drafted from providers' public
+documentation. The scan, with no configuration:
+
+1. lists the folder's files: what git tracks there plus new files it does not ignore, or,
+   outside git, every file but installed, built and tool folders;
+2. validates every catalog entry like any notice (and checks the signature of a signed one
+   in a `--catalog` feed), whatever its dates;
+3. runs each entry through step 3 above, over the code without tests, then over the tests
+   on their own, which are listed but never decide;
+4. finds the lines behind each affected entry, the surest first: retired values sent,
+   removed endpoints called, changed fields read in files that name the API, and only when
+   none of those, lines that merely name the API. Docs are searched last, for the reasons
+   `--all` gives;
+5. runs the unused-code check of `tiltmeter fix` on the files it lists.
+
+It records nothing and runs no agent. The command it prints for each entry,
+`tiltmeter fix --notice <id> --allow-unsigned`, reads the entry back from the catalog.
+The [scan guide](scan.md) has the options and the blind spots.
 
 ## Privacy by design
 
@@ -311,7 +337,8 @@ The [notices guide](notices.md) walks through both sides.
   values or `${VAR}` values. The agent works in a fresh worktree, which holds no untracked
   files such as `.env`, and the `fix.ignore` paths are denied to its file tools.
 - **Notices** are public files fetched without credentials. Only signed ones are applied,
-  and the search that decides whether a repository is affected runs locally.
+  and the search that decides whether a repository is affected runs locally. `tiltmeter
+  scan` reads its bundled catalog from the installed package and sends nothing.
 
 ## Limitations
 

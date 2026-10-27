@@ -82,6 +82,40 @@ async def test_files_need_a_signature_unless_allowed(tmp_path: Path, reader: Not
 
 
 @respx.mock
+async def test_a_notice_can_be_an_entry_of_a_feed_or_the_catalog(
+    tmp_path: Path, reader: NoticeReader
+) -> None:
+    path = tmp_path / "feed.json"
+    path.write_text(json.dumps(feed(notice(id="other"), notice())), encoding="utf-8")
+    loaded = await reader.load(f"{path}#{NOTICE_ID}", allow_unsigned=True)
+    assert (loaded.notice.id, loaded.location) == (NOTICE_ID, f"{path}#{NOTICE_ID}")
+    with pytest.raises(NoticeError, match="lists no notice nope"):
+        await reader.load(f"{path}#nope", allow_unsigned=True)
+
+    respx.get(FEED_URL).respond(200, json=feed(notice()))
+    with pytest.raises(NoticeError, match="only signed notices are read from URLs"):
+        await reader.load(f"{FEED_URL}#{NOTICE_ID}", allow_unsigned=True)
+
+    bundled = await reader.load("slack-files-upload-sunset", allow_unsigned=True)
+    assert bundled.notice.provider == "slack.com"
+    assert bundled.location == "tiltmeter catalog#slack-files-upload-sunset"
+    with pytest.raises(NoticeError, match="--allow-unsigned"):
+        await reader.load("slack-files-upload-sunset")
+    # A file of that name wins over the catalog entry.
+    (tmp_path / "slack-files-upload-sunset").write_text(json.dumps(notice()), encoding="utf-8")
+    here = await reader.load(str(tmp_path / "slack-files-upload-sunset"), allow_unsigned=True)
+    assert here.notice.id == NOTICE_ID
+
+
+async def test_a_feed_can_be_read_from_a_file(tmp_path: Path, reader: NoticeReader) -> None:
+    path = tmp_path / "feed.json"
+    path.write_text(json.dumps(feed(notice())), encoding="utf-8")
+    assert [item["id"] for item in await reader.feed(str(path))] == [NOTICE_ID]
+    with pytest.raises(NoticeError, match="a feed is read from a file or an https URL"):
+        await reader.feed("http://api.billing.test/feed.json")
+
+
+@respx.mock
 async def test_keys_only_count_from_the_provider_domain(reader: NoticeReader) -> None:
     respx.get(KEY_URL).respond(302, headers={"Location": "https://keys.attacker.test/key"})
     respx.get("https://keys.attacker.test/key").respond(200, text=KEY_FILE)

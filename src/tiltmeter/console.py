@@ -7,6 +7,7 @@ Text that comes from third parties, such as a notice's summary, is always passed
 from __future__ import annotations
 
 from collections.abc import Sequence
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Final
 
 from rich.console import Console
@@ -28,8 +29,10 @@ if TYPE_CHECKING:
         NoticeEndpoint,
         SpecInfo,
     )
+    from tiltmeter.notices.scan import ScanFinding, ScanMatch, ScanMiss, ScanReport
 
 MAX_DIFF_LINES: Final = 400
+MAX_SCAN_LINES: Final = 5
 
 SEVERITY_STYLE: Final = {
     Severity.BREAKING: "bold red",
@@ -420,3 +423,150 @@ def applied_line(applied: AppliedNotice) -> Text:
         case _:
             detail = f"  {applied.status}" + (f": {applied.detail}" if applied.detail else "")
             return Text.assemble(("● ", "blue"), name, (detail, "dim"))
+
+
+# -- scan -------------------------------------------------------------------------
+
+
+def _when(finding: ScanFinding, now: datetime) -> str:
+    if finding.effective_at is None:
+        return f"published {finding.published_at:%Y-%m-%d}"
+    verb = "took" if finding.effective_at <= now else "takes"
+    return f"{verb} effect {finding.effective_at:%Y-%m-%d}"
+
+
+def _origin(finding: ScanFinding) -> str:
+    if finding.drafted:
+        return "unsigned: drafted by Tiltmeter from the provider's public documentation"
+    return "signed by the provider" if finding.signed else "unsigned"
+
+
+def scan_match_text(match: ScanMatch) -> Text:
+    """Where a line is and what changes for it, then the line itself."""
+    text = Text.assemble(
+        (f"{match.file}:{match.line}", "bold"), "  ", (f"{match.term}: {match.detail}", "yellow")
+    )
+    if match.possibly_unused:
+        text.append("  possibly unused: nothing else imports or names this file", style="dim")
+    text.append("\n    ")
+    text.append(match.text, style="dim")
+    return text
+
+
+def render_scan_finding(console: Console, finding: ScanFinding, now: datetime) -> None:
+    """One change the folder uses: a line on what and when, a few places, and the fix."""
+    ahead = finding.effective_at is not None and finding.effective_at > now
+    icon, style = ("!", "yellow") if ahead else ("✗", "red")
+    console.print(
+        Text.assemble(
+            (f"{icon} ", style),
+            (finding.provider, "bold"),
+            "  ",
+            finding.headline,
+            (f"  {_when(finding, now)}", "dim"),
+        )
+    )
+    console.print(Padding(Text(f"{finding.id} · {_origin(finding)}", style="dim"), (0, 0, 0, 4)))
+    shown = finding.matches[:MAX_SCAN_LINES]
+    for match in shown:
+        console.print(Padding(scan_match_text(match), (0, 0, 0, 4)))
+    rest = finding.count - len(shown)
+    if rest > 0:
+        files = f", {finding.files} files in all" if finding.files > 1 else ""
+        more = Text(f"… and {rest} more line{'' if rest == 1 else 's'}{files}", style="dim")
+        console.print(Padding(more, (0, 0, 0, 4)))
+    if finding.tests:
+        also = Text(f"also in tests: {_places(finding.tests)}", style="dim")
+        console.print(Padding(also, (0, 0, 0, 4)))
+    if finding.fix_command is not None:
+        command = Text.assemble(("fix: ", "dim"), (finding.fix_command, "bold"))
+    else:
+        command = Text(
+            "fix: only signed notices are read from URLs; save the catalog to a file and pass "
+            "that to --catalog",
+            style="dim",
+        )
+    console.print(Padding(command, (0, 0, 0, 4)))
+
+
+def _places(matches: Sequence[ScanMatch], limit: int = 3) -> str:
+    shown = ", ".join(f"{match.file}:{match.line}" for match in matches[:limit])
+    return shown + (f" and {len(matches) - limit} more" if len(matches) > limit else "")
+
+
+def _miss_text(miss: ScanMiss) -> Text:
+    text = Text.assemble(
+        ("- ", "dim"),
+        (miss.provider, "bold"),
+        f"  {miss.id}",
+        (f"  not affected: {miss.reason}", "dim"),
+    )
+    if miss.tests:
+        text.append(f"\n    used only in tests, which do not count: {_places(miss.tests)}", "dim")
+    if miss.docs:
+        text.append(f"\n    mentioned in docs, which do not count: {_places(miss.docs)}", "dim")
+    return text
+
+
+def scan_summary(report: ScanReport, *, show_all: bool = False) -> Text:
+    if not report.affected:
+        entries = f"{report.entries} catalog entr{'y' if report.entries == 1 else 'ies'}"
+        text = Text(
+            f"No known API change affects {report.path}: {entries} checked against "
+            f"{report.files} files.",
+            style="green",
+        )
+        apart = sum(1 for miss in report.unaffected if miss.tests or miss.docs)
+        if apart and not show_all:
+            text.append(
+                f" {apart} {'is' if apart == 1 else 'are'} mentioned in tests or docs only: "
+                "--all shows where.",
+                style="dim",
+            )
+        return text
+    lines = sum(finding.count for finding in report.affected)
+    files = {match.file for finding in report.affected for match in finding.matches}
+    unused = {m.file for finding in report.affected for m in finding.matches if m.possibly_unused}
+    count = len(report.affected)
+    words = (
+        f"{count} of {report.entries} known API changes affect{'s' if count == 1 else ''} "
+        f"{report.path}: {lines} line{'' if lines == 1 else 's'} in {len(files)} "
+        f"file{'' if len(files) == 1 else 's'}"
+    )
+    if unused:
+        words += f", {len(unused)} file{'' if len(unused) == 1 else 's'} possibly unused"
+    return Text(f"{words}.", style="bold")
+
+
+def render_scan(
+    console: Console, report: ScanReport, *, show_all: bool = False, now: datetime | None = None
+) -> None:
+    """Each catalog entry the folder uses, where, and the command that fixes it, then a
+    summary line. With ``show_all``, also the entries that do not affect it, and why."""
+    source = "the catalog bundled with Tiltmeter" if report.bundled else report.catalog
+    if report.error:
+        console.print(Text(f"✗ cannot read {source}: {report.error}", style="red"))
+        return
+    moment = now or datetime.now(UTC)
+    for finding in report.affected:
+        render_scan_finding(console, finding, moment)
+        console.print()
+    if show_all and report.unaffected:
+        for miss in report.unaffected:
+            console.print(_miss_text(miss))
+        console.print()
+    for problem in report.rejected:
+        name = problem.id or "(no id)"
+        console.print(Text.assemble(("✗ ", "red"), name, (f"  rejected: {problem.problem}", "red")))
+    console.print(scan_summary(report, show_all=show_all))
+    if report.affected and not report.git:
+        note = f"note: {report.path} is not a git checkout, and tiltmeter fix needs one"
+        console.print(Text(note, style="dim"))
+    if report.bundled:
+        console.print(
+            Text(
+                "The catalog's entries are drafted by Tiltmeter from each provider's public "
+                "documentation; no provider signed or endorsed them.",
+                style="dim",
+            )
+        )

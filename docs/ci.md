@@ -241,6 +241,7 @@ call it, but the Tiltmeter Action only does it for provider notices so far. See 
 | `tiltmeter history --json` | Recent check results, newest first. |
 | `tiltmeter show <id> --json` | One check result. |
 | `tiltmeter notices check --json` | Every subscribed feed and its notices, sorted into new, done, skipped and rejected. |
+| `tiltmeter scan --json` | The known API changes the folder uses, with every matching line and the command that fixes each. |
 | `tiltmeter notices apply --json` | The feeds, and what was done about each new notice, including the fix outcome. |
 
 A check result has the same fields as the `result` object of the

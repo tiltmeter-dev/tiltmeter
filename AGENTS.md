@@ -45,6 +45,7 @@ money.
 
 `core/` (diff, shapes, OpenAPI shapes, store, fetch), `graph/` (LangGraph pipeline), `llm/` (Claude
 explainer), `fix/` (`tiltmeter fix`: Deep Agent, Claude Code or Codex, worktree, pull request),
-`notices/` (provider mode: notice format, signatures, feeds, the affected-repo search), `notify/` (Slack,
+`notices/` (provider mode: notice format, signatures, feeds, the affected-repo search, `tiltmeter scan`),
+`catalog/` (the known API changes `scan` reads, unsigned drafts added with `scripts/catalog.py`), `notify/` (Slack,
 webhook), `mcp_server/` (MCP tools), `har.py` (`init --from-har`), `service.py` (shared by CLI and MCP), `cli.py` and `console.py` (Typer and rich), `scripts/` (demo and release
 helpers), `tests/` (mirrors `src/`).

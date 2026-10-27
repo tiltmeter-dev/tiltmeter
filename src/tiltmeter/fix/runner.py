@@ -19,6 +19,7 @@ from types import TracebackType
 from typing import Any, Final
 from urllib.parse import urlsplit
 
+from tiltmeter.catalog import from_catalog
 from tiltmeter.core.models import ChangeKind
 from tiltmeter.errors import FixError
 from tiltmeter.fix.git import Git, GitHub
@@ -121,6 +122,12 @@ def commit_body(request: FixRequest, report: FixReport) -> str:
         )
     elif request.notice is not None and request.notice.key is not None:
         found = f"{request.notice.provider} announced the change in notice {request.notice.id}."
+    elif request.notice is not None and from_catalog(request.notice.location):
+        found = (
+            f"Entry {request.notice.id} of Tiltmeter's catalog of known API changes describes "
+            f"the change in {request.notice.provider}'s API. Tiltmeter drafted it from the "
+            "provider's public documentation; the provider did not sign it."
+        )
     elif request.notice is not None:
         found = (
             f"Notice {request.notice.id} about {request.notice.provider}'s API describes the "
@@ -202,6 +209,13 @@ def _notice_section(request: FixRequest, notice: NoticeSource) -> list[str]:
             f"Its signature was verified against `{notice.key}`."
         )
         quoted, noted = "The provider's summary, quoted as they wrote it:", "The provider's notes:"
+    elif from_catalog(notice.location):
+        source = (
+            f"Entry `{notice.id}` of Tiltmeter's catalog of known API changes describes this "
+            f"change to `{notice.provider}`'s API, {when}. Tiltmeter drafted it from the "
+            f"provider's public documentation: it is not signed or endorsed by `{notice.provider}`."
+        )
+        quoted, noted = "The entry's summary:", "The entry's notes:"
     else:
         # Anyone may write an unsigned notice: never put it in the provider's mouth.
         source = (
@@ -337,6 +351,8 @@ def pull_request_body(request: FixRequest, preview: FixPreview, *, model_name: s
         origin = f"from a diff of {notice.provider}'s OpenAPI spec"
     elif notice is not None and notice.key:
         origin = f"from {notice.provider}'s change notice `{notice.id}`"
+    elif notice is not None and from_catalog(notice.location):
+        origin = f"from `{notice.id}` in its catalog of known API changes"
     elif notice is not None:
         origin = f"from the unsigned notice `{notice.id}` about {notice.provider}'s API"
     else:

@@ -11,7 +11,9 @@ Exit codes, so CI can gate on drift:
 ``tiltmeter fix`` and ``tiltmeter notices apply`` reuse them: 0 when the edits
 were committed, discarded on purpose or not needed, 1 when the agent left work
 for a human, 3 when the agent, a git step or a feed failed, 4 for usage errors.
-``tiltmeter notices check`` exits 1 when there are new notices to act on.
+``tiltmeter notices check`` exits 1 when there are new notices to act on, and
+``tiltmeter scan`` when the folder uses a change in the catalog; both exit 3 when
+a feed or the catalog cannot be read.
 """
 
 from __future__ import annotations
@@ -58,6 +60,7 @@ if TYPE_CHECKING:
     from tiltmeter.notices.impact import Candidate, RepoIndex
     from tiltmeter.notices.models import ApiChangeNotice, FeedEntry, FeedReport, Impact, SdkName
     from tiltmeter.notices.reader import LoadedNotice
+    from tiltmeter.notices.scan import Catalog, ScanReport
     from tiltmeter.notices.spec import Chooser
     from tiltmeter.service import DriftService
 
@@ -788,13 +791,18 @@ def fix(
     notice: Annotated[
         str | None,
         typer.Option(
-            "--notice", help="Fix what a provider's change notice announces: a file or https URL."
+            "--notice",
+            help=(
+                "Fix what a change notice announces: a file or https URL, FEED#ID for an "
+                "entry of a feed, or the id of an entry in the catalog `scan` reads."
+            ),
         ),
     ] = None,
     allow_unsigned: Annotated[
         bool,
         typer.Option(
-            "--allow-unsigned", help="With --notice FILE: accept a notice with no signature."
+            "--allow-unsigned",
+            help="With --notice: accept a notice with no signature, from a file or the catalog.",
         ),
     ] = False,
     repo: Annotated[
@@ -858,6 +866,79 @@ def fix(
 
         render_fix_outcome(out, outcome)
     raise typer.Exit(fix_exit_code(outcome))
+
+
+# -- known API changes, with no configuration -------------------------------------
+
+
+def scan_exit_code(report: ScanReport) -> int:
+    """A catalog that could not be read beats a change in use, which beats nothing."""
+    if report.error:
+        return EXIT_CHECK_FAILED
+    return EXIT_WARNING if report.affected else EXIT_OK
+
+
+@app.command()
+def scan(
+    path: Annotated[
+        Path, typer.Argument(help="The folder to search: a git checkout or any folder.")
+    ] = Path("."),
+    catalog: Annotated[
+        str | None,
+        typer.Option(
+            "--catalog",
+            metavar="FILE_OR_URL",
+            help="Search for the entries of this feed instead of the bundled catalog.",
+        ),
+    ] = None,
+    show_all: Annotated[
+        bool, typer.Option("--all", help="Also list the catalog entries that do not affect PATH.")
+    ] = False,
+    as_json: JsonOption = False,
+) -> None:
+    """Find code that still uses API changes that already shipped. No setup needed.
+
+    Searches PATH for every entry of the catalog of known API changes bundled with
+    Tiltmeter, such as retired models and removed endpoints, each drafted by Tiltmeter from
+    the provider's public documentation. Nothing is recorded or sent, and no agent runs.
+    Exit code 0: nothing found; 1: PATH uses a change in the catalog; 3: the catalog could
+    not be read.
+    """
+    import httpx
+
+    from tiltmeter.catalog import LOCATION
+    from tiltmeter.notices.models import printable
+    from tiltmeter.notices.reader import NoticeReader
+    from tiltmeter.notices.scan import ScanReport, dump, read_catalog, read_folder
+    from tiltmeter.notices.scan import scan as search
+
+    if not path.is_dir():
+        _fail(f"{path} is not a folder")
+
+    async def read() -> Catalog:
+        async with httpx.AsyncClient() as http:
+            return await read_catalog(NoticeReader(http), catalog)
+
+    label = str(path)
+    try:
+        found = asyncio.run(read())
+    except TiltmeterError as exc:
+        report = ScanReport(
+            path=label,
+            git=False,
+            catalog=catalog or LOCATION,
+            bundled=catalog is None,
+            error=printable(str(exc)),
+        )
+    else:
+        report = search(read_folder(path), found, label=label)
+    if as_json:
+        _print_json(dump(report, show_all=show_all))
+    else:
+        from tiltmeter.console import render_scan
+
+        render_scan(out, report, show_all=show_all)
+    raise typer.Exit(scan_exit_code(report))
 
 
 # -- provider notices, as a subscriber --------------------------------------------

@@ -3,6 +3,7 @@
 | Guide | Read it to |
 |---|---|
 | [Getting started](getting-started.md) | Run a full drift cycle against a fake API in five minutes. |
+| [Scanning for known changes](scan.md) | Find code that still uses API changes that already shipped, with `tiltmeter scan`, and add to its catalog. |
 | [Configuration reference](configuration.md) | Look up every option, placeholders, ignore patterns and notifications. |
 | [Agents and MCP](agents.md) | Connect Claude Code, Cursor, Claude Desktop or a LangChain agent. |
 | [CI and scheduling](ci.md) | Run checks from GitHub Actions, GitLab CI, cron or systemd. |
