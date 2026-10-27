@@ -3,7 +3,7 @@
   "name": "dev.tiltmeter/tiltmeter",
   "title": "Tiltmeter",
   "description": "Tells your agents when a third-party API they depend on changes shape, before they trust it.",
-  "version": "0.7.4",
+  "version": "0.8.0",
   "websiteUrl": "https://tiltmeter.dev",
   "repository": {
     "url": "https://github.com/tiltmeter-dev/tiltmeter",
@@ -19,7 +19,7 @@
     {
       "registryType": "pypi",
       "identifier": "tiltmeter",
-      "version": "0.7.4",
+      "version": "0.8.0",
       "runtimeHint": "uvx",
       "transport": {
         "type": "stdio"
