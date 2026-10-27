@@ -184,10 +184,11 @@ type-checks against Stripe's SDK. Tiltmeter fixed it and 14 others we checked by
 the pull requests are open: [the fix for Stripe's sample](https://github.com/stripe-samples/subscription-use-cases/pull/1229).
 
 Since then Tiltmeter has opened 84 pull requests for changes at Stripe, Jira, Spotify, OpenAI,
-Anthropic, Groq, Slack, OpenWeatherMap, Hugging Face and HubSpot. So far 9 have been merged, each
+Anthropic, Groq, Slack, OpenWeatherMap, Hugging Face and HubSpot. So far 10 have been merged, each
 as Tiltmeter wrote it, and 5 were closed: aicommits landed the same fix in its own commit,
 anything-llm asks for a linked issue first, and three touched code their projects no longer use.
-[Serenity BDD](https://github.com/serenity-bdd/serenity-core/pull/3756) moved its Jira plugin off
+[Serenity BDD](https://github.com/serenity-bdd/serenity-core/pull/3756) and
+[AiSOC](https://github.com/beenuar/AiSOC/pull/1524) moved their Jira calls off
 `/rest/api/3/search`, an endpoint Jira Cloud removed.
 [ruflo](https://github.com/ruvnet/ruflo/pull/4512),
 [radare2's r2ai](https://github.com/radareorg/r2ai/pull/249),
