@@ -12,6 +12,7 @@ import os
 import shutil
 import subprocess
 from collections.abc import Sequence
+from datetime import datetime
 from pathlib import Path
 from typing import Protocol
 
@@ -109,7 +110,14 @@ class Git:
             ["git", "--literal-pathspecs", "log", "-1", "--format=%cI", "HEAD", "--", path],
             cwd=self.root,
         )
-        return (completed.stdout.strip() or None) if completed.returncode == 0 else None
+        stamp = completed.stdout.strip() if completed.returncode == 0 else ""
+        if not stamp:
+            return None
+        # Newer git spells UTC as "Z" in %cI, older git as "+00:00"; keep one form.
+        try:
+            return datetime.fromisoformat(stamp).isoformat()
+        except ValueError:
+            return stamp
 
     # -- worktrees ------------------------------------------------------------
 
