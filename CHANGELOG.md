@@ -8,6 +8,8 @@ a minor release may include breaking changes.
 
 ## [Unreleased]
 
+## [0.7.4] - 2026-10-27
+
 ### Added
 
 - `tiltmeter fix` checks whether the code the agent changed is still used, before anything
