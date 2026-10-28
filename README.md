@@ -207,7 +207,7 @@ type-checks against Stripe's SDK. Tiltmeter fixed it and 14 others we checked by
 the pull requests are open: [the fix for Stripe's sample](https://github.com/stripe-samples/subscription-use-cases/pull/1229).
 
 Since then Tiltmeter has opened 84 pull requests for changes at Stripe, Jira, Spotify, OpenAI,
-Anthropic, Groq, Slack, OpenWeatherMap, Hugging Face and HubSpot. So far 10 have been merged, each
+Anthropic, Groq, Slack, OpenWeatherMap, Hugging Face and HubSpot. So far 11 have been merged, each
 as Tiltmeter wrote it, and 5 were closed: aicommits landed the same fix in its own commit,
 anything-llm asks for a linked issue first, and three touched code their projects no longer use.
 [Serenity BDD](https://github.com/serenity-bdd/serenity-core/pull/3756) and
@@ -224,7 +224,9 @@ and [KindleEar](https://github.com/cdhigh/KindleEar/pull/747) moved off the Groq
 down, and [aicommits](https://github.com/Nutlope/aicommits/commit/98e9c4e4ea025053d4ede2ed4ee08aed9b7e0419)
 made the same change in its own commit.
 [Share-The-Link](https://github.com/Joseyosei/Share-The-Link/pull/112) reads subscription periods
-from subscription items, as Stripe's API has required since 2025-03-31. The
+from subscription items, as Stripe's API has required since 2025-03-31.
+[Tencent's AI-Infra-Guard](https://github.com/Tencent/AI-Infra-Guard/pull/728) moved its
+Hugging Face preset off `api-inference.huggingface.co`, which no longer resolves. The
 [migration tracker](https://tiltmeter.dev/migrations/) shows every pull request and its status, by
 provider.
 
