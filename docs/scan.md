@@ -65,6 +65,9 @@ For each change the folder uses:
 - a line with the provider, the first sentence of the entry's summary and the date it took
   effect (or takes effect, for HubSpot's), or was published when it has no such date;
 - the entry's id and where it comes from;
+- `only for some callers`, when a change affects only some of them, such as one plan, one
+  deployment or one API version, with who it affects. Tiltmeter can't tell which of them
+  the folder serves;
 - up to five places as `file:line`, with what changes for them and the line itself. The
   surest come first: lines that send a retired value, call a removed endpoint, then read a
   changed field near the API. A line that only names the API, such as its host, shows up
@@ -79,7 +82,8 @@ A summary line ends the output. Text from the catalog is printed as plain text, 
 markup. `--all` also lists every entry that does not affect the folder, with the reason,
 and where tests or docs mention it anyway. `--json` prints the same as one JSON object:
 `affected` lists each change with all its `matches` (up to 50), `count`, `files`, `tests`
-and `fix_command`; `unaffected` comes with `--all`; `rejected` lists entries of a
+and `fix_command`, and each match's `applies_to` says who its change affects, or is
+`null` for every caller; `unaffected` comes with `--all`; `rejected` lists entries of a
 `--catalog` that are not valid notices.
 
 ## Options and exit codes
@@ -178,8 +182,9 @@ The catalog is meant to grow. To add a change that already shipped:
    kinds the spec lists; a retired model is a `value_retired` change on `$.model`.
 2. Keep the text factual and within the limits: a `summary` of at most 500 characters
    whose first sentence says what changed in a few words (the scan shows it as the
-   headline), and `note`s of at most 500 that say what the replacement needs, including
-   when the change applies to some customers only. Name your source.
+   headline), and `note`s of at most 500 that say what the replacement needs. When a
+   change applies to some customers only, such as one plan or one deployment, say who in
+   `applies_to`, on the entry or on that change. Name your source.
 3. End the summary with the sentence `Drafted by Tiltmeter from <Provider>'s public
    documentation; not signed or endorsed by <Provider>.` Never sign an entry.
 4. Add it with `uv run python scripts/catalog.py notice.json`, which validates it, refuses

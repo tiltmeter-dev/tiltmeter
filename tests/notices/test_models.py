@@ -181,3 +181,15 @@ def test_removed_endpoints_and_retired_values_carry_where_to_go() -> None:
 def test_new_members_only_go_with_their_kind(change: dict[str, Any], problem: str) -> None:
     with pytest.raises(ValidationError, match=problem):
         ApiChangeNotice.model_validate(with_change(**change))
+
+
+def test_applies_to_says_who_a_change_affects() -> None:
+    raw = with_change(applies_to="Enterprise contracts keep phone.")
+    raw["applies_to"] = "Accounts on API version 2026-11 or later."
+    model = ApiChangeNotice.model_validate(raw)
+    assert model.applies_to == "Accounts on API version 2026-11 or later."
+    assert model.endpoints[0].changes[0].applies_to == "Enterprise contracts keep phone."
+    # Third-party text like the summary: no control characters, no bidirectional overrides.
+    for text in ("", "Free\x1b[31m keys", "Free \u202ekeys"):
+        with pytest.raises(ValidationError):
+            ApiChangeNotice.model_validate(with_change(applies_to=text))

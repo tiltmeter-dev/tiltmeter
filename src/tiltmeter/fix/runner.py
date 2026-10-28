@@ -198,6 +198,39 @@ def _changes_table(
     return lines
 
 
+def _scope_section(request: FixRequest, whose: str) -> list[str]:
+    """Who the changes affect when that is not every caller. Tiltmeter cannot know which
+    callers the code serves, so this goes first: nobody should read the change as universal."""
+    scoped: dict[str, list[str]] = {}
+    unscoped = False
+    for api in request.apis:
+        for target in api.targets:
+            if not target.applies_to:
+                unscoped = True
+                continue
+            names = scoped.setdefault(target.applies_to, [])
+            if (where := _where(api, target)) not in names:
+                names.append(where)
+    if not scoped:
+        return []
+    unknown = ", and Tiltmeter can't tell which ones this code serves."
+    if len(scoped) == 1 and not unscoped:
+        lead = (
+            f"**This change affects only some callers{unknown}** According to {whose}, it affects:"
+        )
+        text = list(scoped)
+        rest = "Callers outside that keep the old behaviour."
+    else:
+        lead = (
+            f"**Some of these changes affect only some callers{unknown}** According to {whose}, "
+            "they affect:"
+        )
+        text = [f"{', '.join(names)}: {scope}" for scope, names in scoped.items()]
+        rest = "Callers outside those keep the old behaviour"
+        rest += "; the other changes affect every caller." if unscoped else "."
+    return [lead, "", *_plain_text(text), "", rest, ""]
+
+
 def _notice_section(request: FixRequest, notice: NoticeSource) -> list[str]:
     when = f"published {notice.published_at[:10]}"
     if notice.effective_at:
@@ -209,6 +242,7 @@ def _notice_section(request: FixRequest, notice: NoticeSource) -> list[str]:
             f"Its signature was verified against `{notice.key}`."
         )
         quoted, noted = "The provider's summary, quoted as they wrote it:", "The provider's notes:"
+        whose = "the provider's notice"
     elif from_catalog(notice.location):
         source = (
             f"Entry `{notice.id}` of Tiltmeter's catalog of known API changes describes this "
@@ -216,6 +250,7 @@ def _notice_section(request: FixRequest, notice: NoticeSource) -> list[str]:
             f"provider's public documentation: it is not signed or endorsed by `{notice.provider}`."
         )
         quoted, noted = "The entry's summary:", "The entry's notes:"
+        whose = "Tiltmeter's catalog entry"
     else:
         # Anyone may write an unsigned notice: never put it in the provider's mouth.
         source = (
@@ -224,9 +259,11 @@ def _notice_section(request: FixRequest, notice: NoticeSource) -> list[str]:
             "person running Tiltmeter trusts."
         )
         quoted, noted = "The notice's summary:", "The notice's notes:"
+        whose = "the notice"
     lines = [
         "## What changed in the API",
         "",
+        *_scope_section(request, whose),
         source,
         "",
         quoted,

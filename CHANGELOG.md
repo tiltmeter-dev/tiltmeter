@@ -8,6 +8,19 @@ a minor release may include breaking changes.
 
 ## [Unreleased]
 
+### Added
+
+- Notices can say who a change affects, with `applies_to` on the notice or on one change,
+  when that is not every caller: a plan, a deployment or an API version. Tiltmeter can't
+  tell which of them a repository serves, so a pull request now opens with who the change
+  affects, `tiltmeter scan` shows it next to the places it lists, and the fix agent prefers
+  edits that keep working for the callers outside it. `tiltmeter notice create
+  --applies-to` sets it. Tiltmeter 0.8.0 and earlier reject notices that use it.
+- The catalog says who its scoped entries affect: Groq's 2026 retirements (free and
+  developer-tier keys; enterprise contracts keep the models), Jira Cloud's removed search
+  (Server and Data Center keep it), Spotify's Development Mode changes and Stripe's API
+  version 2025-03-31.
+
 ## [0.8.0] - 2026-10-27
 
 ### Added

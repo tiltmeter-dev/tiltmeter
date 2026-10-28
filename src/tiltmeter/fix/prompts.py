@@ -90,6 +90,14 @@ report it as unresolved instead of picking a value.
 depends on that SDK, raise its version in the dependency manifest (such as \
 requirements.txt, pyproject.toml, package.json or go.mod) to at least that release. \
 Never edit lock files: list the lock file to regenerate under unresolved.
+   - A change with applies_to affects only some callers, such as one plan, one \
+deployment or one API version, and you cannot tell which of them this code serves. \
+Prefer edits that keep working for the others. When the replacement works for them \
+too, switch to it as above, but keep the old value where users pick it themselves, such \
+as a list of choices. When it does not, such as an endpoint only one deployment offers, \
+keep the old behaviour for the others, for example by choosing on the host the code \
+calls, or leave the code alone and report it as unresolved. Say in the summary what you \
+kept for them.
 5. Keep everything else as it is: no refactors, no reformatting, no new dependencies, \
 no new files unless a change cannot be made any other way. Follow the file's style.
 6. Never read or write secrets. Paths such as .env files and keys are blocked.
@@ -135,6 +143,8 @@ def _changes(targets: Sequence[FixTarget]) -> list[dict[str, Any]]:
             entry["replaced_by"] = target.replaced_by
         if target.note:
             entry["provider_note"] = target.note
+        if target.applies_to:
+            entry["applies_to"] = target.applies_to
         entries.append(entry)
     return entries
 

@@ -43,6 +43,18 @@
         "summary": {
           "$ref": "#/$defs/Text"
         },
+        "applies_to": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Text"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Who the change affects, when that is not every caller: a plan, a deployment or an API version. Callers outside it keep the old behaviour."
+        },
         "endpoints": {
           "items": {
             "$ref": "#/$defs/NoticeEndpoint"
@@ -238,6 +250,18 @@
           ],
           "default": null,
           "description": "The provider's own words on this change, such as the new format."
+        },
+        "applies_to": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Text"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Who this change affects, when that is not every caller and not what the notice's applies_to says."
         }
       },
       "required": [

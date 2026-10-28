@@ -343,6 +343,10 @@ The pull request lists the API changes, the agent's summary, the files it touche
 "Left for a human" section. Review it like any other change:
 
 - Read the "Left for a human" items first. They are the questions the agent would not guess.
+- When the pull request opens with **This change affects only some callers**, check
+  whether this project's are among them: a plan, a deployment or an API version that
+  Tiltmeter can't see. The agent prefers edits that keep working for the others and says
+  what it kept for them.
 - When the pull request says "Possibly unused", check that the code still runs before you
   spend time on the change.
 - Confirm the rename or type change with the vendor's changelog when there is one.

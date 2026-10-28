@@ -1342,6 +1342,13 @@ def notice_create(
         str | None,
         typer.Option("--effective", help="When the old responses stop: a date or ISO time."),
     ] = None,
+    applies_to: Annotated[
+        str | None,
+        typer.Option(
+            "--applies-to",
+            help="Who the change affects, when not every caller: a plan or a deployment.",
+        ),
+    ] = None,
     sdk: Annotated[
         list[str] | None,
         typer.Option(
@@ -1416,6 +1423,7 @@ def notice_create(
             published_at=utcnow(),
             effective_at=_moment(effective) if effective else None,
             sdks=sdks,
+            applies_to=applies_to,
         )
     except TiltmeterError as exc:
         _fail(str(exc))

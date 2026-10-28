@@ -40,6 +40,10 @@ class FixTarget(BaseModel):
     note: str | None = Field(
         default=None, description="The provider's own words on the change, from a notice."
     )
+    applies_to: str | None = Field(
+        default=None,
+        description="Who the change affects, when not every caller, from a notice.",
+    )
 
 
 type TestStatus = Literal["passed", "failed", "skipped"]

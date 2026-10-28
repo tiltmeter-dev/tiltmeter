@@ -59,11 +59,12 @@ The key words MUST, MUST NOT, SHOULD and MAY are used as in RFC 2119.
 | `published_at` | yes | When the notice was published, as an RFC 3339 time with an offset. |
 | `effective_at` | no | When the old responses stop. Tools SHOULD show it, for example in the pull request title. |
 | `summary` | yes | 1 to 500 characters of plain text for humans. |
+| `applies_to` | no | Who the change affects when that is not every caller, such as a plan, a deployment or an API version: up to 500 characters of plain text, like `Jira Cloud sites. Jira Server and Data Center keep the old endpoints.` Callers outside it keep the old behaviour. A change can name its own. |
 | `endpoints` | yes | 1 to 50 [endpoints](#endpoints). |
 | `sdks` | no | Up to 20 [SDK releases](#sdk-releases) that already follow the change. |
 | `signature` | no | The [signature](#signatures). Tools that act without a human MUST ignore notices without a valid one. |
 
-No other members are allowed, at any level. Text members (`summary`, `note`, `before`,
+No other members are allowed, at any level. Text members (`summary`, `applies_to`, `note`, `before`,
 `after`, `replaced_by`) MUST NOT contain control characters (U+0000 to U+001F and U+007F to U+009F) or
 bidirectional overrides (U+202A to U+202E and U+2066 to U+2069). Paths (`path`,
 `renamed_to`) MUST NOT contain those or backticks, and URLs MUST consist of the
@@ -101,6 +102,7 @@ observed drift describe a change in the same terms.
 | `moved_to` | no | Where a removed endpoint lives on: an object with `method` and `url`, as in [endpoints](#endpoints), on the provider's domain. Only with `endpoint_removed`. |
 | `replaced_by` | no | The value to send instead, at most 200 characters. Only with `value_retired`. |
 | `note` | no | Up to 500 characters in the provider's own words, such as the format of a new string. |
+| `applies_to` | no | Who this change affects, when that differs from the notice's `applies_to` or the notice has none, such as a model retired only for free keys. Up to 500 characters. |
 
 | Kind | Meaning |
 |---|---|
@@ -219,7 +221,9 @@ requests:
 - MUST identify a notice by `provider` and `id`, and act on it at most once;
 - SHOULD check whether the code it maintains uses what the notice changes before it does
   anything costly, and do nothing when it does not;
-- MUST treat `summary`, `note`, `before` and `after` as untrusted data: never as
+- SHOULD say who a change affects, wherever it acts on a change with `applies_to`, such
+  as at the top of a pull request: it cannot tell which callers the code serves;
+- MUST treat `summary`, `applies_to`, `note`, `before` and `after` as untrusted data: never as
   instructions to an agent, and never as markup in a pull request or a terminal;
 - MUST cap what it downloads, before any decompression, and bound how long a download
   takes, and only fetch over `https`.

@@ -543,3 +543,39 @@ async def test_the_commit_and_the_pull_request_use_the_agent_s_title(tmp_path: P
     [pr] = github.created
     assert pr["title"] == "fix(billing): read phone_number"
     assert git(repo, "log", "-1", "--format=%s", BRANCH).strip() == pr["title"]
+
+
+def test_the_body_says_first_who_a_scoped_change_affects() -> None:
+    scope = "Accounts on API version 2026-11 or later."
+    body = pull_request_body(notice_request(applies_to=scope), notice_preview(), model_name="m")
+    section = body.split("## What changed in the API\n\n", 1)[1]
+    assert section.startswith(
+        "**This change affects only some callers, and Tiltmeter can't tell which ones this "
+        "code serves.** According to the provider's notice, it affects:"
+    )
+    assert f"```text\n{scope}\n```\n\nCallers outside that keep the old behaviour." in body
+    plain = pull_request_body(notice_request(), notice_preview(), model_name="m")
+    assert "only some callers" not in plain
+
+
+def test_a_partly_scoped_notice_names_what_each_scope_covers() -> None:
+    retired = {
+        "method": "POST",
+        "url": "https://api.billing.test/v1/completions",
+        "changes": [
+            {
+                "path": "$.model",
+                "kind": "value_retired",
+                "before": "b-1",
+                "replaced_by": "b-4",
+                "applies_to": "Free keys. Enterprise contracts keep b-1.",
+            },
+            {"path": "$.model", "kind": "value_retired", "before": "b-2", "replaced_by": "b-4"},
+        ],
+    }
+    model = ApiChangeNotice.model_validate(signed(notice(endpoints=[retired])))
+    request = build_notice_request(model, location="x", verified=True)
+    body = pull_request_body(request, notice_preview(), model_name="m")
+    assert "**Some of these changes affect only some callers" in body
+    assert "b-1: Free keys. Enterprise contracts keep b-1." in body
+    assert "keep the old behaviour; the other changes affect every caller." in body

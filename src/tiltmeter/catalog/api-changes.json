@@ -194,14 +194,16 @@
               "kind": "value_retired",
               "before": "llama-3.3-70b-versatile",
               "replaced_by": "openai/gpt-oss-120b",
-              "note": "Shut down on August 16, 2026: requests that name it return an error. The shutdown applies to free and developer-tier keys; Groq enterprise customers with a committed-spend contract keep the model. Groq recommends openai/gpt-oss-120b (its other suggestion, qwen/qwen3.6-27b, was itself shut down on September 14, 2026). openai/gpt-oss-120b and openai/gpt-oss-20b are reasoning models: they reason before they answer, and that reasoning counts toward the completion token limit."
+              "note": "Shut down on August 16, 2026: requests that name it return an error. The shutdown applies to free and developer-tier keys; Groq enterprise customers with a committed-spend contract keep the model. Groq recommends openai/gpt-oss-120b (its other suggestion, qwen/qwen3.6-27b, was itself shut down on September 14, 2026). openai/gpt-oss-120b and openai/gpt-oss-20b are reasoning models: they reason before they answer, and that reasoning counts toward the completion token limit.",
+              "applies_to": "Free and developer-tier keys. Not Groq enterprise customers with a committed-spend contract."
             },
             {
               "path": "$.model",
               "kind": "value_retired",
               "before": "llama-3.1-8b-instant",
               "replaced_by": "openai/gpt-oss-20b",
-              "note": "Shut down on August 16, 2026: requests that name it return an error. The shutdown applies to free and developer-tier keys; Groq enterprise customers with a committed-spend contract keep the model. openai/gpt-oss-20b is Groq's recommended replacement. openai/gpt-oss-120b and openai/gpt-oss-20b are reasoning models: they reason before they answer, and that reasoning counts toward the completion token limit."
+              "note": "Shut down on August 16, 2026: requests that name it return an error. The shutdown applies to free and developer-tier keys; Groq enterprise customers with a committed-spend contract keep the model. openai/gpt-oss-20b is Groq's recommended replacement. openai/gpt-oss-120b and openai/gpt-oss-20b are reasoning models: they reason before they answer, and that reasoning counts toward the completion token limit.",
+              "applies_to": "Free and developer-tier keys. Not Groq enterprise customers with a committed-spend contract."
             },
             {
               "path": "$.model",
@@ -285,7 +287,8 @@
               "kind": "value_retired",
               "before": "meta-llama/llama-4-scout-17b-16e-instruct",
               "replaced_by": "openai/gpt-oss-120b",
-              "note": "Shut down on July 17, 2026. The shutdown applies to free and developer-tier keys; Groq enterprise customers with a committed-spend contract keep the model. Groq recommends openai/gpt-oss-120b (its other suggestion, qwen/qwen3.6-27b, was itself shut down on September 14, 2026). Neither replacement reads images."
+              "note": "Shut down on July 17, 2026. The shutdown applies to free and developer-tier keys; Groq enterprise customers with a committed-spend contract keep the model. Groq recommends openai/gpt-oss-120b (its other suggestion, qwen/qwen3.6-27b, was itself shut down on September 14, 2026). Neither replacement reads images.",
+              "applies_to": "Free and developer-tier keys. Not Groq enterprise customers with a committed-spend contract."
             },
             {
               "path": "$.model",
@@ -809,6 +812,7 @@
       "published_at": "2026-02-11T00:00:00Z",
       "effective_at": "2026-03-09T00:00:00Z",
       "summary": "Spotify changed its Web API for Development Mode apps in February 2026. Apps without extended quota are affected, existing ones since March 9: playlist /tracks endpoints and the tracks field become items; batch fetches, top tracks, browse and markets are gone; saves go through /me/library; popularity, followers, label, email, country and product are no longer returned. Source: Spotify's migration guide. Drafted by Tiltmeter from Spotify's public documentation; not signed or endorsed by Spotify.",
+      "applies_to": "Apps in Development Mode, without extended quota; existing apps since March 9, 2026. Apps with extended quota keep the old behaviour.",
       "endpoints": [
         {
           "method": "GET",
@@ -1503,6 +1507,7 @@
       "published_at": "2025-03-31T00:00:00Z",
       "effective_at": "2025-03-31T00:00:00Z",
       "summary": "Stripe API version 2025-03-31.basil moved subscription billing periods to the items. The Subscription no longer has current_period_start and current_period_end; read them from each item in items.data instead. It applies only to accounts and requests on API version 2025-03-31 or later; older versions still return both on the Subscription. Source: docs.stripe.com/changelog/basil/2025-03-31. Drafted by Tiltmeter from Stripe's public documentation; not signed or endorsed by Stripe.",
+      "applies_to": "Accounts and requests on API version 2025-03-31.basil or later. Older API versions still return current_period_start and current_period_end on the Subscription.",
       "endpoints": [
         {
           "method": "GET",
@@ -1653,6 +1658,7 @@
       "published_at": "2024-10-31T00:00:00Z",
       "effective_at": "2025-05-01T00:00:00Z",
       "summary": "Jira Cloud removed GET and POST /rest/api/3/search and /rest/api/2/search, which answer 410 Gone. Their replacements, /rest/api/3/search/jql and /rest/api/2/search/jql, page with nextPageToken instead of startAt, return no total, and return only issue ids unless the request names its fields. Jira Server and Data Center keep the old endpoints. Source: developer.atlassian.com/changelog/#CHANGE-2046. Drafted by Tiltmeter from Atlassian's public documentation; not signed or endorsed by Atlassian.",
+      "applies_to": "Jira Cloud sites (*.atlassian.net and api.atlassian.com/ex/jira). Jira Server and Data Center keep the old endpoints.",
       "sdks": [],
       "endpoints": [
         {
