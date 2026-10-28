@@ -163,6 +163,7 @@ def test_json_lists_every_match_and_marks_unused_files(tmp_path: Path) -> None:
         "term": "llama3-8b-8192",
         "detail": "retired; use openai/gpt-oss-20b",
         "possibly_unused": False,
+        "applies_to": None,
     }
     # Nothing imports legacy.py: its match is marked, so nobody chases dead code.
     assert matches["app/legacy.py"]["term"] == "mixtral-8x7b-32768"
@@ -345,3 +346,32 @@ def test_fix_names_an_unknown_catalog_id(tmp_path: Path) -> None:
     outcome = invoke("fix", "--notice", "no-such-entry", "--allow-unsigned", "--repo", str(repo))
     assert outcome.exit_code == 4
     assert "no entry of the catalog bundled with Tiltmeter has that id" in flat(outcome.output)
+
+
+def test_scan_says_who_a_scoped_change_affects(tmp_path: Path) -> None:
+    current = LLM.replace("llama3-8b-8192", "llama-3.3-70b-versatile")
+    legacy = LLM.replace("llama3-8b-8192", "mixtral-8x7b-32768")
+    files = {"app/llm.py": current, "app/legacy.py": legacy, "app/main.py": MAIN}
+    repo, _ = make_repo(tmp_path, files)
+    code, report = scanned(str(repo))
+    assert code == 1
+    scopes = {match["term"]: match["applies_to"] for match in finding(report, GROQ)["matches"]}
+    # Groq retired Mixtral for everyone, and Llama 3.3 only for free and developer keys.
+    assert scopes["mixtral-8x7b-32768"] is None
+    assert scopes["llama-3.3-70b-versatile"].startswith("Free and developer-tier keys.")
+    text = flat(invoke("scan", str(repo)).output)
+    assert "only for some callers (llama-3.3-70b-versatile): Free and developer-tier keys." in text
+
+
+def test_catalog_entries_say_who_they_affect() -> None:
+    entries = {entry.id: entry for entry in NoticeFeed.model_validate_json(catalog_bytes()).notices}
+    jira = entries["jira-cloud-change-2046-search-jql"].applies_to
+    assert jira is not None
+    assert jira.startswith("Jira Cloud sites")
+    groq = entries[GROQ]
+    assert groq.applies_to is None  # older Groq retirements hit every key
+    assert {c.before for e in groq.endpoints for c in e.changes if c.applies_to} == {
+        "llama-3.3-70b-versatile",
+        "llama-3.1-8b-instant",
+        "meta-llama/llama-4-scout-17b-16e-instruct",
+    }

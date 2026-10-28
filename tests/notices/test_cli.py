@@ -91,6 +91,8 @@ def test_keygen_create_sign_publish_and_verify(tmp_path: Path) -> None:
         "2026-12-01",
         "--sdk",
         "pypi:partner-sdk@3.0.0",
+        "--applies-to",
+        "Accounts on API version 2026-11 or later.",
         "-o",
         str(draft),
     )
@@ -100,6 +102,7 @@ def test_keygen_create_sign_publish_and_verify(tmp_path: Path) -> None:
     legacy = [e for e in raw["endpoints"] if e["url"].endswith("/v1/legacy")]
     assert legacy[0]["changes"] == [{"path": "$", "kind": "endpoint_removed"}]
     assert raw["effective_at"] == "2026-12-01T00:00:00Z"
+    assert raw["applies_to"] == "Accounts on API version 2026-11 or later."
     assert "signature" not in raw
 
     unsigned = invoke("notice", "publish", str(draft), "--feed", str(site / "api-changes.json"))

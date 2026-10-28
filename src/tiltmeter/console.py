@@ -441,6 +441,22 @@ def _origin(finding: ScanFinding) -> str:
     return "signed by the provider" if finding.signed else "unsigned"
 
 
+def _scope_lines(finding: ScanFinding) -> list[Text]:
+    """Who the matched changes affect, when that is not every caller."""
+    scoped: dict[str, list[str]] = {}
+    for match in finding.matches:
+        if match.applies_to:
+            terms = scoped.setdefault(match.applies_to, [])
+            if match.term not in terms:
+                terms.append(match.term)
+    if len(scoped) == 1 and all(match.applies_to for match in finding.matches):
+        return [Text.assemble(("only for some callers: ", "yellow"), next(iter(scoped)))]
+    return [
+        Text.assemble((f"only for some callers ({', '.join(terms)}): ", "yellow"), scope)
+        for scope, terms in scoped.items()
+    ]
+
+
 def scan_match_text(match: ScanMatch) -> Text:
     """Where a line is and what changes for it, then the line itself."""
     text = Text.assemble(
@@ -467,6 +483,8 @@ def render_scan_finding(console: Console, finding: ScanFinding, now: datetime) -
         )
     )
     console.print(Padding(Text(f"{finding.id} · {_origin(finding)}", style="dim"), (0, 0, 0, 4)))
+    for line in _scope_lines(finding):
+        console.print(Padding(line, (0, 0, 0, 4)))
     shown = finding.matches[:MAX_SCAN_LINES]
     for match in shown:
         console.print(Padding(scan_match_text(match), (0, 0, 0, 4)))

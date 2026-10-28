@@ -95,6 +95,7 @@ change wherever the new format matters ("Decimal string in the account currency,
 | `--summary TEXT` | Defaults to a plain sentence per set of changes. |
 | `--effective DATE` | When the old responses stop: `2026-12-01` or an ISO 8601 time. |
 | `--sdk ECOSYSTEM:NAME@VERSION` | An SDK release that already follows the change. Repeatable. |
+| `--applies-to TEXT` | Who the change affects when it is not every caller, such as a plan or a deployment. Pull requests show it first. |
 | `--if-changed` | With `--from-openapi`: when no response changed, write nothing and exit 0. |
 | `-o`, `--output FILE` | Where to write it; stdout otherwise. `--force` overwrites. |
 

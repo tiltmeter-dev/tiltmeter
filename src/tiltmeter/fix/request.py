@@ -132,8 +132,10 @@ def build_fix_request(
     )
 
 
-def notice_targets(endpoint: NoticeEndpoint) -> list[FixTarget]:
-    """The changes of a notice that code has to follow, with the default severity."""
+def notice_targets(endpoint: NoticeEndpoint, applies_to: str | None = None) -> list[FixTarget]:
+    """The changes of a notice that code has to follow, with the default severity.
+
+    ``applies_to`` is the notice's own, for the changes that do not name theirs."""
     targets = []
     for change in endpoint.changes:
         if not is_target(change.kind):
@@ -153,6 +155,7 @@ def notice_targets(endpoint: NoticeEndpoint) -> list[FixTarget]:
                 field=field_name(change.path) if reads_response(change.kind) else None,
                 new_field=field_name(change.renamed_to) if change.renamed_to else None,
                 note=change.note,
+                applies_to=change.applies_to or applies_to,
             )
         )
     return targets
@@ -215,7 +218,7 @@ def build_notice_request(
             targets=sorted(targets, key=lambda t: _relevance(t, names)) if names else targets,
         )
         for endpoint in picked
-        if (targets := _in_use(notice_targets(endpoint), used))
+        if (targets := _in_use(notice_targets(endpoint, notice.applies_to), used))
     ]
     terms = [target.field for api in apis for target in api.targets if target.field]
     terms += [

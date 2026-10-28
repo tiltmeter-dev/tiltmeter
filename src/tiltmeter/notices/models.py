@@ -150,6 +150,13 @@ class NoticeChange(_Strict):
         default=None,
         description="The provider's own words on this change, such as the new format.",
     )
+    applies_to: Text | None = Field(
+        default=None,
+        description=(
+            "Who this change affects, when that is not every caller and not what the "
+            "notice's applies_to says."
+        ),
+    )
 
     @model_validator(mode="after")
     def _members_of_their_kind(self) -> NoticeChange:
@@ -231,6 +238,13 @@ class ApiChangeNotice(_Strict):
         default=None, description="When the old responses stop."
     )
     summary: Text
+    applies_to: Text | None = Field(
+        default=None,
+        description=(
+            "Who the change affects, when that is not every caller: a plan, a deployment or "
+            "an API version. Callers outside it keep the old behaviour."
+        ),
+    )
     endpoints: list[NoticeEndpoint] = Field(min_length=1, max_length=MAX_ENDPOINTS)
     sdks: list[SdkRelease] = Field(default_factory=list, max_length=MAX_SDKS)
     signature: NoticeSignature | None = None

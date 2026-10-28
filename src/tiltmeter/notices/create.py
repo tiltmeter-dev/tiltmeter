@@ -185,6 +185,7 @@ def build_notice(
     published_at: datetime,
     effective_at: datetime | None = None,
     sdks: Sequence[SdkRelease] = (),
+    applies_to: str | None = None,
 ) -> dict[str, Any]:
     """A valid, unsigned notice. The provider defaults to the host of the endpoints."""
     if not endpoints:
@@ -203,6 +204,8 @@ def build_notice(
     if effective_at is not None:
         raw["effective_at"] = to_iso(effective_at)
     raw["summary"] = summary or summarize(endpoints)
+    if applies_to:
+        raw["applies_to"] = applies_to
     raw["endpoints"] = [
         {"method": method, "url": url, "changes": changes} for method, url, changes in endpoints
     ]

@@ -125,6 +125,9 @@ class ScanMatch(BaseModel):
     possibly_unused: bool = Field(
         default=False, description="Nothing else in the folder imports or names the file."
     )
+    applies_to: str | None = Field(
+        default=None, description="Who the change on this line affects, when not every caller."
+    )
 
 
 class ScanFinding(BaseModel):
@@ -388,6 +391,7 @@ def _match(place: Place, notice: ApiChangeNotice) -> ScanMatch:
         kind=place.kind,
         term=place.term,
         detail=_detail(place, notice),
+        applies_to=_scope(place, notice),
     )
 
 
@@ -398,6 +402,15 @@ def _detail(place: Place, notice: ApiChangeNotice) -> str:
             if _about(change, place, endpoint.method, endpoint.url):
                 return _what(change)
     return "names the API"
+
+
+def _scope(place: Place, notice: ApiChangeNotice) -> str | None:
+    """Who the change on the line affects, when that is not every caller."""
+    for endpoint in notice.endpoints:
+        for change in endpoint.changes:
+            if _about(change, place, endpoint.method, endpoint.url):
+                return change.applies_to or notice.applies_to
+    return notice.applies_to
 
 
 def _about(change: NoticeChange, place: Place, method: str, url: str) -> bool:

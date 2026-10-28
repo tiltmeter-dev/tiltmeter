@@ -10,7 +10,7 @@ from tests.service_kit import make_service
 from tiltmeter.core.models import Change, ChangeKind, CheckResult, RenameHint, Severity
 from tiltmeter.errors import TiltmeterError
 from tiltmeter.fix.models import FixRequest
-from tiltmeter.fix.prompts import render_fix_request
+from tiltmeter.fix.prompts import render_fix_request, system_prompt
 from tiltmeter.fix.request import (
     build_fix_request,
     build_notice_request,
@@ -346,3 +346,16 @@ def test_the_agent_follows_the_repository_s_contribution_rules() -> None:
     assert "<recent_commit_titles>\n" in text
     assert "fix(api): read the new field" in text
     assert text.count("</recent_commit_titles>") == 1  # a title cannot close the block
+
+
+def test_who_a_change_affects_reaches_the_agent() -> None:
+    scope = "Accounts on API version 2026-11 or later."
+    endpoints = notice()["endpoints"]
+    endpoints[0]["changes"][1]["applies_to"] = "Enterprise contracts keep integer balances."
+    request = notice_request(applies_to=scope, endpoints=endpoints)
+    scopes = {target.path: target.applies_to for target in request.apis[0].targets}
+    assert scopes == {"$.phone": scope, "$.balance": "Enterprise contracts keep integer balances."}
+    text = render_fix_request(request)
+    assert f'"applies_to": "{scope}"' in text
+    assert "applies_to" not in render_fix_request(notice_request())
+    assert "A change with applies_to affects only some callers" in system_prompt()
