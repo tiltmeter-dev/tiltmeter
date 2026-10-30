@@ -763,7 +763,7 @@ def _fix_notice(
         agent = _build_agent(settings)
 
         def intro() -> None:
-            render_notice(out, notice, verified=loaded.verified)
+            render_notice(out, notice, verified=loaded.verified, request=request)
             if not impact.affected:
                 out.print(
                     Text(f"note: {impact.reason}; the agent searches on its own", style="dim")
@@ -1173,6 +1173,7 @@ def notices_apply(
                         notice,
                         verified=entry.source == "notice",
                         spec=entry.spec,
+                        request=request,
                     ),
                 )
             except _FixFailed as exc:

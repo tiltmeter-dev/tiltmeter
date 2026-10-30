@@ -316,6 +316,11 @@ def test_fix_takes_the_id_of_a_catalog_entry(
     outcome = runner.invoke(app, [*base, "--allow-unsigned", "--yes"])
     assert outcome.exit_code == 0, outcome.output
     assert f"✓ opened {PR_URL}" in flat(outcome.output)
+    # The notice lists 16 retired models; the output shows the one the code sends.
+    shown = flat(outcome.output)
+    assert "llama3-8b-8192" in shown
+    assert "mixtral-8x7b-32768" not in shown
+    assert "15 other changes in the notice that this repository does not use" in shown
     [request] = agent.requests
     assert request.notice is not None
     assert (request.notice.id, request.notice.location) == (GROQ, f"tiltmeter catalog#{GROQ}")

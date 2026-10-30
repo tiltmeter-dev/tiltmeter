@@ -8,6 +8,11 @@ a minor release may include breaking changes.
 
 ## [Unreleased]
 
+### Changed
+
+- `tiltmeter fix --notice` and `notices apply` list only the changes in the notice that the
+  repository uses, with a count of the others, instead of every change in the notice.
+
 ## [0.9.0] - 2026-10-30
 
 ### Added

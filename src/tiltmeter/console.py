@@ -20,12 +20,13 @@ from rich.text import Text
 from tiltmeter.core.models import Change, CheckResult, Severity
 
 if TYPE_CHECKING:
-    from tiltmeter.fix.models import AppliedNotice, FixOutcome, FixPreview
+    from tiltmeter.fix.models import AppliedNotice, FixOutcome, FixPreview, FixRequest
     from tiltmeter.notices.models import (
         ApiChangeNotice,
         FeedEntry,
         FeedReport,
         Impact,
+        NoticeChange,
         NoticeEndpoint,
         SpecInfo,
     )
@@ -295,12 +296,14 @@ def notice_line(
     )
 
 
-def notice_changes_table(endpoint: NoticeEndpoint) -> Table:
+def notice_changes_table(
+    endpoint: NoticeEndpoint, changes: Sequence[NoticeChange] | None = None
+) -> Table:
     table = Table(box=None, show_header=False, padding=(0, 1), pad_edge=False)
     table.add_column("kind", no_wrap=True, style="dim")
     table.add_column("path", overflow="fold")
     table.add_column("change", overflow="fold")
-    for change in endpoint.changes:
+    for change in endpoint.changes if changes is None else changes:
         if change.before or change.after:
             detail = Text(f"{change.before or '—'} → {change.after or '—'}")
         else:
@@ -319,14 +322,36 @@ def notice_changes_table(endpoint: NoticeEndpoint) -> Table:
 
 
 def render_notice(
-    console: Console, notice: ApiChangeNotice, *, verified: bool, spec: SpecInfo | None = None
+    console: Console,
+    notice: ApiChangeNotice,
+    *,
+    verified: bool,
+    spec: SpecInfo | None = None,
+    request: FixRequest | None = None,
 ) -> None:
-    """A notice: who announced what, when, and the changes per endpoint."""
+    """A notice: who announced what, when, and the changes per endpoint. With the fix
+    ``request``, only the changes the repository uses, and a count of the others."""
     console.print(notice_line(notice, verified=verified, spec=spec))
     console.print(Padding(Text(notice.summary), (0, 0, 0, 4)))
+    used = None
+    if request is not None:
+        used = {(api.url, t.path, t.before) for api in request.apis for t in api.targets}
+    left_out = 0
     for endpoint in notice.endpoints:
+        changes = [
+            change
+            for change in endpoint.changes
+            if used is None or (endpoint.url, change.path, change.before) in used
+        ]
+        left_out += len(endpoint.changes) - len(changes)
+        if not changes:
+            continue
         console.print(Padding(Text(f"{endpoint.method} {endpoint.url}"), (0, 0, 0, 4)))
-        console.print(Padding(notice_changes_table(endpoint), (0, 0, 0, 6)))
+        console.print(Padding(notice_changes_table(endpoint, changes), (0, 0, 0, 6)))
+    if left_out:
+        plural = "change" if left_out == 1 else "changes"
+        rest = f"{left_out} other {plural} in the notice that this repository does not use"
+        console.print(Padding(Text(rest, style="dim"), (0, 0, 0, 4)))
 
 
 def impact_line(impact: Impact) -> Text:
