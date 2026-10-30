@@ -400,7 +400,7 @@ def _detail(place: Place, notice: ApiChangeNotice) -> str:
     for endpoint in notice.endpoints:
         for change in endpoint.changes:
             if _about(change, place, endpoint.method, endpoint.url):
-                return _what(change)
+                return _what(change, endpoint.url)
     return "names the API"
 
 
@@ -429,13 +429,15 @@ def _about(change: NoticeChange, place: Place, method: str, url: str) -> bool:
             return False
 
 
-def _what(change: NoticeChange) -> str:
+def _what(change: NoticeChange, url: str) -> str:
     match change.kind:
         case ChangeKind.VALUE_RETIRED:
             return f"retired; use {change.replaced_by}" if change.replaced_by else "retired"
         case ChangeKind.ENDPOINT_REMOVED if change.moved_to is not None:
-            moved = change.moved_to
-            return f"removed; moved to {moved.method} {urlsplit(moved.url).path}"
+            moved, old = urlsplit(change.moved_to.url), urlsplit(url)
+            # A move to another host keeps the path: the host is what changed.
+            where = moved.path if moved.netloc == old.netloc else f"{moved.netloc}{moved.path}"
+            return f"removed; moved to {change.moved_to.method} {where}"
         case ChangeKind.ENDPOINT_REMOVED:
             return "removed"
         case ChangeKind.FIELD_REMOVED if change.renamed_to is not None:

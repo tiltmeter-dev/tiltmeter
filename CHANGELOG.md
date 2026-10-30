@@ -21,6 +21,13 @@ a minor release may include breaking changes.
   (Server and Data Center keep it), Spotify's Development Mode changes and Stripe's API
   version 2025-03-31.
 
+### Fixed
+
+- `tiltmeter scan` and notices found no Python code using Stripe's SDK: an SDK name used
+  on two ecosystems (`stripe` on PyPI and on npm) kept only the last one's patterns.
+- When an endpoint moved to another host, `scan` said it moved to the same path; it now
+  names the new host, such as `router.huggingface.co/v1/chat/completions`.
+
 ## [0.8.0] - 2026-10-27
 
 ### Added
