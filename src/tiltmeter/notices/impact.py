@@ -707,8 +707,16 @@ def _search(
     field_patterns = {name: field_pattern(name) for name in fields}
     value_patterns = {value: value_pattern(value) for value in values}
     texts = list(dict.fromkeys([*hosts, *paths]))
-    by_name = {sdk.name: (sdk, sdk_pattern(sdk)) for sdk in sdks}
-    imports = {sdk.name: import_pattern(sdk) for sdk in sdks}
+    # One name can stand for several SDKs, such as stripe on PyPI and on npm: each keeps
+    # its own manifest and import patterns.
+    by_name: dict[str, list[SdkName]] = {}
+    for sdk in sdks:
+        by_name.setdefault(sdk.name, []).append(sdk)
+    listings = {n: [(sdk, sdk_pattern(sdk)) for sdk in group] for n, group in by_name.items()}
+    imports = {
+        n: [p for sdk in group if (p := import_pattern(sdk)) is not None]
+        for n, group in by_name.items()
+    }
     manifests: set[str] = set()
 
     anchor_hits: dict[str, set[str]] = {}
@@ -716,19 +724,25 @@ def _search(
     for name, text in index.texts.items():
         base = PurePosixPath(name).name
         manifest_of = [
-            sdk.name
-            for sdk, _ in by_name.values()
-            if any(fnmatchcase(base, pattern) for pattern in MANIFESTS[sdk.ecosystem])
+            n
+            for n, group in by_name.items()
+            if any(fnmatchcase(base, glob) for sdk in group for glob in MANIFESTS[sdk.ecosystem])
         ]
         if name in index.docs and not manifest_of:
             continue
         lowered = text.lower()
         found = {term for term in texts if term not in short and _spelled(term, lowered)}
-        found |= {sdk for sdk in manifest_of if by_name[sdk][1].search(text)}
+        found |= {
+            n
+            for n in manifest_of
+            for sdk, pattern in listings[n]
+            if any(fnmatchcase(base, glob) for glob in MANIFESTS[sdk.ecosystem])
+            and pattern.search(text)
+        }
         if manifest_of and found & set(manifest_of):
             manifests.add(name)
         elif name not in index.docs:
-            found |= {sdk for sdk, pattern in imports.items() if pattern and pattern.search(text)}
+            found |= {n for n, patterns in imports.items() if any(p.search(text) for p in patterns)}
         if name not in index.docs:
             spoken = index.spoken(name)
             found |= {
@@ -855,10 +869,19 @@ def locate(index: RepoIndex, notice: ApiChangeNotice, impact: Impact) -> list[Pl
         if any(c.kind is ChangeKind.ENDPOINT_REMOVED for c in notice.endpoints[i].changes)
     ]
     calling = {gone.term: set(index.calling(gone, api)) for gone in removed}
-    sdks = {sdk.name: sdk for sdk in notice.sdks}
+    sdks: dict[str, list[SdkName]] = {}
+    for sdk in notice.sdks:
+        sdks.setdefault(sdk.name, []).append(sdk)
     names = [term for term in impact.anchors if term not in retired and term not in sdks]
-    imports = {name: import_pattern(sdk) for name, sdk in sdks.items()}
-    listed = {name: sdk_pattern(sdk) for name, sdk in sdks.items() if name in impact.anchors}
+    imports = {
+        n: [p for sdk in group if (p := import_pattern(sdk)) is not None]
+        for n, group in sdks.items()
+    }
+    listed = {
+        n: [(sdk, sdk_pattern(sdk)) for sdk in group]
+        for n, group in sdks.items()
+        if n in impact.anchors
+    }
     near = set(impact.files)
     found: dict[tuple[str, int], Place] = {}
 
@@ -884,8 +907,9 @@ def locate(index: RepoIndex, notice: ApiChangeNotice, impact: Impact) -> list[Pl
             terms += [_Term("api", t) for t in names if _spelled(t, lowered)]
             terms += [
                 _Term("api", n, pattern=p)
-                for n, p in imports.items()
-                if p is not None and p.search(text)
+                for n, patterns in imports.items()
+                for p in patterns
+                if p.search(text)
             ]
         if name in near:
             terms += [
@@ -894,9 +918,9 @@ def locate(index: RepoIndex, notice: ApiChangeNotice, impact: Impact) -> list[Pl
         base = PurePosixPath(name).name
         terms += [
             _Term("api", n, pattern=p)
-            for n, p in listed.items()
-            if any(fnmatchcase(base, glob) for glob in MANIFESTS[sdks[n].ecosystem])
-            and p.search(text)
+            for n, group in listed.items()
+            for sdk, p in group
+            if any(fnmatchcase(base, glob) for glob in MANIFESTS[sdk.ecosystem]) and p.search(text)
         ]
         # Only what names the API counts in comments and docstrings too.
         said = spoken.split("\n")

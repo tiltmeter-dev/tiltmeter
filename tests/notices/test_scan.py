@@ -375,3 +375,34 @@ def test_catalog_entries_say_who_they_affect() -> None:
         "llama-3.1-8b-instant",
         "meta-llama/llama-4-scout-17b-16e-instruct",
     }
+
+
+def test_python_code_on_stripes_sdk_is_found(tmp_path: Path) -> None:
+    # stripe names an SDK on PyPI and on npm: the npm one must not hide the Python one.
+    billing = (
+        "import stripe\n\n\ndef renews(subscription_id):\n"
+        '    return stripe.Subscription.retrieve(subscription_id)["current_period_end"]\n'
+    )
+    files = {"app/billing.py": billing, "requirements.txt": "stripe==10.12.0\n"}
+    repo, _ = make_repo(tmp_path, files)
+    code, report = scanned(str(repo))
+    assert code == 1
+    stripe = finding(report, "stripe-2025-03-31-subscription-periods")
+    assert ("app/billing.py", "current_period_end") in {
+        (match["file"], match["term"]) for match in stripe["matches"]
+    }
+
+
+def test_a_move_to_another_host_names_the_new_host(tmp_path: Path) -> None:
+    chat = (
+        'import requests\n\nURL = "https://api-inference.huggingface.co/v1/chat/completions"\n'
+        "\n\ndef ask(question):\n"
+        '    return requests.post(URL, json={"messages": [question]}).json()\n'
+    )
+    repo, _ = make_repo(tmp_path, {"app/chat.py": chat})
+    code, report = scanned(str(repo))
+    assert code == 1
+    found = finding(report, "huggingface-serverless-inference-api-retired")
+    assert found["matches"][0]["detail"] == (
+        "removed; moved to POST router.huggingface.co/v1/chat/completions"
+    )
