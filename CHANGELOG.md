@@ -8,6 +8,8 @@ a minor release may include breaking changes.
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-10-30
+
 ### Added
 
 - Notices can say who a change affects, with `applies_to` on the notice or on one change,
