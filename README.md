@@ -207,11 +207,13 @@ type-checks against Stripe's SDK. Tiltmeter fixed it and 14 others we checked by
 the pull requests are open: [the fix for Stripe's sample](https://github.com/stripe-samples/subscription-use-cases/pull/1229).
 
 Since then Tiltmeter has opened 84 pull requests for changes at Stripe, Jira, Spotify, OpenAI,
-Anthropic, Groq, Slack, OpenWeatherMap, Hugging Face and HubSpot. So far 11 have been merged, each
-as Tiltmeter wrote it, and 5 were closed: aicommits landed the same fix in its own commit,
-anything-llm asks for a linked issue first, and three touched code their projects no longer use.
-[Serenity BDD](https://github.com/serenity-bdd/serenity-core/pull/3756) and
-[AiSOC](https://github.com/beenuar/AiSOC/pull/1524) moved their Jira calls off
+Anthropic, Groq, Slack, OpenWeatherMap, Hugging Face and HubSpot. So far 13 have been merged, each
+as Tiltmeter wrote it, and 6 were closed: aicommits landed the same fix in its own commit,
+anything-llm asks for a linked issue first, three touched code their projects no longer use, and
+PraisonAI kept Groq's models because enterprise contracts still have them.
+[Serenity BDD](https://github.com/serenity-bdd/serenity-core/pull/3756),
+[AiSOC](https://github.com/beenuar/AiSOC/pull/1524) and
+[utopia](https://github.com/deeplethe/utopia/pull/1453) moved their Jira calls off
 `/rest/api/3/search`, an endpoint Jira Cloud removed.
 [ruflo](https://github.com/ruvnet/ruflo/pull/4512),
 [radare2's r2ai](https://github.com/radareorg/r2ai/pull/249),
@@ -225,8 +227,9 @@ down, and [aicommits](https://github.com/Nutlope/aicommits/commit/98e9c4e4ea0250
 made the same change in its own commit.
 [Share-The-Link](https://github.com/Joseyosei/Share-The-Link/pull/112) reads subscription periods
 from subscription items, as Stripe's API has required since 2025-03-31.
-[Tencent's AI-Infra-Guard](https://github.com/Tencent/AI-Infra-Guard/pull/728) moved its
-Hugging Face preset off `api-inference.huggingface.co`, which no longer resolves. The
+[Tencent's AI-Infra-Guard](https://github.com/Tencent/AI-Infra-Guard/pull/728) and SciSharp's
+[BotSharp](https://github.com/SciSharp/BotSharp/pull/1464) moved their Hugging Face calls off
+`api-inference.huggingface.co`, which no longer resolves. The
 [migration tracker](https://tiltmeter.dev/migrations/) shows every pull request and its status, by
 provider.
 
