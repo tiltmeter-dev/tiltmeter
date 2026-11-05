@@ -207,13 +207,19 @@ type-checks against Stripe's SDK. Tiltmeter fixed it and 14 others we checked by
 the pull requests are open: [the fix for Stripe's sample](https://github.com/stripe-samples/subscription-use-cases/pull/1229).
 
 Since then Tiltmeter has opened 84 pull requests for changes at Stripe, Jira, Spotify, OpenAI,
-Anthropic, Groq, Slack, OpenWeatherMap, Hugging Face and HubSpot. So far 13 have been merged, each
-as Tiltmeter wrote it, and 6 were closed: aicommits landed the same fix in its own commit,
-anything-llm asks for a linked issue first, three touched code their projects no longer use, and
-PraisonAI kept Groq's models because enterprise contracts still have them.
+Anthropic, Groq, Slack, OpenWeatherMap, Hugging Face and HubSpot. So far 18 have landed: 15 were
+merged as Tiltmeter wrote them, and 3 were adopted by maintainers who landed the fix themselves.
+[inbox-zero](https://github.com/elie222/inbox-zero/pull/4406) and
+[QOwnNotes](https://github.com/pbek/QOwnNotes/commit/03e9ed23e3976d67a5728fd8ea8ba65ebed92499)
+carried Tiltmeter's commit into changes of their own, and
+[aicommits](https://github.com/Nutlope/aicommits/commit/98e9c4e4ea025053d4ede2ed4ee08aed9b7e0419)
+made the same change in its own commit. OpenMetadata picked up Tiltmeter's commit in
+[its own pull request](https://github.com/open-metadata/OpenMetadata/pull/37039) for its 2.1
+release, still open.
 [Serenity BDD](https://github.com/serenity-bdd/serenity-core/pull/3756),
-[AiSOC](https://github.com/beenuar/AiSOC/pull/1524) and
-[utopia](https://github.com/deeplethe/utopia/pull/1453) moved their Jira calls off
+[AiSOC](https://github.com/beenuar/AiSOC/pull/1524),
+[utopia](https://github.com/deeplethe/utopia/pull/1453) and KodeRover's
+[zadig](https://github.com/koderover/zadig/pull/5049) moved their Jira calls off
 `/rest/api/3/search`, an endpoint Jira Cloud removed.
 [ruflo](https://github.com/ruvnet/ruflo/pull/4512),
 [radare2's r2ai](https://github.com/radareorg/r2ai/pull/249),
@@ -223,15 +229,16 @@ PraisonAI kept Groq's models because enterprise contracts still have them.
 defaults off Claude models Anthropic has retired.
 [Harvard's Machine Learning Systems book](https://github.com/harvard-edge/cs249r_book/pull/2163)
 and [KindleEar](https://github.com/cdhigh/KindleEar/pull/747) moved off the Groq models Groq shut
-down, and [aicommits](https://github.com/Nutlope/aicommits/commit/98e9c4e4ea025053d4ede2ed4ee08aed9b7e0419)
-made the same change in its own commit.
-[Share-The-Link](https://github.com/Joseyosei/Share-The-Link/pull/112) reads subscription periods
-from subscription items, as Stripe's API has required since 2025-03-31.
+down. [Share-The-Link](https://github.com/Joseyosei/Share-The-Link/pull/112) and
+[nestjs-saas-starter](https://github.com/DahboorSa/nestjs-saas-starter/pull/1) read subscription
+periods from subscription items, as Stripe's API has required since 2025-03-31.
 [Tencent's AI-Infra-Guard](https://github.com/Tencent/AI-Infra-Guard/pull/728) and SciSharp's
 [BotSharp](https://github.com/SciSharp/BotSharp/pull/1464) moved their Hugging Face calls off
-`api-inference.huggingface.co`, which no longer resolves. The
-[migration tracker](https://tiltmeter.dev/migrations/) shows every pull request and its status, by
-provider.
+`api-inference.huggingface.co`, which no longer resolves. Six were closed: anything-llm asks for
+a linked issue first, three touched code their projects no longer use, PraisonAI kept Groq's
+models because enterprise contracts still have them, and Irene Voice Assistant gave no reason.
+One repository was deleted. The [migration tracker](https://tiltmeter.dev/migrations/) shows
+every pull request and its status, by provider.
 
 Subscribe with a few lines of `tiltmeter.yaml`; the [notices guide](docs/notices.md)
 covers both sides.
