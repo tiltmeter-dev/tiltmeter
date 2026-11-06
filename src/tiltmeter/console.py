@@ -62,7 +62,7 @@ def _outcome(result: CheckResult) -> tuple[str, str, str]:
         case "baseline":
             return "●", "blue", "baseline recorded (first check)"
         case _:
-            return "✓", "green", "no drift"
+            return "✓", "green", "no new drift"
 
 
 def result_line(result: CheckResult, *, show_id: bool = False) -> Text:
@@ -154,6 +154,14 @@ def render_results(console: Console, results: Sequence[CheckResult]) -> None:
     for result in results:
         render_result(console, result)
     console.print(summary_line(results))
+    if results and all(result.outcome == "clean" for result in results):
+        console.print(
+            Text(
+                "No new changes were detected. Use `tiltmeter history <endpoint>` and "
+                "`tiltmeter show <id>` to review earlier checks.",
+                style="dim",
+            )
+        )
 
 
 def history_table(checks: Sequence[CheckResult]) -> Table:
@@ -568,6 +576,11 @@ def scan_summary(report: ScanReport, *, show_all: bool = False) -> Text:
                 "--all shows where.",
                 style="dim",
             )
+        text.append(
+            " To monitor your own API, run `tiltmeter init`, review its example endpoint, "
+            "then run `tiltmeter check`.",
+            style="dim",
+        )
         return text
     lines = sum(finding.count for finding in report.affected)
     files = {match.file for finding in report.affected for match in finding.matches}
@@ -604,6 +617,14 @@ def render_scan(
         name = problem.id or "(no id)"
         console.print(Text.assemble(("✗ ", "red"), name, (f"  rejected: {problem.problem}", "red")))
     console.print(scan_summary(report, show_all=show_all), soft_wrap=True)
+    if not report.affected and report.bundled and not report.error:
+        console.print(
+            Text(
+                "This checks for known changes in Tiltmeter's catalog; it does not check "
+                "whether your APIs are covered.",
+                style="dim",
+            )
+        )
     if report.affected and not report.git:
         note = f"note: {report.path} is not a git checkout, and tiltmeter fix needs one"
         console.print(Text(note, style="dim"))

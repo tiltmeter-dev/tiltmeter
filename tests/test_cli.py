@@ -152,6 +152,13 @@ def test_check_exit_codes_and_output(tmp_path: Path) -> None:
     [payload] = json.loads(as_json.output)
     assert payload["outcome"] == "clean"
 
+    clean = invoke("check", "-c", str(config), "--no-llm")
+    assert clean.exit_code == 0
+    assert "no new drift" in flat(clean.output)
+    assert "No new changes were detected" in flat(clean.output)
+    assert "tiltmeter history <endpoint>" in flat(clean.output)
+    assert "tiltmeter show <id>" in flat(clean.output)
+
     route.respond(503)
     failed = invoke("check", "-c", str(config), "-e", "items")
     assert failed.exit_code == 2  # 200 -> 503 is a breaking status change

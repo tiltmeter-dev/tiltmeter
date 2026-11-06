@@ -366,7 +366,8 @@ endpoints:
 
 # Everything after the endpoints; `tiltmeter init --from-har` reuses it.
 EXAMPLE_SETTINGS = """\
-# Explanations written by Claude when drift is detected (needs ANTHROPIC_API_KEY).
+# Optional: explanations written by Claude when drift is detected. Without the key,
+# checks still run and the explanation is skipped.
 llm:
   enabled: true
   model: claude-haiku-5-5

@@ -23,6 +23,12 @@ The catalog's entries are drafted by Tiltmeter from each provider's public docum
 Nothing is recorded, no agent runs, and the bundled catalog is read from the installed
 package, so nothing is fetched or sent anywhere.
 
+When there are no matches, the summary says how many catalog entries and files it checked.
+That means no known catalog change was found in the scanned code; it does not mean that
+your APIs are covered or that no unlisted API changes exist. To monitor an API you own, run
+`tiltmeter init`, review or replace its example endpoint, then run `tiltmeter check` to
+record the first baseline.
+
 - [What the catalog holds](#what-the-catalog-holds)
 - [Reading the output](#reading-the-output)
 - [Options and exit codes](#options-and-exit-codes)

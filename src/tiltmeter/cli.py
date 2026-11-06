@@ -2,7 +2,7 @@
 
 Exit codes, so CI can gate on drift:
 
-* 0: no drift (info-only changes and new baselines included)
+* 0: no new drift (info-only changes and new baselines included)
 * 1: warning-level drift
 * 2: breaking drift
 * 3: a check could not run (network error, bad status, invalid JSON) and nothing broke
@@ -227,7 +227,11 @@ def init(
         _report_import(imported)
     _ignore_state_dir(path)
     if imported is None:
-        out.print("Next: edit the endpoints, then run [bold]tiltmeter check[/].")
+        out.print(
+            "Next: review the example endpoint (edit it for your API if needed), "
+            "then run [bold]tiltmeter check[/]. Explanations are optional; set "
+            "ANTHROPIC_API_KEY to enable them."
+        )
         return
     if imported.variables:
         out.print("Credentials were replaced by placeholders. Set these before checking:")

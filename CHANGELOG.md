@@ -10,6 +10,10 @@ a minor release may include breaking changes.
 
 ### Changed
 
+- A clean `tiltmeter scan` result now explains that it checked the known-change catalog,
+  not API coverage, and suggests starting a baseline with `tiltmeter init` and
+  `tiltmeter check`. Clean checks say `no new drift` and point to history for earlier events.
+
 - `tiltmeter fix --notice` and `notices apply` list only the changes in the notice that the
   repository uses, with a count of the others, instead of every change in the notice.
 
