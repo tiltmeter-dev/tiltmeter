@@ -116,6 +116,8 @@ def test_scan_of_code_with_nothing_to_change_exits_0(tmp_path: Path) -> None:
     outcome = invoke("scan", str(repo))
     assert outcome.exit_code == 0, outcome.output
     assert f"No known API change affects {repo}: 10 catalog entries checked" in flat(outcome.output)
+    assert "To monitor your own API" in flat(outcome.output)
+    assert "does not check whether your APIs are covered" in flat(outcome.output)
 
 
 def test_mentions_in_docs_comments_and_tests_do_not_count(tmp_path: Path) -> None:

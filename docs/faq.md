@@ -7,11 +7,13 @@
 Yes. The first successful check of an endpoint has nothing to compare against, so it
 records the shape and stops. Drift can only show up from the second check on.
 
-### I changed the API and the second check after that says "no drift"
+### I changed the API and the second check after that says "no new drift"
 
 That is intended: each change is reported by the check that sees it, then it becomes part
-of the baseline. See [report once](how-it-works.md#report-once). In CI, it also means you
-must keep `.tiltmeter/` between runs; the [CI guide](ci.md) shows how.
+of the baseline. This does not tell Tiltmeter whether your code has been migrated. Use
+`tiltmeter history <endpoint>` to find the earlier check, then `tiltmeter show <id>` to
+review it. See [report once](how-it-works.md#report-once). In CI, keep `.tiltmeter/`
+between runs; the [CI guide](ci.md) shows how.
 
 ### How do I start over?
 

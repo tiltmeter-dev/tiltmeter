@@ -61,8 +61,9 @@ tiltmeter check
 ```console
 ● billing_customers  200 · 4 ms  baseline recorded (first check)
 1 endpoint checked · 1 baseline
-✓ billing_customers  200 · 2 ms  no drift
+✓ billing_customers  200 · 2 ms  no new drift
 1 endpoint checked
+No new changes were detected. Use `tiltmeter history <endpoint>` and `tiltmeter show <id>` to review earlier checks.
 ```
 
 The first check has nothing to compare against, so it only learns the shape. The second
@@ -97,8 +98,10 @@ exit code: 2
 ```
 
 Exit code 2 means breaking drift, which is what fails a CI job. Run `tiltmeter check`
-once more and it reports `no drift`: each change is reported once, then it becomes part of
-the baseline.
+once more and it reports `no new drift`: each change is reported once, then it becomes part
+of the baseline. This says nothing about whether your code has been migrated. Use
+`tiltmeter history billing_customers` to find the earlier check and `tiltmeter show <id>` to
+review it.
 
 ## 6. Look around
 

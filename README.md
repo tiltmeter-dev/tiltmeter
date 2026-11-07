@@ -266,7 +266,7 @@ model), both breaking.
 
 | Exit code | Meaning |
 |---|---|
-| 0 | No drift. Info-only changes and new baselines count as no drift. |
+| 0 | No new drift. Info-only changes and new baselines also exit 0. |
 | 1 | Warning-level drift. |
 | 2 | Breaking drift. |
 | 3 | A check could not run (network error, unexpected status, invalid JSON) and nothing broke. |
@@ -289,7 +289,7 @@ ready-to-copy jobs for GitHub Actions, GitLab CI and cron.
 
 | Command | What it does |
 |---|---|
-| `tiltmeter scan [PATH]` | Finds code that still uses known API changes that already shipped. No config needed. |
+| `tiltmeter scan [PATH]` | Searches code for known API changes that already shipped; a clean result describes the catalog checked and how to start monitoring your own API. No config needed. |
 | `tiltmeter init` | Writes `tiltmeter.yaml`, from an example or a browser's HAR export (`--from-har`). |
 | `tiltmeter check` | Calls every endpoint once and reports drift. |
 | `tiltmeter watch` | Checks on an interval until stopped. |
