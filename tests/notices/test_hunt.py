@@ -192,6 +192,25 @@ def test_a_notice_code_need_not_follow_builds_no_query() -> None:
     assert asked(notice(endpoints=[added, too_long], sdks=[])) == []
 
 
+def test_the_sdk_methods_of_a_removed_endpoint_are_searched_next_to_their_sdk() -> None:
+    upload = {
+        **removed(f"https://{PROVIDER}/api/files.upload"),
+        "sdk_calls": [
+            {"ecosystem": "pypi", "name": "billing-sdk", "call": "files_upload"},
+            {"ecosystem": "npm", "name": "@billing/web-api", "call": "files.upload"},
+            {"ecosystem": "npm", "name": "@billing/web-api", "call": "files.upload"},
+        ],
+    }
+    built = build_queries(parse_notice(notice(endpoints=[upload], sdks=[])))
+    assert [(query.kind, query.term, query.q) for query in built] == [
+        ("endpoint", "/api/files.upload", f'"/api/files.upload" "{PROVIDER}"'),
+        ("call", "files_upload", '"files_upload" "billing-sdk"'),
+        ("call", "files.upload", '"files.upload" "@billing/web-api"'),
+    ]
+    slack = next(item for item in bundled_feed() if item["id"] == "slack-files-upload-sunset")
+    assert '"files_upload" "slack-sdk"' in asked(slack)
+
+
 def test_every_catalog_entry_builds_queries_github_accepts() -> None:
     for item in bundled_feed():
         built = build_queries(parse_notice(item))

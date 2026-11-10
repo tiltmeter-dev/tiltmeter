@@ -72,6 +72,7 @@ The queries come from the notice, the surest sign first:
 |---|---|---|
 | retires a value (`value_retired`) | The value, quoted. | `"llama3-8b-8192"` |
 | removes an endpoint (`endpoint_removed`) | The parts of its path that code spells: what lies between its parameters, without a leading version such as `/v1`, which often lives in a base URL. Unless one part has four segments or more, and so is no other API's, the provider's domain goes with them. For an endpoint that moved to another host, the old host does. | `"/rest/api/3/search"`<br>`"/playlists" "/tracks" "api.spotify.com"`<br>`"/models" "api-inference.huggingface.co"` |
+| names the SDK methods that reach a removed endpoint (`sdk_calls`) | Each method next to the package that has it. | `"files_upload" "slack-sdk"`<br>`"files.upload" "@slack/web-api"` |
 | changes a field (removed or renamed, another type, now nullable or optional, new values) | The old field name next to the provider's domain, and once more next to each SDK the notice names whose imports spell the package: PyPI, npm, Go, RubyGems and Cargo ones. | `"current_period_end" "api.stripe.com"`<br>`"current_period_end" "stripe"` |
 
 The fields of an endpoint that is also removed are not searched: its path says more. A

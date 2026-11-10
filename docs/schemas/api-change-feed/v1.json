@@ -293,6 +293,15 @@
           "minItems": 1,
           "title": "Changes",
           "type": "array"
+        },
+        "sdk_calls": {
+          "description": "How the provider's SDKs name the call that reaches this endpoint, for code that goes through an SDK and never spells the URL.",
+          "items": {
+            "$ref": "#/$defs/SdkCall"
+          },
+          "maxItems": 50,
+          "title": "Sdk Calls",
+          "type": "array"
         }
       },
       "required": [
@@ -332,6 +341,35 @@
         "value"
       ],
       "title": "NoticeSignature",
+      "type": "object"
+    },
+    "SdkCall": {
+      "additionalProperties": false,
+      "description": "The method of one of the provider's SDKs that reaches an endpoint.",
+      "properties": {
+        "ecosystem": {
+          "$ref": "#/$defs/Ecosystem"
+        },
+        "name": {
+          "maxLength": 214,
+          "pattern": "^[A-Za-z0-9@][A-Za-z0-9@/:._\\-]*$",
+          "title": "Name",
+          "type": "string"
+        },
+        "call": {
+          "description": "The method as code writes it after the client: files_upload, files.upload or UploadFile.",
+          "maxLength": 100,
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z_][A-Za-z0-9_]*){0,5}$",
+          "title": "Call",
+          "type": "string"
+        }
+      },
+      "required": [
+        "ecosystem",
+        "name",
+        "call"
+      ],
+      "title": "SdkCall",
       "type": "object"
     },
     "SdkRelease": {

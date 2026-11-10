@@ -243,6 +243,10 @@ view:
   it or with one on the provider's domain, other than the host it moved to: OpenAI's
   `/v1/chat/completions` is not Hugging Face's. When an endpoint moved to the same path on
   another host, as Hugging Face's did, only code that still names the old host calls it.
+- **Methods whole.** A method an entry names for a removed endpoint counts after an
+  accessor and before its arguments, in a file that imports its SDK:
+  `client.files_upload(` and `web?.files?.upload(` do, `files_upload_v2(` and a
+  `files_upload` in a file that imports another library do not.
 
 ## Blind spots
 
@@ -261,9 +265,17 @@ The search reads text; it does not run or parse your code. Known gaps:
 - **A removed endpoint counts by its call.** When an entry removes an endpoint and also
   renames fields of its response, code that calls the endpoint is affected whether or not
   it reads those fields: the call is what stops working.
-- **Calls through an SDK.** A removed endpoint is found where code spells its path, or
-  calls it through an SDK in the usual `resource.verb(` form. A method the notice never
-  names, such as Slack's `files_upload` in the Python SDK, is not.
+- **Calls through an SDK.** A removed endpoint is found where code spells its path, calls
+  it through an SDK in the usual `resource.verb(` form, or calls a method the entry names
+  for it (`sdk_calls`): Slack's entry names `files_upload` in the Python SDK,
+  `files.upload` in the Node one, `UploadFile` in Go, `filesUpload` in Java and
+  `files_upload` in Ruby. A named method counts only in a file that imports that SDK, so
+  another library's method of the same name does not, and neither does
+  `files_upload_v2`. For Java, where an import names a class and not the package, the
+  `pom.xml` or `build.gradle` that lists the SDK stands for the import. Not seen: a file
+  that gets its client from another file and imports nothing from the SDK, a call spread
+  over several lines when the scan lists lines (the file still counts), a method reached
+  through a wrapper of your own, and Slack's `api_call("files.upload")`.
 - **Versions and plans.** The scan lists the API versions your code pins, but cannot tell
   which Stripe API version your account defaults to, whether a Spotify app has extended
   quota, or which Groq tier a key is on. A release set outside the folder, such as a
@@ -289,7 +301,9 @@ The catalog is meant to grow. To add a change that already shipped:
    whose first sentence says what changed in a few words (the scan shows it as the
    headline), and `note`s of at most 500 that say what the replacement needs. When a
    change applies to some customers only, such as one plan or one deployment, say who in
-   `applies_to`, on the entry or on that change. Name your source.
+   `applies_to`, on the entry or on that change. Name your source. When an endpoint is
+   removed and the provider's SDKs still have a method that calls it, list each one under
+   the endpoint's [`sdk_calls`](notice-spec.md#sdk-calls): code on an SDK spells no URL.
 3. End the summary with the sentence `Drafted by Tiltmeter from <Provider>'s public
    documentation; not signed or endorsed by <Provider>.` Never sign an entry.
 4. Add it with `uv run python scripts/catalog.py notice.json`, which validates it, refuses

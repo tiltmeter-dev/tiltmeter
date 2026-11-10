@@ -193,3 +193,63 @@ def test_applies_to_says_who_a_change_affects() -> None:
     for text in ("", "Free\x1b[31m keys", "Free \u202ekeys"):
         with pytest.raises(ValidationError):
             ApiChangeNotice.model_validate(with_change(applies_to=text))
+
+
+def with_calls(*calls: Any) -> dict[str, Any]:
+    raw = with_change(path="$", kind="endpoint_removed")
+    raw["endpoints"][0]["sdk_calls"] = list(calls)
+    return raw
+
+
+def test_an_endpoint_names_the_sdk_methods_that_reach_it() -> None:
+    calls = [
+        {"ecosystem": "pypi", "name": "billing-sdk", "call": "files_upload"},
+        {"ecosystem": "npm", "name": "@billing/web-api", "call": "files.upload"},
+        {"ecosystem": "go", "name": "github.com/billing/billing-go", "call": "UploadFile"},
+    ]
+    model = ApiChangeNotice.model_validate(with_calls(*calls))
+    assert [call.call for call in model.endpoints[0].sdk_calls] == [
+        "files_upload",
+        "files.upload",
+        "UploadFile",
+    ]
+    # A notice without any stays as it was, so older readers still take it.
+    assert ApiChangeNotice.model_validate(notice()).endpoints[0].sdk_calls == []
+    assert "sdk_calls" not in json.dumps(notice())
+
+
+@pytest.mark.parametrize(
+    "call",
+    [
+        "",
+        "files upload",
+        "files_upload()",
+        "files..upload",
+        ".upload",
+        "upload.",
+        "1upload",
+        "files->upload",
+        "a.b.c.d.e.f.g",
+        "files_upload\n",
+        "x" * 101,
+        "fi`les",
+    ],
+)
+def test_a_call_is_a_method_name_and_nothing_else(call: str) -> None:
+    named = {"ecosystem": "pypi", "name": "billing-sdk", "call": call}
+    with pytest.raises(ValidationError):
+        ApiChangeNotice.model_validate(with_calls(named))
+
+
+def test_sdk_calls_are_checked_like_the_rest_of_a_notice() -> None:
+    call = {"ecosystem": "pypi", "name": "billing-sdk", "call": "files_upload"}
+    for bad in (
+        {**call, "ecosystem": "pip"},
+        {**call, "name": "billing sdk"},
+        {**call, "fixed_in": "3.0.0"},
+        {"ecosystem": "pypi", "name": "billing-sdk"},
+    ):
+        with pytest.raises(ValidationError):
+            ApiChangeNotice.model_validate(with_calls(bad))
+    with pytest.raises(ValidationError):
+        ApiChangeNotice.model_validate(with_calls(*[call] * 51))

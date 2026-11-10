@@ -37,6 +37,7 @@ MAX_VALUE: Final = 200
 MAX_ENDPOINTS: Final = 50
 MAX_CHANGES: Final = 200
 MAX_SDKS: Final = 20
+MAX_SDK_CALLS: Final = 50
 MAX_FEED_NOTICES: Final = 500
 
 # No control characters and no bidirectional overrides, which could hide text in a
@@ -173,17 +174,38 @@ class NoticeChange(_Strict):
         return self
 
 
-class NoticeEndpoint(_Address):
-    """An endpoint whose responses, or what its requests may send, change, and how."""
-
-    changes: list[NoticeChange] = Field(min_length=1, max_length=MAX_CHANGES)
-
-
 class SdkName(_Strict):
     """A package of the provider's SDK, in one ecosystem."""
 
     ecosystem: Ecosystem
     name: str = Field(max_length=214, pattern=r"^[A-Za-z0-9@][A-Za-z0-9@/:._\-]*$")
+
+
+class SdkCall(SdkName):
+    """The method of one of the provider's SDKs that reaches an endpoint."""
+
+    call: str = Field(
+        max_length=100,
+        pattern=r"^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*){0,5}$",
+        description=(
+            "The method as code writes it after the client: files_upload, files.upload or "
+            "UploadFile."
+        ),
+    )
+
+
+class NoticeEndpoint(_Address):
+    """An endpoint whose responses, or what its requests may send, change, and how."""
+
+    changes: list[NoticeChange] = Field(min_length=1, max_length=MAX_CHANGES)
+    sdk_calls: list[SdkCall] = Field(
+        default_factory=list,
+        max_length=MAX_SDK_CALLS,
+        description=(
+            "How the provider's SDKs name the call that reaches this endpoint, for code "
+            "that goes through an SDK and never spells the URL."
+        ),
+    )
 
 
 def parse_sdk_name(text: str) -> SdkName:
