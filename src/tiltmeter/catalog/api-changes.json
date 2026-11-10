@@ -3,6 +3,123 @@
   "notices": [
     {
       "spec": "https://tiltmeter.dev/schemas/api-change-notice/v1.json",
+      "id": "openai-gpt-4-series-shutdown-2027-01-14",
+      "provider": "api.openai.com",
+      "published_at": "2026-10-14T00:00:00Z",
+      "effective_at": "2027-01-14T00:00:00Z",
+      "summary": "OpenAI shuts down five GPT-4o and GPT-4.1 snapshots on January 14, 2027. Requests that name gpt-4o-2024-08-06, gpt-4o-2024-11-20, gpt-4o-mini-2024-07-18, gpt-4.1-2025-04-14 or gpt-4.1-mini-2025-04-14 will fail from then on, and so will fine-tuned versions of them. OpenAI recommends gpt-6-luna. Source: developers.openai.com/api/docs/deprecations. Drafted by Tiltmeter from OpenAI's public documentation; not signed or endorsed by OpenAI.",
+      "endpoints": [
+        {
+          "method": "POST",
+          "url": "https://api.openai.com/v1/chat/completions",
+          "changes": [
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "gpt-4o-2024-08-06",
+              "replaced_by": "gpt-6-luna",
+              "note": "Shuts down on January 14, 2027: requests with this model will fail from then on. gpt-6-luna is the replacement OpenAI's deprecations page names. The page lists this dated snapshot, not the alias without a date."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "gpt-4o-2024-11-20",
+              "replaced_by": "gpt-6-luna",
+              "note": "Shuts down on January 14, 2027: requests with this model will fail from then on. gpt-6-luna is the replacement OpenAI's deprecations page names. The page lists this dated snapshot, not the alias without a date."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "gpt-4o-mini-2024-07-18",
+              "replaced_by": "gpt-6-luna",
+              "note": "Shuts down on January 14, 2027: requests with this model will fail from then on. gpt-6-luna is the replacement OpenAI's deprecations page names. The page lists this dated snapshot, not the alias without a date."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "gpt-4.1-2025-04-14",
+              "replaced_by": "gpt-6-luna",
+              "note": "Shuts down on January 14, 2027: requests with this model will fail from then on. gpt-6-luna is the replacement OpenAI's deprecations page names. The page lists this dated snapshot, not the alias without a date."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "gpt-4.1-mini-2025-04-14",
+              "replaced_by": "gpt-6-luna",
+              "note": "Shuts down on January 14, 2027: requests with this model will fail from then on. gpt-6-luna is the replacement OpenAI's deprecations page names. The page lists this dated snapshot, not the alias without a date."
+            }
+          ]
+        },
+        {
+          "method": "POST",
+          "url": "https://api.openai.com/v1/responses",
+          "changes": [
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "gpt-4o-2024-08-06",
+              "replaced_by": "gpt-6-luna",
+              "note": "Shuts down on January 14, 2027: requests with this model will fail from then on. gpt-6-luna is the replacement OpenAI's deprecations page names. The page lists this dated snapshot, not the alias without a date."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "gpt-4o-2024-11-20",
+              "replaced_by": "gpt-6-luna",
+              "note": "Shuts down on January 14, 2027: requests with this model will fail from then on. gpt-6-luna is the replacement OpenAI's deprecations page names. The page lists this dated snapshot, not the alias without a date."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "gpt-4o-mini-2024-07-18",
+              "replaced_by": "gpt-6-luna",
+              "note": "Shuts down on January 14, 2027: requests with this model will fail from then on. gpt-6-luna is the replacement OpenAI's deprecations page names. The page lists this dated snapshot, not the alias without a date."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "gpt-4.1-2025-04-14",
+              "replaced_by": "gpt-6-luna",
+              "note": "Shuts down on January 14, 2027: requests with this model will fail from then on. gpt-6-luna is the replacement OpenAI's deprecations page names. The page lists this dated snapshot, not the alias without a date."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "gpt-4.1-mini-2025-04-14",
+              "replaced_by": "gpt-6-luna",
+              "note": "Shuts down on January 14, 2027: requests with this model will fail from then on. gpt-6-luna is the replacement OpenAI's deprecations page names. The page lists this dated snapshot, not the alias without a date."
+            }
+          ]
+        }
+      ],
+      "sdks": []
+    },
+    {
+      "spec": "https://tiltmeter.dev/schemas/api-change-notice/v1.json",
+      "id": "anthropic-claude-sonnet-4-5-retirement-2026-11-30",
+      "provider": "api.anthropic.com",
+      "published_at": "2026-09-30T00:00:00Z",
+      "effective_at": "2026-11-30T00:00:00Z",
+      "summary": "Anthropic retires Claude Sonnet 4.5 on November 30, 2026. Requests that name claude-sonnet-4-5-20250929 will fail from then on. Anthropic recommends claude-sonnet-5-5, and the change's note says what requests to it must leave out. Source: platform.claude.com model deprecations. Drafted by Tiltmeter from Anthropic's public documentation; not signed or endorsed by Anthropic.",
+      "endpoints": [
+        {
+          "method": "POST",
+          "url": "https://api.anthropic.com/v1/messages",
+          "changes": [
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "claude-sonnet-4-5-20250929",
+              "replaced_by": "claude-sonnet-5-5",
+              "note": "Retires on November 30, 2026: requests with this model will fail from then on. claude-sonnet-5-5 is Anthropic's recommended replacement. Requests to it must leave out temperature, top_p, top_k, extended thinking (budget_tokens: use adaptive thinking with output_config.effort), thinking type disabled, a prefilled final assistant turn and a forced tool_choice, or they return a 400 error. It thinks by default, so max_tokens covers thinking and answer."
+            }
+          ]
+        }
+      ],
+      "sdks": []
+    },
+    {
+      "spec": "https://tiltmeter.dev/schemas/api-change-notice/v1.json",
       "id": "hubspot-pipelines-v1-sunset",
       "provider": "api.hubapi.com",
       "published_at": "2026-09-15T00:00:00Z",
@@ -74,6 +191,85 @@
           ]
         }
       ]
+    },
+    {
+      "spec": "https://tiltmeter.dev/schemas/api-change-notice/v1.json",
+      "id": "groq-retired-models-2026-09",
+      "provider": "api.groq.com",
+      "published_at": "2026-08-24T00:00:00Z",
+      "effective_at": "2026-09-21T00:00:00Z",
+      "summary": "Groq no longer serves 8 more models, the latest on September 21, 2026. Requests that name them return an error. groq/compound and groq/compound-mini went last, after qwen/qwen3.6-27b and qwen/qwen3-32b for free and developer-tier keys, and Kimi K2, Llama Guard 4 and the PlayAI text-to-speech models before. Each change names Groq's replacement when it has one. Source: console.groq.com/docs/deprecations. Drafted by Tiltmeter from Groq's public documentation; not signed or endorsed by Groq.",
+      "endpoints": [
+        {
+          "method": "POST",
+          "url": "https://api.groq.com/openai/v1/chat/completions",
+          "changes": [
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "groq/compound",
+              "note": "Shut down on September 21, 2026: requests that name it return an error. Groq's deprecations page names no replacement."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "groq/compound-mini",
+              "note": "Shut down on September 21, 2026: requests that name it return an error. Groq's deprecations page names no replacement."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "qwen/qwen3.6-27b",
+              "replaced_by": "qwen/qwen3.8-27b",
+              "note": "Shut down on September 14, 2026: requests that name it return an error. The shutdown applies to free and developer-tier keys; Groq enterprise customers with a committed-spend contract keep the model. Groq recommends qwen/qwen3.8-27b, which it calls the direct successor, with the same context window.",
+              "applies_to": "Free and developer-tier keys. Not Groq enterprise customers with a committed-spend contract."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "qwen/qwen3-32b",
+              "replaced_by": "openai/gpt-oss-120b",
+              "note": "Shut down on July 17, 2026: requests that name it return an error. The shutdown applies to free and developer-tier keys; Groq enterprise customers with a committed-spend contract keep the model. Groq recommends openai/gpt-oss-120b. openai/gpt-oss-120b is a reasoning model: it reasons before it answers, and that reasoning counts toward the completion token limit.",
+              "applies_to": "Free and developer-tier keys. Not Groq enterprise customers with a committed-spend contract."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "moonshotai/kimi-k2-instruct-0905",
+              "replaced_by": "openai/gpt-oss-120b",
+              "note": "Shut down on April 15, 2026: requests that name it return an error. Groq recommends openai/gpt-oss-120b. openai/gpt-oss-120b is a reasoning model: it reasons before it answers, and that reasoning counts toward the completion token limit."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "meta-llama/llama-guard-4-12b",
+              "replaced_by": "openai/gpt-oss-safeguard-20b",
+              "note": "Shut down on March 5, 2026: requests that name it return an error. Groq recommends openai/gpt-oss-safeguard-20b, which follows a moderation policy you bring."
+            }
+          ]
+        },
+        {
+          "method": "POST",
+          "url": "https://api.groq.com/openai/v1/audio/speech",
+          "changes": [
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "playai-tts",
+              "replaced_by": "canopylabs/orpheus-v1-english",
+              "note": "Shut down on December 31, 2025: requests that name it return an error. Groq recommends canopylabs/orpheus-v1-english."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "playai-tts-arabic",
+              "replaced_by": "canopylabs/orpheus-arabic-saudi",
+              "note": "Shut down on December 31, 2025: requests that name it return an error. Groq recommends canopylabs/orpheus-arabic-saudi."
+            }
+          ]
+        }
+      ],
+      "sdks": []
     },
     {
       "spec": "https://tiltmeter.dev/schemas/api-change-notice/v1.json",
@@ -307,6 +503,276 @@
           ]
         }
       ]
+    },
+    {
+      "spec": "https://tiltmeter.dev/schemas/api-change-notice/v1.json",
+      "id": "openai-gpt-5-o3-shutdown-2026-12-11",
+      "provider": "api.openai.com",
+      "published_at": "2026-06-11T00:00:00Z",
+      "effective_at": "2026-12-11T00:00:00Z",
+      "summary": "OpenAI shuts down the first GPT-5 models and o3 on December 11, 2026. Requests that name gpt-5, gpt-5-mini, gpt-5-nano, gpt-5-pro, o3, o3-pro or their dated snapshots will fail from then on, and so will fine-tuned versions of them. Each change names the replacement OpenAI recommends, from the GPT-5.6 family. Source: developers.openai.com/api/docs/deprecations. Drafted by Tiltmeter from OpenAI's public documentation; not signed or endorsed by OpenAI.",
+      "endpoints": [
+        {
+          "method": "POST",
+          "url": "https://api.openai.com/v1/chat/completions",
+          "changes": [
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "gpt-5",
+              "replaced_by": "gpt-5.6-sol",
+              "note": "Shuts down on December 11, 2026: requests with this model will fail from then on. gpt-5.6-sol is the replacement OpenAI's deprecations page names."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "gpt-5-2025-08-07",
+              "replaced_by": "gpt-5.6-sol",
+              "note": "Shuts down on December 11, 2026: requests with this model will fail from then on. gpt-5.6-sol is the replacement OpenAI's deprecations page names."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "gpt-5-mini",
+              "replaced_by": "gpt-5.6-terra",
+              "note": "Shuts down on December 11, 2026: requests with this model will fail from then on. gpt-5.6-terra is the replacement OpenAI's deprecations page names."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "gpt-5-mini-2025-08-07",
+              "replaced_by": "gpt-5.6-terra",
+              "note": "Shuts down on December 11, 2026: requests with this model will fail from then on. gpt-5.6-terra is the replacement OpenAI's deprecations page names."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "gpt-5-nano",
+              "replaced_by": "gpt-5.6-luna",
+              "note": "Shuts down on December 11, 2026: requests with this model will fail from then on. gpt-5.6-luna is the replacement OpenAI's deprecations page names."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "gpt-5-nano-2025-08-07",
+              "replaced_by": "gpt-5.6-luna",
+              "note": "Shuts down on December 11, 2026: requests with this model will fail from then on. gpt-5.6-luna is the replacement OpenAI's deprecations page names."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "gpt-5-pro",
+              "replaced_by": "gpt-5.6-sol",
+              "note": "Shuts down on December 11, 2026: requests with this model will fail from then on. gpt-5.6-sol is the replacement OpenAI's deprecations page names. Send reasoning.mode pro for the same effort."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "gpt-5-pro-2025-10-06",
+              "replaced_by": "gpt-5.6-sol",
+              "note": "Shuts down on December 11, 2026: requests with this model will fail from then on. gpt-5.6-sol is the replacement OpenAI's deprecations page names. Send reasoning.mode pro for the same effort."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "o3",
+              "replaced_by": "gpt-5.6-sol",
+              "note": "Shuts down on December 11, 2026: requests with this model will fail from then on. gpt-5.6-sol is the replacement OpenAI's deprecations page names."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "o3-2025-04-16",
+              "replaced_by": "gpt-5.6-sol",
+              "note": "Shuts down on December 11, 2026: requests with this model will fail from then on. gpt-5.6-sol is the replacement OpenAI's deprecations page names."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "o3-pro",
+              "replaced_by": "gpt-5.6-sol",
+              "note": "Shuts down on December 11, 2026: requests with this model will fail from then on. gpt-5.6-sol is the replacement OpenAI's deprecations page names. Send reasoning.mode pro for the same effort."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "o3-pro-2025-06-10",
+              "replaced_by": "gpt-5.6-sol",
+              "note": "Shuts down on December 11, 2026: requests with this model will fail from then on. gpt-5.6-sol is the replacement OpenAI's deprecations page names. Send reasoning.mode pro for the same effort."
+            }
+          ]
+        },
+        {
+          "method": "POST",
+          "url": "https://api.openai.com/v1/responses",
+          "changes": [
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "gpt-5",
+              "replaced_by": "gpt-5.6-sol",
+              "note": "Shuts down on December 11, 2026: requests with this model will fail from then on. gpt-5.6-sol is the replacement OpenAI's deprecations page names."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "gpt-5-2025-08-07",
+              "replaced_by": "gpt-5.6-sol",
+              "note": "Shuts down on December 11, 2026: requests with this model will fail from then on. gpt-5.6-sol is the replacement OpenAI's deprecations page names."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "gpt-5-mini",
+              "replaced_by": "gpt-5.6-terra",
+              "note": "Shuts down on December 11, 2026: requests with this model will fail from then on. gpt-5.6-terra is the replacement OpenAI's deprecations page names."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "gpt-5-mini-2025-08-07",
+              "replaced_by": "gpt-5.6-terra",
+              "note": "Shuts down on December 11, 2026: requests with this model will fail from then on. gpt-5.6-terra is the replacement OpenAI's deprecations page names."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "gpt-5-nano",
+              "replaced_by": "gpt-5.6-luna",
+              "note": "Shuts down on December 11, 2026: requests with this model will fail from then on. gpt-5.6-luna is the replacement OpenAI's deprecations page names."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "gpt-5-nano-2025-08-07",
+              "replaced_by": "gpt-5.6-luna",
+              "note": "Shuts down on December 11, 2026: requests with this model will fail from then on. gpt-5.6-luna is the replacement OpenAI's deprecations page names."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "gpt-5-pro",
+              "replaced_by": "gpt-5.6-sol",
+              "note": "Shuts down on December 11, 2026: requests with this model will fail from then on. gpt-5.6-sol is the replacement OpenAI's deprecations page names. Send reasoning.mode pro for the same effort."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "gpt-5-pro-2025-10-06",
+              "replaced_by": "gpt-5.6-sol",
+              "note": "Shuts down on December 11, 2026: requests with this model will fail from then on. gpt-5.6-sol is the replacement OpenAI's deprecations page names. Send reasoning.mode pro for the same effort."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "o3",
+              "replaced_by": "gpt-5.6-sol",
+              "note": "Shuts down on December 11, 2026: requests with this model will fail from then on. gpt-5.6-sol is the replacement OpenAI's deprecations page names."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "o3-2025-04-16",
+              "replaced_by": "gpt-5.6-sol",
+              "note": "Shuts down on December 11, 2026: requests with this model will fail from then on. gpt-5.6-sol is the replacement OpenAI's deprecations page names."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "o3-pro",
+              "replaced_by": "gpt-5.6-sol",
+              "note": "Shuts down on December 11, 2026: requests with this model will fail from then on. gpt-5.6-sol is the replacement OpenAI's deprecations page names. Send reasoning.mode pro for the same effort."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "o3-pro-2025-06-10",
+              "replaced_by": "gpt-5.6-sol",
+              "note": "Shuts down on December 11, 2026: requests with this model will fail from then on. gpt-5.6-sol is the replacement OpenAI's deprecations page names. Send reasoning.mode pro for the same effort."
+            }
+          ]
+        }
+      ],
+      "sdks": []
+    },
+    {
+      "spec": "https://tiltmeter.dev/schemas/api-change-notice/v1.json",
+      "id": "openai-gpt-image-shutdown-2026-12-01",
+      "provider": "api.openai.com",
+      "published_at": "2026-06-02T00:00:00Z",
+      "effective_at": "2026-12-01T00:00:00Z",
+      "summary": "OpenAI shuts down four GPT Image models on December 1, 2026. Requests that name gpt-image-1.5, its snapshot gpt-image-1.5-2025-12-16, gpt-image-1-mini or chatgpt-image-latest will fail from then on. OpenAI recommends gpt-image-2.6-sunburst or gpt-image-2.6-flare. Source: developers.openai.com/api/docs/deprecations. Drafted by Tiltmeter from OpenAI's public documentation; not signed or endorsed by OpenAI.",
+      "endpoints": [
+        {
+          "method": "POST",
+          "url": "https://api.openai.com/v1/images/generations",
+          "changes": [
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "gpt-image-1.5",
+              "replaced_by": "gpt-image-2.6-sunburst",
+              "note": "Shuts down on December 1, 2026: requests with this model will fail from then on. OpenAI's deprecations page names gpt-image-2.6-sunburst or gpt-image-2.6-flare as the replacement."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "gpt-image-1.5-2025-12-16",
+              "replaced_by": "gpt-image-2.6-sunburst",
+              "note": "Shuts down on December 1, 2026: requests with this model will fail from then on. OpenAI's deprecations page names gpt-image-2.6-sunburst or gpt-image-2.6-flare as the replacement."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "gpt-image-1-mini",
+              "replaced_by": "gpt-image-2.6-sunburst",
+              "note": "Shuts down on December 1, 2026: requests with this model will fail from then on. OpenAI's deprecations page names gpt-image-2.6-sunburst or gpt-image-2.6-flare as the replacement."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "chatgpt-image-latest",
+              "replaced_by": "gpt-image-2.6-sunburst",
+              "note": "Shuts down on December 1, 2026: requests with this model will fail from then on. OpenAI's deprecations page names gpt-image-2.6-sunburst or gpt-image-2.6-flare as the replacement."
+            }
+          ]
+        },
+        {
+          "method": "POST",
+          "url": "https://api.openai.com/v1/images/edits",
+          "changes": [
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "gpt-image-1.5",
+              "replaced_by": "gpt-image-2.6-sunburst",
+              "note": "Shuts down on December 1, 2026: requests with this model will fail from then on. OpenAI's deprecations page names gpt-image-2.6-sunburst or gpt-image-2.6-flare as the replacement."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "gpt-image-1.5-2025-12-16",
+              "replaced_by": "gpt-image-2.6-sunburst",
+              "note": "Shuts down on December 1, 2026: requests with this model will fail from then on. OpenAI's deprecations page names gpt-image-2.6-sunburst or gpt-image-2.6-flare as the replacement."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "gpt-image-1-mini",
+              "replaced_by": "gpt-image-2.6-sunburst",
+              "note": "Shuts down on December 1, 2026: requests with this model will fail from then on. OpenAI's deprecations page names gpt-image-2.6-sunburst or gpt-image-2.6-flare as the replacement."
+            },
+            {
+              "path": "$.model",
+              "kind": "value_retired",
+              "before": "chatgpt-image-latest",
+              "replaced_by": "gpt-image-2.6-sunburst",
+              "note": "Shuts down on December 1, 2026: requests with this model will fail from then on. OpenAI's deprecations page names gpt-image-2.6-sunburst or gpt-image-2.6-flare as the replacement."
+            }
+          ]
+        }
+      ],
+      "sdks": []
     },
     {
       "spec": "https://tiltmeter.dev/schemas/api-change-notice/v1.json",

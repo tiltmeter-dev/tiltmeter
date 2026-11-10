@@ -16,7 +16,7 @@ $ uvx tiltmeter scan
         groq: { fast: 'llama-3.1-8b-instant', smart: 'llama-3.3-70b-versatile' },
     fix: tiltmeter fix --notice groq-retired-models-2026-08 --allow-unsigned --repo .
 
-1 of 10 known API changes affects .: 2 lines in 2 files.
+1 of 15 known API changes affects .: 2 lines in 2 files.
 The catalog's entries are drafted by Tiltmeter from each provider's public documentation; no provider signed or endorsed them.
 ```
 
@@ -48,9 +48,14 @@ endorsed by its provider**, and the output marks every one as unsigned.
 
 | Entry | Provider | What changed | In effect |
 |---|---|---|---|
+| `anthropic-claude-sonnet-4-5-retirement-2026-11-30` | api.anthropic.com | Claude Sonnet 4.5 (`claude-sonnet-4-5-20250929`) retires. | 2026-11-30 |
+| `openai-gpt-image-shutdown-2026-12-01` | api.openai.com | `gpt-image-1.5`, `gpt-image-1-mini` and `chatgpt-image-latest` shut down. | 2026-12-01 |
+| `openai-gpt-5-o3-shutdown-2026-12-11` | api.openai.com | `gpt-5`, `gpt-5-mini`, `gpt-5-nano`, `gpt-5-pro`, `o3`, `o3-pro` and their snapshots shut down. | 2026-12-11 |
+| `openai-gpt-4-series-shutdown-2027-01-14` | api.openai.com | Five dated GPT-4o, GPT-4o mini, GPT-4.1 and GPT-4.1 mini snapshots shut down. | 2027-01-14 |
 | `hubspot-pipelines-v1-sunset` | api.hubapi.com | The Pipelines API v1 is sunset; v3 renames `pipelineId`, `stageId` and `active` and returns dates as strings. | 2026-12-04 |
 | `anthropic-retired-models-2026-10-27` | api.anthropic.com | 12 retired Claude model versions, from Claude 2.0 to Claude Opus 4.1. | 2026-08-05 |
 | `groq-retired-models-2026-08` | api.groq.com | 16 models Groq no longer serves, Llama, Mixtral, Gemma, DeepSeek and Qwen ones. | 2026-08-16 |
+| `groq-retired-models-2026-09` | api.groq.com | 8 more models Groq no longer serves: Compound, Qwen 3 and 3.6, Kimi K2, Llama Guard 4 and PlayAI text to speech. | 2026-09-21 |
 | `openai-retired-models-2026-10-23` | api.openai.com | 36 retired GPT-3.5, GPT-4, o1, o3-mini, o4-mini, davinci and DALL-E models. | 2026-10-23 |
 | `spotify-2026-02-development-mode` | api.spotify.com | Web API endpoints and fields gone or moved for Development Mode apps. | 2026-03-09 |
 | `huggingface-serverless-inference-api-retired` | huggingface.co | The serverless Inference API at `api-inference.huggingface.co`, replaced by `router.huggingface.co`. | 2025-07-01 |
@@ -59,10 +64,11 @@ endorsed by its provider**, and the output marks every one as unsigned.
 | `openweathermap-one-call-2-5-closed` | api.openweathermap.org | One Call API 2.5, replaced by 3.0. | June 2024 |
 | `slack-files-upload-sunset` | slack.com | `files.upload`, replaced by a three-step upload. | 2025-11-12 |
 
-The scan considers every entry, however old: the point is changes that already shipped.
-Some apply only to some customers. The Stripe change applies only to accounts and requests
+The scan considers every entry, however old: the point is changes that already shipped,
+and those with a date ahead, which it lists with the days left
+([below](#before-a-change-takes-effect)). Some apply only to some customers. The Stripe change applies only to accounts and requests
 on API version 2025-03-31 or later, Spotify's only to apps in Development Mode, and Groq's
-August 2026 shutdowns only to free and developer-tier keys. The entry's notes say so, and
+shutdowns since July 2026 only to free and developer-tier keys. The entry's notes say so, and
 the scan cannot tell which case your code is in.
 
 ## Reading the output
@@ -136,7 +142,7 @@ $ tiltmeter scan --within 30
         return requests.get("https://api.hubapi.com/crm-pipelines/v1/pipelines/{objectType}", ...
     fix: tiltmeter fix --notice hubspot-pipelines-v1-sunset --allow-unsigned --repo .
 
-1 of 10 known API changes affects .: 1 line in 1 file. 1 of them takes effect later: in 24 days.
+1 of 15 known API changes affects .: 1 line in 1 file. 1 of them takes effect later: in 24 days.
 ```
 
 That run exits with 1. With `--within 7` it would list the same change, marked `·`, and

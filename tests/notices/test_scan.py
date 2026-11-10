@@ -31,6 +31,8 @@ from tiltmeter.notices.reader import LoadedNotice
 from tiltmeter.notices.scan import _walk, days_until, headline, is_test
 
 GROQ = "groq-retired-models-2026-08"
+# The catalog grows: its size is read, not written down.
+KNOWN = len(NoticeFeed.model_validate_json(catalog_bytes()).notices)
 
 LLM = """\
 from groq import Groq
@@ -92,7 +94,7 @@ def test_scan_finds_a_retired_groq_model(tmp_path: Path) -> None:
     assert "app/llm.py:8 llama3-8b-8192: retired; use openai/gpt-oss-20b" in text
     assert 'model="llama3-8b-8192",' in text
     assert f"fix: tiltmeter fix --notice {GROQ} --allow-unsigned --repo {repo}" in text
-    assert f"1 of 10 known API changes affects {repo}: 1 line in 1 file." in text
+    assert f"1 of {KNOWN} known API changes affects {repo}: 1 line in 1 file." in text
     assert "no provider signed or endorsed them" in text
 
 
@@ -119,7 +121,8 @@ def test_scan_of_code_with_nothing_to_change_exits_0(tmp_path: Path) -> None:
     repo, _ = make_repo(tmp_path, {"app/llm.py": CURRENT, "app/main.py": MAIN})
     outcome = invoke("scan", str(repo))
     assert outcome.exit_code == 0, outcome.output
-    assert f"No known API change affects {repo}: 10 catalog entries checked" in flat(outcome.output)
+    checked = f"No known API change affects {repo}: {KNOWN} catalog entries checked"
+    assert checked in flat(outcome.output)
     assert "To monitor your own API" in flat(outcome.output)
     assert "does not check whether your APIs are covered" in flat(outcome.output)
 
@@ -154,7 +157,7 @@ def test_json_lists_every_match_and_marks_unused_files(tmp_path: Path) -> None:
     code, report = scanned(str(repo))
     assert code == 1
     assert (report["path"], report["git"], report["bundled"]) == (str(repo), True, True)
-    assert report["entries"] == 10
+    assert report["entries"] == KNOWN
     assert "unaffected" not in report  # only with --all, as the terminal shows it
     groq = finding(report, GROQ)
     assert (groq["provider"], groq["signed"], groq["drafted"]) == ("api.groq.com", False, True)

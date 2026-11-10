@@ -64,7 +64,7 @@ $ uvx tiltmeter scan
         groq: { fast: 'llama-3.1-8b-instant', smart: 'llama-3.3-70b-versatile' },
     fix: tiltmeter fix --notice groq-retired-models-2026-08 --allow-unsigned --repo .
 
-1 of 10 known API changes affects .: 2 lines in 2 files.
+1 of 15 known API changes affects .: 2 lines in 2 files.
 ```
 
 It searches the folder for every entry of a [catalog of known changes](docs/scan.md)
