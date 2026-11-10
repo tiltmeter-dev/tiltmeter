@@ -948,7 +948,7 @@ def scan_exit_code(report: ScanReport) -> int:
     """A catalog that could not be read beats a change in use, which beats nothing."""
     if report.error:
         return EXIT_CHECK_FAILED
-    return EXIT_WARNING if report.affected else EXIT_OK
+    return EXIT_WARNING if any(finding.due for finding in report.affected) else EXIT_OK
 
 
 @app.command()
@@ -967,9 +967,21 @@ def scan(
     show_all: Annotated[
         bool, typer.Option("--all", help="Also list the catalog entries that do not affect PATH.")
     ] = False,
+    within: Annotated[
+        int | None,
+        typer.Option(
+            "--within",
+            metavar="DAYS",
+            min=0,
+            help=(
+                "Count a change that has not taken effect yet only when it does within DAYS. "
+                "Later ones are still listed, and do not make the exit code 1."
+            ),
+        ),
+    ] = None,
     as_json: JsonOption = False,
 ) -> None:
-    """Find code that still uses API changes that already shipped. No setup needed.
+    """Find code that uses API changes that shipped, or are about to. No setup needed.
 
     Searches PATH for every entry of the catalog of known API changes bundled with
     Tiltmeter, such as retired models and removed endpoints, each drafted by Tiltmeter from
@@ -1004,7 +1016,7 @@ def scan(
             error=printable(str(exc)),
         )
     else:
-        report = search(read_folder(path), found, label=label)
+        report = search(read_folder(path), found, label=label, within=within)
     if as_json:
         _print_json(dump(report, show_all=show_all))
     else:

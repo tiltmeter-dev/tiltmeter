@@ -21,6 +21,7 @@ import shlex
 import subprocess
 from collections.abc import Sequence
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from fnmatch import fnmatchcase
 from pathlib import Path, PurePosixPath
 from typing import Any, Final, Literal
@@ -143,6 +144,20 @@ class ScanFinding(BaseModel):
     summary: str
     published_at: AwareDatetime
     effective_at: AwareDatetime | None = None
+    days_left: int | None = Field(
+        default=None,
+        description=(
+            "Days until the change takes effect: 0 or less once it has, null when the entry "
+            "gives no date."
+        ),
+    )
+    due: bool = Field(
+        default=True,
+        description=(
+            "Whether it counts for the exit code: in effect already, undated, or taking "
+            "effect within the days --within allows."
+        ),
+    )
     signed: bool = Field(description="Signed by the provider, with the signature checked.")
     drafted: bool = Field(
         description="Drafted by Tiltmeter from the provider's public documentation."
@@ -201,6 +216,10 @@ class ScanReport(BaseModel):
         ),
     )
     entries: int = Field(default=0, description="Valid entries in the catalog.")
+    within: int | None = Field(
+        default=None,
+        description="--within: how many days ahead a change may take effect and still count.",
+    )
     error: str | None = Field(default=None, description="Why the catalog could not be read.")
     affected: list[ScanFinding] = Field(default_factory=list)
     unaffected: list[ScanMiss] = Field(default_factory=list)
@@ -291,12 +310,34 @@ def _walk(root: Path, limit: int = MAX_WALKED) -> tuple[list[str], bool]:
     return found, False
 
 
-def scan(folder: Folder, catalog: Catalog, *, label: str) -> ScanReport:
+def days_until(moment: datetime | None, now: datetime) -> int | None:
+    """Whole days from ``now`` to ``moment``, rounded up: a change that takes effect in two
+    hours is one day away, and one that took effect two hours ago is zero."""
+    if moment is None:
+        return None
+    seconds = (moment - now).total_seconds()
+    return int(-(-seconds // 86400))
+
+
+def scan(
+    folder: Folder,
+    catalog: Catalog,
+    *,
+    label: str,
+    now: datetime | None = None,
+    within: int | None = None,
+) -> ScanReport:
     """Search the folder for every entry of the catalog. ``label`` is the folder as the
     person running the scan named it, for the report and the fix commands.
 
     Code decides: tests, which feed code made-up data more often than they call the API,
-    and docs are searched apart, and only listed."""
+    and docs are searched apart, and only listed.
+
+    A change that has not taken effect yet is found like any other, with the days it has
+    left. With ``within``, one that is further away than that many days is still listed
+    but is not ``due``: it does not make the scan fail. What broke already comes first,
+    then what breaks soonest."""
+    moment = now or datetime.now(UTC)
     index = RepoIndex.read(folder.root, [name for name in folder.files if not is_test(name)])
     tests = RepoIndex.read(folder.root, [name for name in folder.files if is_test(name)])
     affected: list[ScanFinding] = []
@@ -327,6 +368,8 @@ def scan(folder: Folder, catalog: Catalog, *, label: str) -> ScanReport:
                 summary=notice.summary,
                 published_at=notice.published_at,
                 effective_at=notice.effective_at,
+                days_left=(left := days_until(notice.effective_at, moment)),
+                due=within is None or left is None or left <= within,
                 signed=loaded.verified,
                 drafted=catalog.bundled,
                 reason=impact.reason,
@@ -337,6 +380,7 @@ def scan(folder: Folder, catalog: Catalog, *, label: str) -> ScanReport:
                 fix_command=fix_command(loaded, catalog, label),
             )
         )
+    affected.sort(key=lambda finding: max(finding.days_left or 0, 0))
     matched = sorted({match.file for finding in affected for match in finding.matches})
     unused = set(unreferenced(folder.root, folder.files, matched))
     for finding in affected:
@@ -350,6 +394,7 @@ def scan(folder: Folder, catalog: Catalog, *, label: str) -> ScanReport:
         files=len(index.texts) + len(tests.texts),
         truncated=folder.truncated or index.truncated or tests.truncated,
         entries=len(catalog.entries),
+        within=within,
         affected=affected,
         unaffected=unaffected,
         rejected=list(catalog.rejected),

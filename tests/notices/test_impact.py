@@ -810,3 +810,39 @@ def test_the_file_limit_counts_what_is_read_and_code_comes_first(
         "no tracked file mentions api.billing.test, /v1/customers, /customers or billing-sdk; "
         "it has more than 20,000 text files and the rest were not read, so this is not certain"
     )
+
+
+def test_a_call_of_a_removed_endpoint_counts_whatever_the_code_reads(tmp_path: Path) -> None:
+    # The notice also removes a field, total. Code that never reads it still calls an
+    # endpoint that is gone.
+    old = 'r = get(f"https://{site}.billing.test/rest/api/3/search?jql={q}")\nprint(r["issues"])\n'
+    impact = check(tmp_path / "old", {"jira.py": old}, **removed_search())
+    assert impact.affected
+    assert impact.reason == (
+        "the repository calls GET /rest/api/3/search, which the notice removes"
+    )
+    assert (impact.endpoints, impact.files, impact.fields) == ([0], ["jira.py"], [])
+    index = index_of(tmp_path / "lines", {"jira.py": old})
+    model = ApiChangeNotice.model_validate(notice(**removed_search()))
+    [place] = locate(index, model, assess(index, model))
+    assert (place.kind, place.line, place.term) == ("endpoint", 1, "GET /rest/api/3/search")
+
+    migrated = old.replace("/search?", "/search/jql?")
+    moved = check(tmp_path / "new", {"jira.py": migrated}, **removed_search())
+    assert not moved.affected
+    # Another vendor's API with the same short path is not this one.
+    short = {
+        **removed_search(),
+        "endpoints": [
+            {
+                "method": "GET",
+                "url": "https://api.billing.test/v1/search",
+                "changes": [
+                    {"path": "$", "kind": "endpoint_removed"},
+                    {"path": "$.total", "kind": "field_removed"},
+                ],
+            },
+        ],
+    }
+    theirs = 'r = get("https://api.other.test/v1/search")\nprint(r["issues"])\n'
+    assert not check(tmp_path / "theirs", {"client.py": theirs}, **short).affected

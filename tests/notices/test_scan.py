@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
 import pytest
 import respx
+from rich.console import Console
 
 from tests.fix.kit import PR_URL, FakeFixAgent, FakeGitHub, make_repo
 from tests.notices.kit import (
@@ -21,10 +23,12 @@ from tests.notices.kit import (
 from tests.test_cli import flat, invoke, runner
 from tiltmeter.catalog import DRAFTED, catalog_bytes
 from tiltmeter.cli import app
+from tiltmeter.console import render_scan
 from tiltmeter.fix.agent import DeepFixAgent
 from tiltmeter.notices import scan
-from tiltmeter.notices.models import MAX_FEED_NOTICES, NoticeFeed
-from tiltmeter.notices.scan import _walk, headline, is_test
+from tiltmeter.notices.models import MAX_FEED_NOTICES, ApiChangeNotice, NoticeFeed
+from tiltmeter.notices.reader import LoadedNotice
+from tiltmeter.notices.scan import _walk, days_until, headline, is_test
 
 GROQ = "groq-retired-models-2026-08"
 
@@ -441,3 +445,78 @@ def test_a_walk_outside_git_stops_at_its_limit_and_skips_what_holds_no_text(
     assert _walk(tmp_path) == (["b.py", "d.py", "e.py"], False)
     assert _walk(tmp_path, limit=3) == (["b.py", "d.py", "e.py"], False)
     assert _walk(tmp_path, limit=2) == (["b.py", "d.py"], True)
+
+
+# -- changes that have not taken effect yet ------------------------------------------
+
+
+def dated(notice_id: str, effective_at: str | None) -> dict[str, Any]:
+    return notice(id=notice_id, effective_at=effective_at, published_at="2020-01-01T00:00:00Z")
+
+
+def test_days_until_rounds_towards_the_change() -> None:
+    now = datetime(2026, 11, 10, 12, 0, tzinfo=UTC)
+    assert days_until(None, now) is None
+    assert days_until(now + timedelta(hours=2), now) == 1  # tomorrow at the latest
+    assert days_until(now + timedelta(days=24), now) == 24
+    assert days_until(now, now) == 0
+    assert days_until(now - timedelta(hours=2), now) == 0  # in effect: no days left
+    assert days_until(now - timedelta(days=86, hours=1), now) == -86
+
+
+def test_what_broke_comes_first_then_what_breaks_soonest(tmp_path: Path) -> None:
+    repo, _ = make_repo(tmp_path)
+    entries = [
+        dated("far", "2099-06-01T00:00:00Z"),
+        dated("soon", "2099-01-01T00:00:00Z"),
+        dated("undated", None),
+        dated("shipped", "2021-01-01T00:00:00Z"),
+    ]
+    path = tmp_path / "catalog.json"
+    path.write_text(json.dumps(feed(*entries)), encoding="utf-8")
+    code, report = scanned(str(repo), "--catalog", str(path))
+    assert code == 1
+    assert [f["id"] for f in report["affected"]] == ["undated", "shipped", "soon", "far"]
+    assert report["within"] is None
+    by_id = {f["id"]: f for f in report["affected"]}
+    assert by_id["undated"]["days_left"] is None
+    assert by_id["shipped"]["days_left"] < 0
+    assert by_id["soon"]["days_left"] > 365 * 50
+    assert all(f["due"] for f in report["affected"])
+    text = flat(invoke("scan", str(repo), "--catalog", str(path)).output)
+    assert "took effect 2021-01-01, 5 years ago" in text
+    assert "takes effect 2099-01-01, in " in text
+    assert "2 of them take effect later: the first in " in text
+
+
+def test_within_leaves_out_what_is_far_away(tmp_path: Path) -> None:
+    repo, _ = make_repo(tmp_path)
+    path = tmp_path / "catalog.json"
+    path.write_text(json.dumps(feed(dated("far", "2099-06-01T00:00:00Z"))), encoding="utf-8")
+    # A change decades away is found and listed, and does not fail the job.
+    code, report = scanned(str(repo), "--catalog", str(path), "--within", "30")
+    assert code == 0
+    assert (report["within"], report["affected"][0]["due"]) == (30, False)
+    text = flat(invoke("scan", str(repo), "--catalog", str(path), "--within", "30").output)
+    assert "· api.billing.test" in text
+    assert "1 is more than 30 days away and did not count." in text
+    # One that already shipped counts whatever the window.
+    path.write_text(json.dumps(feed(dated("shipped", "2021-01-01T00:00:00Z"))), encoding="utf-8")
+    assert scanned(str(repo), "--catalog", str(path), "--within", "0")[0] == 1
+    assert invoke("scan", str(repo), "--within", "-1").exit_code == 2  # a usage error
+
+
+def test_a_change_inside_the_window_counts(tmp_path: Path) -> None:
+    repo, _ = make_repo(tmp_path)
+    raw = dated("soon", "2026-12-04T00:00:00Z")
+    model = ApiChangeNotice.model_validate(raw)
+    catalog = scan.Catalog("test", False, [LoadedNotice(model, raw, "test#soon", False)], [])
+    now = datetime(2026, 11, 10, tzinfo=UTC)
+    folder = scan.read_folder(repo)
+    inside = scan.scan(folder, catalog, label="app", now=now, within=30)
+    assert [(f.days_left, f.due) for f in inside.affected] == [(24, True)]
+    outside = scan.scan(folder, catalog, label="app", now=now, within=14)
+    assert [(f.days_left, f.due) for f in outside.affected] == [(24, False)]
+    console = Console(record=True, width=200, highlight=False)
+    render_scan(console, inside, now=now)
+    assert "takes effect 2026-12-04, in 24 days" in console.export_text()

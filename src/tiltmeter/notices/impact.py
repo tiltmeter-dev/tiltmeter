@@ -743,8 +743,29 @@ def assess(index: RepoIndex, notice: ApiChangeNotice, *, sdks: Sequence[SdkName]
     impact = _search(
         index, hosts=hosts, paths=paths, short=short, sdks=names, fields=fields, values=values
     )
+    removed = [
+        i
+        for i, endpoint in enumerate(notice.endpoints)
+        if any(c.kind is ChangeKind.ENDPOINT_REMOVED for c in endpoint.changes)
+    ]
     if not impact.affected:
-        return _of_what_was_read(index, impact)
+        # The search wants a changed field read near the API. A call of an endpoint that
+        # is gone fails whatever the code reads from the answer, so it counts on its own,
+        # once something names the API: a path alone may be another vendor's.
+        distinctive = [path for path in paths if path.count("/") >= _DISTINCTIVE_SEGMENTS]
+        named = set(impact.anchors) & {*hosts, *(sdk.name for sdk in names), *distinctive}
+        called = _called(index, notice, removed, hosts, names) if removed and named else {}
+        if not called:
+            return _of_what_was_read(index, impact)
+        terms = [Gone.of(notice.endpoints[i], notice.provider).term for i in called]
+        files = list(dict.fromkeys(name for found in called.values() for name in found))
+        return Impact(
+            affected=True,
+            reason=f"the repository calls {_listing(terms, 'and')}, which the notice removes",
+            endpoints=list(called),
+            files=files[:MAX_LISTED],
+            anchors=impact.anchors,
+        )
     candidates = [
         Candidate(
             endpoint.url,
@@ -758,19 +779,12 @@ def assess(index: RepoIndex, notice: ApiChangeNotice, *, sdks: Sequence[SdkName]
         for endpoint in notice.endpoints
     ]
     chosen = choose_endpoints(index, candidates, near=impact.fields, hosts=hosts, sdks=names)
-    removed = [
-        i
-        for i, endpoint in enumerate(notice.endpoints)
-        if any(c.kind is ChangeKind.ENDPOINT_REMOVED for c in endpoint.changes)
-    ]
     if removed and not set(impact.anchors) & {sdk.name for sdk in notice.sdks}:
-        api = index.api_files(hosts, names)
-        gone = {i: Gone.of(notice.endpoints[i], notice.provider) for i in removed}
-        called = {i for i in removed if index.calling(gone[i], api)}
+        called = _called(index, notice, removed, hosts, names)
         # A call of an endpoint that is gone breaks for certain: those come first.
         chosen = [i for i in removed if i in called] + [i for i in chosen if i not in removed]
         if not chosen:
-            terms = [gone[i].term for i in removed]
+            terms = [Gone.of(notice.endpoints[i], notice.provider).term for i in removed]
             never = Impact(
                 affected=False,
                 reason=f"the repository never calls {_listing(terms)}, which the notice removes",
@@ -778,6 +792,19 @@ def assess(index: RepoIndex, notice: ApiChangeNotice, *, sdks: Sequence[SdkName]
             )
             return _of_what_was_read(index, never)
     return impact.model_copy(update={"endpoints": chosen})
+
+
+def _called(
+    index: RepoIndex,
+    notice: ApiChangeNotice,
+    removed: Sequence[int],
+    hosts: Sequence[str],
+    sdks: Sequence[SdkName],
+) -> dict[int, list[str]]:
+    """The removed endpoints the code calls, by position, with the files that call each."""
+    api = index.api_files(hosts, sdks)
+    calls = {i: index.calling(Gone.of(notice.endpoints[i], notice.provider), api) for i in removed}
+    return {i: files for i, files in calls.items() if files}
 
 
 UNREAD: Final = (
