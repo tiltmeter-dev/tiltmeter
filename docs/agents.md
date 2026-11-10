@@ -253,12 +253,33 @@ status code and latency. Configured notifications fire as usual.
 
 Calls every endpoint now and returns one result each. It takes `explain` like `check_api`.
 
+### `scan_code`
+
+Searches the project's code for known API changes it still uses, exactly like
+[`tiltmeter scan`](scan.md): every entry of the catalog bundled with Tiltmeter (retired
+model ids, removed endpoints, renamed fields), with the search that needs no LLM. Nothing
+is fetched, sent or changed, and it asks nothing of the endpoints in the config. It is the
+tool to call before an agent adds or edits code that calls a third-party API.
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `path` | string | `.` | A folder inside the project. The project is the folder of the config file the server was started with; a path outside it, or a link that leads outside, is refused. |
+| `within_days` | integer | none | Count a change that has not taken effect yet (`due`) only when it does within that many days, like `--within`. |
+| `include_unaffected` | boolean | `false` | Also list the entries the code does not use, and why, like `--all`. |
+
+It returns the scan's [JSON report](scan.md#reading-the-output): `affected`, what broke
+already first, each entry with its `id`, `provider`, `headline`, `days_left`, `due`, the
+`matches` (file, line, the line's text, what the change does to it) and the
+`fix_command`; `entries`, how many were checked; and `truncated` when the project has
+more files than a scan reads. The entries are drafted by Tiltmeter from each provider's
+public documentation and signed by no provider: `signed` and `drafted` say so.
+
 ### Annotations and errors
 
-`has_drifted`, `get_schema`, `get_changes` and `list_endpoints` are annotated as
-read-only, so clients can run them without asking. `check_api` and `check_all` are
-annotated as reaching the outside world. An unknown endpoint id or a malformed `since`
-comes back as a tool error with a readable message, such as
+`has_drifted`, `get_schema`, `get_changes`, `list_endpoints` and `scan_code` are
+annotated as read-only, so clients can run them without asking. `check_api` and
+`check_all` are annotated as reaching the outside world. An unknown endpoint id or a
+malformed `since` comes back as a tool error with a readable message, such as
 `unknown endpoint 'billing' (configured endpoints: billing_customers)`.
 
 ## Resources
@@ -298,3 +319,7 @@ asyncio.run(main())
   notifications. Leave them out of the auto-approved tools if that matters to you.
 - Answers never contain credentials or response bodies. The values they can contain are
   short enum-like strings, such as a new `status` value.
+- `scan_code` reads the folder of the config file and nothing above it: a path outside
+  it is refused, links included. Its answer quotes lines of your code, at most 160
+  characters each, so a line that holds a secret next to a retired model id would be
+  shown to the agent.

@@ -8,7 +8,9 @@ import pytest
 import respx
 from mcp import Client, StdioServerParameters
 
+from tests.fix.kit import make_repo
 from tests.helpers import API, FakeClock, FakeExplainer
+from tests.notices.test_scan import GROQ, KNOWN, LLM, MAIN
 from tests.service_kit import make_service
 from tiltmeter.mcp_server.server import create_server
 
@@ -117,8 +119,70 @@ async def test_stdio_server_end_to_end(tmp_path: Path) -> None:
     )
     async with Client(parameters) as client:
         tools = {tool.name for tool in (await client.list_tools()).tools}
-        assert tools == TOOLS
+        assert tools == TOOLS | {"scan_code"}
         status = await client.call_tool("has_drifted", {"endpoint_id": "local"})
         assert status.structured_content is not None
         assert status.structured_content["drifted"] is False
         assert "never been checked" in status.structured_content["summary"]
+        # The project is the folder of the config file.
+        (tmp_path / "llm.py").write_text(LLM, encoding="utf-8")
+        found = await client.call_tool("scan_code", {})
+        assert found.structured_content is not None
+        assert [entry["id"] for entry in found.structured_content["affected"]] == [GROQ]
+
+
+async def test_scan_code_finds_known_changes_in_the_project(tmp_path: Path) -> None:
+    repo, _ = make_repo(tmp_path, {"app/llm.py": LLM, "main.py": MAIN})
+    async with make_service() as service, Client(create_server(service, root=repo)) as client:
+        listed = {tool.name: tool for tool in (await client.list_tools()).tools}
+        assert set(listed) == TOOLS | {"scan_code"}
+        annotations = listed["scan_code"].annotations
+        assert annotations is not None
+        assert (annotations.read_only_hint, annotations.open_world_hint) == (True, False)
+        assert "Nothing is fetched, sent or changed" in (listed["scan_code"].description or "")
+
+        found = await client.call_tool("scan_code", {})
+        assert not found.is_error
+        report = found.structured_content
+        assert report is not None
+        [entry] = report["affected"]
+        assert (entry["id"], entry["due"]) == (GROQ, True)
+        [match] = entry["matches"]
+        assert (match["file"], match["line"], match["term"]) == ("app/llm.py", 8, "llama3-8b-8192")
+        assert match["detail"] == "retired; use openai/gpt-oss-20b"
+        assert entry["fix_command"] == f"tiltmeter fix --notice {GROQ} --allow-unsigned --repo ."
+        assert (report["entries"], report["bundled"], report["unaffected"]) == (KNOWN, True, [])
+
+        everything = await client.call_tool("scan_code", {"include_unaffected": True})
+        assert everything.structured_content is not None
+        assert len(everything.structured_content["unaffected"]) == KNOWN - 1
+
+        folder = await client.call_tool("scan_code", {"path": "app"})
+        assert folder.structured_content is not None
+        assert folder.structured_content["affected"][0]["matches"][0]["file"] == "llm.py"
+
+
+async def test_scan_code_reads_no_folder_but_the_project(tmp_path: Path) -> None:
+    repo, _ = make_repo(tmp_path, {"app/llm.py": LLM, "main.py": MAIN})
+    async with make_service() as service, Client(create_server(service, root=repo)) as client:
+        for path in ("..", "app/../..", "/", str(tmp_path), "../" + repo.name + "/.."):
+            refused = await client.call_tool("scan_code", {"path": path})
+            assert refused.is_error, path
+            assert "is outside the project folder" in refused.content[0].text  # type: ignore[union-attr]
+        not_a_path = await client.call_tool("scan_code", {"path": "app\0"})
+        assert not_a_path.is_error
+        a_file = await client.call_tool("scan_code", {"path": "main.py"})
+        assert a_file.is_error
+        assert "is not a folder" in a_file.content[0].text  # type: ignore[union-attr]
+        negative = await client.call_tool("scan_code", {"within_days": -1})
+        assert negative.is_error
+        # The project by its own absolute path is still the project.
+        own = await client.call_tool("scan_code", {"path": str(repo)})
+        assert not own.is_error
+        try:
+            (repo / "elsewhere").symlink_to(tmp_path, target_is_directory=True)
+        except OSError:  # no right to make links, as on some Windows machines
+            return
+        linked = await client.call_tool("scan_code", {"path": "elsewhere"})
+        assert linked.is_error
+        assert "is outside the project folder" in linked.content[0].text  # type: ignore[union-attr]

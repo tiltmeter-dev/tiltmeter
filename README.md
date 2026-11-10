@@ -124,6 +124,7 @@ Then add a line like this to your agent's instructions:
 | `list_endpoints()` | Which APIs are watched and how their last check went. |
 | `check_api(endpoint_id, explain?)` | Calls one API now and records the result. |
 | `check_all(explain?)` | Calls every API now. |
+| `scan_code(path?, within_days?, include_unaffected?)` | Does the project's own code still use something a provider retired or removed? The file and line of each use, with no network. |
 
 Setups for Cursor, Claude Desktop and LangChain agents are in the
 [agents guide](docs/agents.md).
