@@ -402,6 +402,56 @@ def test_python_code_on_stripes_sdk_is_found(tmp_path: Path) -> None:
     assert ("app/billing.py", "current_period_end") in {
         (match["file"], match["term"]) for match in stripe["matches"]
     }
+    assert stripe["sdk_pins"] == [
+        {
+            "ecosystem": "pypi",
+            "name": "stripe",
+            "version": "==10.12.0",
+            "file": "requirements.txt",
+            "locked": False,
+            "fixed_in": "12.0.0",
+            "follows": False,
+        }
+    ]
+    assert stripe["api_versions"] == []
+
+
+def test_scan_says_which_release_and_api_version_the_folder_is_on(tmp_path: Path) -> None:
+    billing = (
+        'import stripe\n\nstripe.api_version = "2024-06-20"\n\n\ndef renews(subscription_id):\n'
+        '    return stripe.Subscription.retrieve(subscription_id)["current_period_end"]\n'
+    )
+    lock = '[[package]]\nname = "stripe"\nversion = "12.4.0"\n'
+    files = {
+        "app/billing.py": billing,
+        "pyproject.toml": '[project]\nname = "shop"\ndependencies = ["stripe>=10"]\n',
+        "uv.lock": lock,
+        "web/package.json": json.dumps({"dependencies": {"stripe": "^17.4.0"}}),
+    }
+    repo, _ = make_repo(tmp_path, files)
+    code, report = scanned(str(repo))
+    assert code == 1
+    stripe = finding(report, "stripe-2025-03-31-subscription-periods")
+    # The lock file says what is installed, so the range in pyproject.toml is left out.
+    assert [
+        (p["ecosystem"], p["version"], p["file"], p["follows"]) for p in stripe["sdk_pins"]
+    ] == [
+        ("pypi", "12.4.0", "uv.lock", True),
+        ("npm", "^17.4.0", "web/package.json", False),
+    ]
+    assert stripe["api_versions"] == [
+        {"version": "2024-06-20", "file": "app/billing.py", "line": 3}
+    ]
+    text = flat(invoke("scan", str(repo)).output)
+    assert (
+        "installs stripe 12.4.0 (uv.lock), which already follows the change (12.0.0 or later)"
+        in text
+    )
+    assert (
+        "asks for stripe ^17.4.0 (web/package.json), which is older than 18.0.0, the first "
+        "release that follows the change"
+    ) in text
+    assert "pins API version 2024-06-20 (app/billing.py:3)" in text
 
 
 def test_a_move_to_another_host_names_the_new_host(tmp_path: Path) -> None:
@@ -442,9 +492,34 @@ def test_a_walk_outside_git_stops_at_its_limit_and_skips_what_holds_no_text(
 ) -> None:
     for name in ("a.png", "b.py", "c.zip", "d.py", "e.py", "uv.lock"):
         (tmp_path / name).write_text("x", encoding="utf-8")
-    assert _walk(tmp_path) == (["b.py", "d.py", "e.py"], False)
-    assert _walk(tmp_path, limit=3) == (["b.py", "d.py", "e.py"], False)
-    assert _walk(tmp_path, limit=2) == (["b.py", "d.py"], True)
+    # The lock file comes last and uses none of the limit: it is read only for versions.
+    assert _walk(tmp_path) == (["b.py", "d.py", "e.py", "uv.lock"], False)
+    assert _walk(tmp_path, limit=3) == (["b.py", "d.py", "e.py", "uv.lock"], False)
+    assert _walk(tmp_path, limit=2) == (["b.py", "d.py", "uv.lock"], True)
+
+
+def test_a_plain_folder_has_its_lock_files_read_for_versions(tmp_path: Path) -> None:
+    billing = (
+        "import stripe\n\n\ndef renews(subscription_id):\n"
+        '    return stripe.Subscription.retrieve(subscription_id)["current_period_end"]\n'
+    )
+    files = {
+        "app/billing.py": billing,
+        "pyproject.toml": '[project]\nname = "shop"\ndependencies = ["stripe>=10"]\n',
+        "uv.lock": '[[package]]\nname = "stripe"\nversion = "11.6.0"\n',
+    }
+    for name, text in files.items():
+        (tmp_path / name).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / name).write_text(text, encoding="utf-8")
+    code, report = scanned(str(tmp_path))
+    assert (code, report["git"]) == (1, False)
+    [pin] = finding(report, "stripe-2025-03-31-subscription-periods")["sdk_pins"]
+    assert (pin["file"], pin["version"], pin["locked"], pin["follows"]) == (
+        "uv.lock",
+        "11.6.0",
+        True,
+        False,
+    )
 
 
 # -- changes that have not taken effect yet ------------------------------------------

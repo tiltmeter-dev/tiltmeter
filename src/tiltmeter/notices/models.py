@@ -302,6 +302,29 @@ def _published(schema: dict[str, Any], url: str) -> dict[str, Any]:
 # -- what a subscriber learns -----------------------------------------------------
 
 
+class SdkPin(BaseModel):
+    """The release of an SDK that a repository asks for, next to the one that follows a
+    change."""
+
+    ecosystem: Ecosystem
+    name: str
+    version: str = Field(description="As written: 11.2.0 in a lock file, ^17.0.0 in a manifest.")
+    file: str
+    locked: bool = Field(description="From a lock file: the release that is installed.")
+    fixed_in: str = Field(description="The first release that follows the change.")
+    follows: bool | None = Field(
+        description="True at or past fixed_in, false when older, null when it cannot be told."
+    )
+
+
+class ApiVersionPin(BaseModel):
+    """A dated API version that code pins next to the API, and where."""
+
+    version: str
+    file: str
+    line: int
+
+
 class Impact(BaseModel):
     """Whether a repository uses what a notice changes, found by plain text search."""
 
@@ -319,6 +342,13 @@ class Impact(BaseModel):
     )
     fields: list[str] = Field(
         default_factory=list, description="Changed field names found near those uses."
+    )
+    sdk_pins: list[SdkPin] = Field(
+        default_factory=list,
+        description="The releases of the notice's SDKs that the repository asks for.",
+    )
+    api_versions: list[ApiVersionPin] = Field(
+        default_factory=list, description="Dated API versions the code pins next to the API."
     )
 
 

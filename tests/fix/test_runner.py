@@ -18,7 +18,7 @@ from tests.fix.kit import (
     report,
     review,
 )
-from tests.fix.test_request import notice_request, spec_request
+from tests.fix.test_request import notice_request, pinned_request, spec_request
 from tests.fix.test_usage import OLD, SOL, WEATHER_TS
 from tests.helpers import explanation
 from tests.notices.kit import notice, signed
@@ -326,6 +326,18 @@ def notice_preview() -> FixPreview:
     )
 
 
+def test_notice_pull_requests_say_what_the_repository_depends_on() -> None:
+    body = pull_request_body(pinned_request(), notice_preview(), model_name="fake-fixer")
+    assert "What this repository depends on:" in body
+    assert "- `billing-sdk` `3.2.0`, installed by `api/uv.lock`: already at or past `3.0.0`" in body
+    assert (
+        "- `billing-sdk` `>=2`, asked for in `requirements.txt`: may be older than `3.0.0`" in body
+    )
+    assert "- `billing-sdk` `==2.9.0`, asked for in `requirements.txt`: older than `3.0.0`" in body
+    pinned = "API versions the code pins next to this API: `2024-06-20` (`billing/client.py:3`)."
+    assert pinned in body
+
+
 def test_notice_branches_titles_and_commits() -> None:
     request = notice_request()
     branch = default_branch(request)
@@ -367,7 +379,8 @@ def test_notice_pull_requests_quote_the_provider_as_plain_text() -> None:
     assert "**`GET https://api.billing.test/v1/customers/{id}`**" in body
     assert "probably renamed" not in body
     assert "$.balance: Decimal string in the account currency" in body
-    assert "SDK releases that already follow the change: pypi `billing-sdk` 3.0.0." in body
+    assert "SDK releases that already follow the change: pypi `billing-sdk` `3.0.0`." in body
+    assert "What this repository depends on" not in body  # nothing was read about it
     assert "## Left for a human" in body
     assert "from api.billing.test's change notice `2026-11-03-phone-rename`" in body
     assert "This pull request was generated automatically by [Tiltmeter]" in body

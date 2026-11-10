@@ -799,6 +799,8 @@ def _fix_notice(
             endpoints=impact.endpoints or None,
             read=impact.fields,
             found=impact.anchors,
+            sdk_pins=impact.sdk_pins,
+            api_versions=impact.api_versions,
         )
         if not request.targets:
             return FixOutcome(
@@ -1209,6 +1211,8 @@ def notices_apply(
                 spec=entry.spec,
                 read=impact.fields,
                 found=impact.anchors,
+                sdk_pins=impact.sdk_pins,
+                api_versions=impact.api_versions,
             )
             branch = default_branch(request, settings.branch_prefix)
             remote = git.remote()

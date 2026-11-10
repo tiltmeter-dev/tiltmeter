@@ -49,8 +49,13 @@ from tiltmeter.notices.models import (
     https_host,
     on_domain,
 )
+from tiltmeter.notices.versions import all_follow, api_versions, sdk_pins
 
 MAX_LISTED: Final = 20
+# Lock files are not searched, only asked which release of an SDK is installed. They are
+# few and can be long.
+MAX_LOCK_FILES: Final = 30
+MAX_LOCK_BYTES: Final = 8_000_000
 
 MANIFESTS: Final[Mapping[str, tuple[str, ...]]] = {
     "pypi": ("*requirements*.txt", "pyproject.toml", "setup.py", "setup.cfg", "Pipfile"),
@@ -226,6 +231,20 @@ def may_hold_code(name: str, ignore: Sequence[str] = ()) -> bool:
     return is_ours(path) and not is_ignored(name, ignore)
 
 
+def _lock_files(root: Path, files: Sequence[str], ignore: Sequence[str]) -> dict[str, str]:
+    """The lock files nearest the root, with their text."""
+    names = [
+        name
+        for name in files
+        if PurePosixPath(name).name in LOCK_FILES
+        and is_ours(PurePosixPath(name))
+        and not is_ignored(name, ignore)
+    ]
+    names.sort(key=lambda name: (name.count("/"), name))
+    read = {name: read_text(root / name, MAX_LOCK_BYTES) for name in names[:MAX_LOCK_FILES]}
+    return {name: text for name, text in read.items() if text is not None}
+
+
 def _read_last(name: str) -> bool:
     """Docs and data tables, which never decide on their own. A requirements file is a
     doc by its suffix and a manifest by its name: it is read with the code."""
@@ -264,6 +283,7 @@ class RepoIndex:
     _calls: Mapping[str, frozenset[_Call]] = field(default_factory=dict, compare=False)
     _spoken: Mapping[str, str] = field(default_factory=dict, compare=False)
     truncated: bool = field(default=False, compare=False)
+    locks: Mapping[str, str] = field(default_factory=dict, compare=False)
 
     @classmethod
     def read(cls, root: Path, files: Sequence[str], *, ignore: Sequence[str] = ()) -> RepoIndex:
@@ -286,7 +306,8 @@ class RepoIndex:
         spoken = {name: code_only(name, text) for name, text in texts.items() if name not in docs}
         paths = {name: _path_tokens(text) for name, text in spoken.items()}
         calls = {name: frozenset(_calls_in(text)) for name, text in spoken.items()}
-        return cls(texts, frozenset(docs), paths, calls, spoken, truncated=truncated)
+        locks = _lock_files(root, files, ignore)
+        return cls(texts, frozenset(docs), paths, calls, spoken, truncated=truncated, locks=locks)
 
     def code(self) -> Iterator[tuple[str, str]]:
         """Every file that is not documentation, with its text."""
@@ -765,6 +786,8 @@ def assess(index: RepoIndex, notice: ApiChangeNotice, *, sdks: Sequence[SdkName]
             endpoints=list(called),
             files=files[:MAX_LISTED],
             anchors=impact.anchors,
+            sdk_pins=sdk_pins(index.texts, index.locks, notice.sdks, MANIFESTS),
+            api_versions=api_versions(index.texts, sorted(index.api_files(hosts, names))),
         )
     candidates = [
         Candidate(
@@ -779,19 +802,34 @@ def assess(index: RepoIndex, notice: ApiChangeNotice, *, sdks: Sequence[SdkName]
         for endpoint in notice.endpoints
     ]
     chosen = choose_endpoints(index, candidates, near=impact.fields, hosts=hosts, sdks=names)
-    if removed and not set(impact.anchors) & {sdk.name for sdk in notice.sdks}:
+    pins = sdk_pins(index.texts, index.locks, notice.sdks, MANIFESTS)
+    versions = api_versions(index.texts, sorted(index.api_files(hosts, names)))
+    through_sdk = [sdk.name for sdk in notice.sdks if sdk.name in impact.anchors]
+    # An SDK in the manifest may call a removed endpoint without the code spelling its
+    # path, so the SDK alone used to be enough. Not when the release the repository asks
+    # for already follows the change: then only a call the code makes itself counts.
+    current = all_follow(pins, through_sdk)
+    if removed and (not through_sdk or current):
         called = _called(index, notice, removed, hosts, names)
         # A call of an endpoint that is gone breaks for certain: those come first.
         chosen = [i for i in removed if i in called] + [i for i in chosen if i not in removed]
         if not chosen:
             terms = [Gone.of(notice.endpoints[i], notice.provider).term for i in removed]
+            reason = f"the repository never calls {_listing(terms)}, which the notice removes"
+            if current:
+                asked = _listing([f"{pin.name} {pin.version}" for pin in pins], "and")
+                reason += f", and it depends on {asked}, which already follows the change"
             never = Impact(
                 affected=False,
-                reason=f"the repository never calls {_listing(terms)}, which the notice removes",
+                reason=reason,
                 anchors=impact.anchors,
+                sdk_pins=pins,
+                api_versions=versions,
             )
             return _of_what_was_read(index, never)
-    return impact.model_copy(update={"endpoints": chosen})
+    return impact.model_copy(
+        update={"endpoints": chosen, "sdk_pins": pins, "api_versions": versions}
+    )
 
 
 def _called(

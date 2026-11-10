@@ -24,7 +24,13 @@ from tiltmeter.llm.explainer import build_request
 if TYPE_CHECKING:
     from tiltmeter.config import EndpointConfig
     from tiltmeter.core.shape import Shape
-    from tiltmeter.notices.models import ApiChangeNotice, NoticeEndpoint, SpecInfo
+    from tiltmeter.notices.models import (
+        ApiChangeNotice,
+        ApiVersionPin,
+        NoticeEndpoint,
+        SdkPin,
+        SpecInfo,
+    )
 
 _SKIPPED_KINDS = TRANSPORT_KINDS | {ChangeKind.FIELD_ADDED}
 _RESOURCE = re.compile(r"[A-Za-z][A-Za-z0-9_.\-]*")
@@ -188,6 +194,8 @@ def build_notice_request(
     spec: SpecInfo | None = None,
     read: Sequence[str] = (),
     found: Sequence[str] = (),
+    sdk_pins: Sequence[SdkPin] = (),
+    api_versions: Sequence[ApiVersionPin] = (),
 ) -> FixRequest:
     """The request for a provider's notice: its endpoints, changes and SDK releases.
 
@@ -197,6 +205,8 @@ def build_notice_request(
     shallowest first, so that they are the ones shown when not all of them fit.
     ``found`` is what the search found in the code: when it holds some of the retired
     values, the others are left out, so a fix for one retired model lists that model.
+    ``sdk_pins`` and ``api_versions`` are the releases and API versions the search read
+    in the repository: the agent and the pull request are told them.
     """
     names = set(read)
     retired = {
@@ -240,6 +250,8 @@ def build_notice_request(
         location=location,
         key=notice.signature.key if verified and notice.signature else None,
         sdks=notice.sdks,
+        sdk_pins=list(sdk_pins),
+        api_versions=list(api_versions),
     )
     return FixRequest(
         notice=source,

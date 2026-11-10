@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 import pytest
 import respx
 
@@ -18,7 +20,9 @@ from tiltmeter.fix.request import (
     field_name,
     search_terms,
 )
-from tiltmeter.notices.models import ApiChangeNotice, SpecInfo
+from tiltmeter.notices.impact import MANIFESTS
+from tiltmeter.notices.models import ApiChangeNotice, ApiVersionPin, SpecInfo
+from tiltmeter.notices.versions import sdk_pins
 
 
 def test_targets_follow_renames_and_skip_what_code_cannot_fix() -> None:
@@ -215,6 +219,63 @@ def test_changes_the_code_reads_come_first_and_every_endpoint_gets_a_share() -> 
     text = render_fix_request(request)
     assert "... and 27 more changes not shown" in text
     assert "$.deep.field_4" in text.split("v1/invoices")[1]  # the second endpoint is shown too
+
+
+def pinned_request() -> FixRequest:
+    """The kit's notice, for a repository that pins its SDK in three places and an API
+    version in one."""
+    model = ApiChangeNotice.model_validate(signed(notice()))
+    pins = sdk_pins(
+        {"requirements.txt": "billing-sdk==2.9.0\n", "web/package.json": "{}"},
+        {"api/uv.lock": '[[package]]\nname = "billing-sdk"\nversion = "3.2.0"\n'},
+        model.sdks,
+        MANIFESTS,
+    )
+    loose = sdk_pins({"requirements.txt": "billing-sdk>=2\n"}, {}, model.sdks, MANIFESTS)
+    old = sdk_pins({"requirements.txt": "billing-sdk==2.9.0\n"}, {}, model.sdks, MANIFESTS)
+    return build_notice_request(
+        model,
+        location="notice.json",
+        verified=False,
+        sdk_pins=[*pins, *loose, *old],
+        api_versions=[ApiVersionPin(version="2024-06-20", file="billing/client.py", line=3)],
+    )
+
+
+def test_the_agent_learns_what_the_repository_depends_on() -> None:
+    text = render_fix_request(pinned_request())
+    assert (
+        "repository installs: pypi billing-sdk 3.2.0 in api/uv.lock, which already follows "
+        "the change (3.0.0 or later)"
+    ) in text
+    assert (
+        "repository asks for: pypi billing-sdk >=2 in requirements.txt, which may be older "
+        "than 3.0.0, the first release that follows the change"
+    ) in text
+    assert (
+        "repository asks for: pypi billing-sdk ==2.9.0 in requirements.txt, which is older "
+        "than 3.0.0, the first release that follows the change"
+    ) in text
+    assert "repository pins api version: 2024-06-20 at billing/client.py:3" in text
+    assert text.index("repository installs") < text.index("<provider_text>")
+    assert "raise only what is older than the release with the change" in system_prompt()
+    assert "unless the request says which API version the repository pins" in system_prompt()
+    assert "repository asks for" not in render_fix_request(notice_request())
+
+
+def test_what_a_manifest_writes_is_shown_only_when_it_is_a_version() -> None:
+    model = ApiChangeNotice.model_validate(signed(notice()))
+    hostile = {
+        "requirements.txt": "billing-sdk==2.9.0`](https://evil.test)@octocat\n",
+        "package.json": json.dumps({"dependencies": {"billing-sdk": "<img src=x>"}}),
+    }
+    assert sdk_pins(hostile, {}, model.sdks, MANIFESTS) == []
+    lock = {
+        "uv.lock": '[[package]]\nname = "billing-sdk"\nversion = "3.0.0 ![x](https://e.test)"\n'
+    }
+    assert sdk_pins({}, lock, model.sdks, MANIFESTS) == []
+    long = {"requirements.txt": "billing-sdk==" + "1." * 40 + "0\n"}
+    assert sdk_pins(long, {}, model.sdks, MANIFESTS) == []
 
 
 def test_the_prompt_marks_provider_text_as_untrusted() -> None:

@@ -85,6 +85,8 @@ For each change the folder uses:
   same check `tiltmeter fix` runs before it commits ([details](fix.md#code-nothing-uses)),
   so you don't chase dead code;
 - `also in tests`, the places in test files, which never decide on their own;
+- the release of the provider's SDK the folder is on and the API versions its code pins,
+  when it says so ([below](#the-release-and-api-version-you-are-on));
 - the command that fixes it.
 
 A summary line ends the output. Text from the catalog is printed as plain text, never as
@@ -96,6 +98,7 @@ and `fix_command`, and each match's `applies_to` says who its change affects, or
 `--catalog` that are not valid notices; `truncated` is true when the folder has more text
 files than a scan reads. Each change has `days_left`, the days until it takes effect (zero
 or less once it has, `null` without a date), and `due`, whether it counts for the exit code.
+`sdk_pins` and `api_versions` list the releases and API versions the folder is on.
 
 ## Options and exit codes
 
@@ -141,6 +144,52 @@ exit with 0 until a week before the date.
 
 Without `--within`, a change counts as soon as the catalog has it, however far its date.
 
+## The release and API version you are on
+
+Many changes only reach some callers: those on an old release of the provider's SDK, or
+on one version of its API. Whether that is you is written in your own files, so the scan
+reads it and says it under the change:
+
+```console
+✗ api.stripe.com  Stripe API version 2025-03-31.basil moved subscription billing periods to the items.  took effect 2025-03-31, 19 months ago
+    stripe-2025-03-31-subscription-periods · unsigned: drafted by Tiltmeter from the provider's public documentation
+    only for some callers: Accounts and requests on API version 2025-03-31.basil or later. ...
+    app/billing.py:7  current_period_end: moved to $.items.data[*].current_period_end
+        return stripe.Subscription.retrieve(subscription_id)["current_period_end"]
+    installs stripe 11.6.0 (uv.lock), which is older than 12.0.0, the first release that follows the change
+    asks for stripe ^17.4.0 (web/package.json), which is older than 18.0.0, the first release that follows the change
+    pins API version 2024-06-20 (app/billing.py:3), 2025-02-24.acacia (web/renew.ts:2)
+```
+
+- **`installs`** is the release a lock file names: `uv.lock`, `poetry.lock`,
+  `Pipfile.lock`, `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`, `Gemfile.lock`,
+  `Cargo.lock` or `composer.lock`. Lock files are read for this and nothing else.
+- **`asks for`** is the requirement a manifest writes, such as `>=11,<12`, `^17.4.0` or
+  `~> 12.0`, in `requirements*.txt`, `pyproject.toml`, `Pipfile`, `package.json`, `go.mod`,
+  `Gemfile`, `Cargo.toml`, `composer.json`, `pom.xml`, Gradle builds and .NET project
+  files. Where a lock file names the SDK, the manifests are left out: the lock file says
+  what runs.
+- Next to it, the first release that follows the change, from the entry's `sdks`: the one
+  you are on **is older**, **already follows the change**, or **may be older** when the
+  requirement allows releases on both sides (`>=10`) or cannot be read as a range (a git
+  URL, a tag, an "or").
+- **`pins API version`** lists dated versions written next to the API, in files that name
+  its host or import its SDK: `apiVersion: "2024-06-20"`, `stripe.api_version = "..."`,
+  a `Stripe-Version`, `X-GitHub-Api-Version`, `anthropic-version` or `Notion-Version`
+  header. Versions that are not dates, such as `v1`, are not listed.
+
+These are facts for you to weigh: what "older" means is the provider's to say. An SDK
+that pins its own API version, as Stripe's do, keeps old code working until you upgrade,
+while an SDK that calls an endpoint the provider removed breaks until you do. The scan
+decides one thing by itself with them: when an entry removes an endpoint, the folder only
+reaches it through an SDK, and every place that pins that SDK is at or past the release
+that follows the change, the folder is not affected, unless its own code calls the
+endpoint too.
+
+`tiltmeter fix` hands the same facts to the agent, which raises a requirement that is
+older and leaves alone one that already follows the change, and lists them in the pull
+request.
+
 ## Fixing what it finds
 
 The command under each change hands it to the [fix agent](fix.md), which adapts the code
@@ -168,7 +217,8 @@ view:
   changelogs, licenses), data tables and pictures (`.csv`, `.tsv`, `.svg`),
   lock files, ignore files, change notices and feeds (the catalog file included),
   `tiltmeter.yaml`, installed or generated code (`node_modules`, `.venv`, `dist`), binaries,
-  files over 1 MB and symbolic links are not read as code.
+  files over 1 MB and symbolic links are not read as code. Lock files are read only for
+  the release of an SDK they install.
 - **Not in comments.** A retired value, a removed endpoint's path or a changed field counts
   only outside comment lines (`#`, `//`, `/* */`, `--`, `<!--`) and Python docstrings. In
   JavaScript and TypeScript `#` opens no comment, so a private member such as
@@ -208,8 +258,11 @@ The search reads text; it does not run or parse your code. Known gaps:
 - **Calls through an SDK.** A removed endpoint is found where code spells its path, or
   calls it through an SDK in the usual `resource.verb(` form. A method the notice never
   names, such as Slack's `files_upload` in the Python SDK, is not.
-- **Versions and plans.** The scan cannot tell which Stripe API version your account is
-  on, whether a Spotify app has extended quota, or which Groq tier a key is on.
+- **Versions and plans.** The scan lists the API versions your code pins, but cannot tell
+  which Stripe API version your account defaults to, whether a Spotify app has extended
+  quota, or which Groq tier a key is on. A release set outside the folder, such as a
+  version in a Docker image, a constraints file elsewhere or a private registry's alias,
+  is not seen either.
 - **Generated or vendored code** in folders with unusual names, data files such as JSON
   corpora, and text inside strings (an error message that names a model) are read as code.
 - **Large trees.** At most 20,000 text files are read, and the unused-code check gives up

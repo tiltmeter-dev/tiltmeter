@@ -287,12 +287,20 @@ an LLM:
    uses the API or in any file under its folder. When code imports the SDK, nearness is
    measured from that code, not from the manifest at the root.
 
+3. **The release you are on.** For an affected repository, the release of each of the
+   notice's SDKs that a lock file installs or a manifest asks for, next to `fixed_in`, the
+   first release that follows the change, and the dated API versions the code pins next to
+   the API (`apiVersion: "2024-06-20"`, a `Stripe-Version` header). They are shown with
+   the result, handed to the agent and listed in the pull request
+   ([details](scan.md#the-release-and-api-version-you-are-on)).
+
 No use of the API, or uses without the fields near them, means not affected. Paths alone
 are not enough, because another vendor's API can have a `/v1/customers` too: the host or
 an SDK has to appear somewhere in the repository. Docs (`.md`, `.mdx`, `.rst`, `.txt`, `.qmd`,
 `.tex`), data tables (`.csv`, `.tsv`, `.svg`),
 ignore files, lock files, change notices and feeds, `tiltmeter.yaml`, binaries, files over
-1 MB, symbolic links and anything matching `fix.ignore` are never read.
+1 MB, symbolic links and anything matching `fix.ignore` are never read, except that lock
+files (up to 8 MB each, the 30 nearest the root) are read for the release of an SDK.
 
 Retired values, removed endpoints and changed fields count only in code, not in comment
 lines (`#`, `//`, `/* */`, `--`) or Python docstrings. A retired value counts spelled whole:
@@ -302,7 +310,10 @@ its whole path with no host in front of it, or with a host on the provider's dom
 is not the one it moved to; through an SDK call, only in a file that names the API, and
 only when the replacement does not look the same to the SDK. An endpoint that moved to the
 same path on another host, as Hugging Face's `/v1/chat/completions` did, counts wherever
-code still names the old host.
+code still names the old host. When the repository reaches a removed endpoint only
+through the notice's SDK, and every lock file or manifest that pins that SDK is at or
+past `fixed_in`, it is not affected: the release it runs already follows the change. A
+requirement that also allows older releases, such as `>=2`, settles nothing.
 
 When it is affected, the agent gets the endpoints the repository uses, and the matching
 files as starting points:
