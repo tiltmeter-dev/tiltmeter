@@ -37,3 +37,7 @@ class HarError(TiltmeterError):
 
 class NoticeError(TiltmeterError):
     """A change notice, feed or signing key that cannot be read, trusted or written."""
+
+
+class HuntError(TiltmeterError):
+    """``tiltmeter hunt`` cannot search GitHub: no CLI, no login, a rate limit."""

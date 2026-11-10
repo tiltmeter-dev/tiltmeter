@@ -325,6 +325,24 @@ It records nothing and runs no agent. The command it prints for each entry,
 `tiltmeter fix --notice <id> --allow-unsigned`, reads the entry back from the catalog.
 The [scan guide](scan.md) has the options and the blind spots.
 
+## Hunting for affected repositories
+
+`tiltmeter hunt NOTICE` runs the same search on other people's public code, for one
+notice:
+
+1. builds code-search queries from the notice: each retired value, each removed
+   endpoint's path, each changed field next to the provider's domain or an SDK name;
+2. sends them to GitHub's code search through the GitHub CLI, one request every 7 seconds
+   and 30 at most, since GitHub allows about 10 a minute;
+3. asks GitHub for the stars, last push and size of the repositories named, drops the
+   private, archived, forked, stale and very large ones, and keeps the most starred;
+4. clones each of those, one commit deep and with every git hook off, and searches the
+   clone as the scan above searches a folder.
+
+The code search only nominates: its hits sit in docs and tests as often as in code, so
+the clone decides. Nothing is forked, pushed or opened on GitHub. The
+[hunt guide](hunt.md) has the options, what is sent to GitHub and the limits.
+
 ## Privacy by design
 
 - **Secrets** are expanded only inside the request code, then scrubbed from error messages

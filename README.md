@@ -298,6 +298,7 @@ ready-to-copy jobs for GitHub Actions, GitLab CI and cron.
 | `tiltmeter fix ID` | Lets an agent adapt your code to a check's drift, in a pull request. `--notice` takes a notice file, URL or catalog entry instead, and `--follow-up` answers the review of a pull request that is already open. |
 | `tiltmeter notices check`, `notices apply` | Lists, or applies, the new notices and spec changes of the providers you follow. |
 | `tiltmeter notice create`, `sign`, `publish`, `verify` | Writes and publishes change notices, as a provider. |
+| `tiltmeter hunt NOTICE` | Finds public repositories that still use what a notice changes: searches GitHub code through the GitHub CLI, clones the most starred and checks each one. It only reads. |
 | `tiltmeter serve` | Runs the MCP server on stdio. |
 
 Every command takes `--help`, and most take `--json`.
@@ -400,6 +401,7 @@ Every option is described in the [configuration reference](docs/configuration.md
 - [CI and scheduling](docs/ci.md): GitHub Actions, GitLab CI and cron.
 - [Fixing code](docs/fix.md): `tiltmeter fix`, the agent and how to review its pull requests.
 - [Provider notices](docs/notices.md): publish API changes as a provider, apply them as a customer.
+- [Hunting for affected repositories](docs/hunt.md): `tiltmeter hunt`, what it sends to GitHub and its limits.
 - [API change notices, v1](docs/notice-spec.md): the open format and how notices are signed.
 - [How it works](docs/how-it-works.md): shapes, baselines, the diff rules and the pipeline.
 - [FAQ and troubleshooting](docs/faq.md).
