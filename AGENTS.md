@@ -29,7 +29,9 @@ money.
   they come with the optional `fix` extra. Agent CLIs such as Claude Code run through
   `fix/_proc.py` without a shell, with their own shell tools turned off. Codex is the
   exception: its shell stays inside its OS sandbox, whose profile (`fix/codex.py`) must keep
-  denying reads and writes outside the worktree, the network and `fix.ignore`. The tests
+  denying reads and writes outside the worktree, the network and `fix.ignore`. The one
+  thing it opens outside is Codex's own installation (`own_files`): never a folder Codex
+  shares, the home folder or Codex's home. The tests
   in `fix/verify.py` run the agent's edits: keep them shell-free, offline unless
   `fix.test_network`, on a scrubbed environment, and discard what they write. Run git only
   through `fix/git.py`, which turns every hook off, and quote the agent's own words in pull

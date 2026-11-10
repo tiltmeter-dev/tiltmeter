@@ -178,7 +178,11 @@ Tiltmeter passes it a permission profile on the command line:
 
 - **Reads:** denied everywhere except the worktree, the system paths commands need and
   Codex's own installation. Your home folder, other repositories and the main checkout's
-  `.git` are not visible.
+  `.git` are not visible. The installation is the folder around the `codex` binary only
+  when that folder is Codex's alone, like a release of the standalone installer, an npm
+  package or a Homebrew keg. When the binary sits in a folder it shares, such as
+  `~/.cargo/bin`, `~/.local/bin` or `~/bin`, only the binary is readable, and never the
+  home folder or Codex's own home, where its login is.
 - **Writes:** only inside the worktree. `.git` and `fix.ignore` are denied there too.
 - **Commands:** no network, and only a core set of environment variables (`PATH`, `HOME`
   and the like), so API keys in your environment do not reach the model.

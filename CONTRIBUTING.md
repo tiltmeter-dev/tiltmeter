@@ -87,6 +87,8 @@ A few rules keep it that way:
   turned off and `fix.ignore` denied. The one exception is Codex, which can only read files
   through its shell: it keeps the shell inside its OS sandbox, with a permission profile
   that denies reads outside the worktree, writes outside it, the network and `fix.ignore`.
+  The profile opens one thing outside, Codex's own installation, and only when that folder
+  is Codex's alone: for a binary in `~/.cargo/bin` or `~/bin`, just the binary.
   Any other CLI that needs a shell must be held to the same standard. A new backend implements the `FixAgent` protocol in
   `fix/agent.py` and is picked in `build_fix_agent`. Git and `gh` run the same way, and
   only on the worktree's branch. Git runs through `fix/git.py`, which turns every hook

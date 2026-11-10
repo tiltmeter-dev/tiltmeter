@@ -5,7 +5,7 @@ Codex reads files through its shell, so the shell stays, inside Codex's own sand
 passed on the command line:
 
 - nothing on disk is readable except the worktree, the system paths commands need and
-  Codex's own installation;
+  Codex's own installation, or only its binary when that sits in a folder it shares;
 - only the worktree is writable, and ``fix.ignore`` and ``.git`` are denied inside it;
 - commands get no network and only a core set of environment variables;
 - tools that would act outside that sandbox (apps, browser, computer use, plugins,
@@ -23,6 +23,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import re
 import shutil
 import tempfile
 from collections.abc import Iterable, Mapping, Sequence
@@ -78,16 +79,51 @@ _EFFORT: Final = {
 }
 # Deny globs are expanded when the sandbox starts on Linux; this keeps them unbounded in practice.
 _GLOB_SCAN_DEPTH: Final = 64
+# "codex" as a name of its own in a folder name: ".codex", "codex-0.1", not "codexplorer".
+_NAMES_CODEX: Final = re.compile(r"(?<![a-z])codex(?![a-z])", re.IGNORECASE)
 
 
-def install_root(executable: str) -> Path:
-    """The folder Codex is installed in, which its sandbox must be able to read.
+def own_files(executable: str, *, home: Path, codex_home: Path) -> Path:
+    """What of Codex's installation its sandbox must be able to read.
 
     The sandbox starts commands by running Codex's own binary again, so the binary has
-    to stay readable. ``codex`` resolves to ``<root>/bin/codex`` for the standalone
+    to stay readable, and an installation keeps more next to it, such as ``rg`` and its
+    own ``bwrap``. ``codex`` resolves to ``<root>/bin/codex`` for the standalone
     installer, to ``<root>/bin/codex.js`` for npm and to ``<root>/<binary>`` for Homebrew.
+
+    That root is returned only when the folder is Codex's alone. For a binary that sits
+    in a folder it shares, such as ``~/.cargo/bin``, ``~/.local/bin`` or ``~/bin``, the
+    same step up is ``~/.cargo``, ``~/.local`` or the home folder, with the user's
+    credentials in it: then only the binary is returned.
     """
-    return Path(os.path.realpath(executable)).parent.parent
+    binary = Path(os.path.realpath(executable))
+    root = binary.parent.parent
+    return root if _codex_alone(root, home=home, codex_home=codex_home) else binary
+
+
+def _codex_alone(root: Path, *, home: Path, codex_home: Path) -> bool:
+    """Whether ``root`` is a folder that holds Codex and nothing of the user's.
+
+    Never the home folder, Codex's own home, which holds the login, or a folder that
+    contains one of them. Otherwise a package under ``node_modules`` is, and so is a
+    folder whose path names Codex: ``~/.codex/packages/standalone/releases/<version>``,
+    a Homebrew ``Cellar/codex/<version>``, ``/opt/codex``. The path counts from the home
+    folder down, so a user called ``codex`` does not make ``~/.cargo`` Codex's.
+    """
+    if home.is_relative_to(root) or codex_home.is_relative_to(root):
+        return False
+    below = root.relative_to(home).parts if root.is_relative_to(home) else root.parts
+    return "node_modules" in below or any(_NAMES_CODEX.search(part) for part in below)
+
+
+def _own_files(executable: str, environ: Mapping[str, str]) -> Path:
+    """:func:`own_files` for the user Tiltmeter runs as; just the binary without a home."""
+    try:
+        home = Path(os.path.realpath(Path.home()))
+    except RuntimeError:
+        return Path(os.path.realpath(executable))
+    codex_home = Path(os.path.realpath(environ.get("CODEX_HOME") or home / ".codex"))
+    return own_files(executable, home=home, codex_home=codex_home)
 
 
 def deny_globs(ignore: Iterable[str]) -> list[str]:
@@ -198,7 +234,7 @@ class CodexFixAgent:
             effort=config.effort,
             timeout=config.timeout * config.max_model_calls,
             ignore=config.ignore,
-            readable=[install_root(executable)],
+            readable=[_own_files(executable, environ)],
             environ=environ,
         )
 
