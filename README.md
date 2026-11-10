@@ -207,15 +207,15 @@ type-checks against Stripe's SDK. Tiltmeter fixed it and 14 others we checked by
 the pull requests are open: [the fix for Stripe's sample](https://github.com/stripe-samples/subscription-use-cases/pull/1229).
 
 Since then Tiltmeter has opened 84 pull requests for changes at Stripe, Jira, Spotify, OpenAI,
-Anthropic, Groq, Slack, OpenWeatherMap, Hugging Face and HubSpot. So far 18 have landed: 15 were
-merged as Tiltmeter wrote them, and 3 were adopted by maintainers who landed the fix themselves.
+Anthropic, Groq, Slack, OpenWeatherMap, Hugging Face and HubSpot. So far 21 have landed: 17 were
+merged as Tiltmeter wrote them, and 4 were adopted by maintainers who landed the fix themselves.
 [inbox-zero](https://github.com/elie222/inbox-zero/pull/4406) and
 [QOwnNotes](https://github.com/pbek/QOwnNotes/commit/03e9ed23e3976d67a5728fd8ea8ba65ebed92499)
 carried Tiltmeter's commit into changes of their own, and
 [aicommits](https://github.com/Nutlope/aicommits/commit/98e9c4e4ea025053d4ede2ed4ee08aed9b7e0419)
-made the same change in its own commit. OpenMetadata picked up Tiltmeter's commit in
+made the same change in its own commit. OpenMetadata merged Tiltmeter's commit in
 [its own pull request](https://github.com/open-metadata/OpenMetadata/pull/37039) for its 2.1
-release, still open.
+release.
 [Serenity BDD](https://github.com/serenity-bdd/serenity-core/pull/3756),
 [AiSOC](https://github.com/beenuar/AiSOC/pull/1524),
 [utopia](https://github.com/deeplethe/utopia/pull/1453) and KodeRover's
