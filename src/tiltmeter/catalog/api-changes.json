@@ -2307,6 +2307,53 @@
         {
           "method": "POST",
           "url": "https://slack.com/api/files.upload",
+          "sdk_calls": [
+            {
+              "ecosystem": "pypi",
+              "name": "slack-sdk",
+              "call": "files_upload"
+            },
+            {
+              "ecosystem": "pypi",
+              "name": "slack-bolt",
+              "call": "files_upload"
+            },
+            {
+              "ecosystem": "npm",
+              "name": "@slack/web-api",
+              "call": "files.upload"
+            },
+            {
+              "ecosystem": "npm",
+              "name": "@slack/bolt",
+              "call": "files.upload"
+            },
+            {
+              "ecosystem": "go",
+              "name": "github.com/slack-go/slack",
+              "call": "UploadFile"
+            },
+            {
+              "ecosystem": "go",
+              "name": "github.com/slack-go/slack",
+              "call": "UploadFileContext"
+            },
+            {
+              "ecosystem": "rubygems",
+              "name": "slack-ruby-client",
+              "call": "files_upload"
+            },
+            {
+              "ecosystem": "maven",
+              "name": "com.slack.api:slack-api-client",
+              "call": "filesUpload"
+            },
+            {
+              "ecosystem": "maven",
+              "name": "com.slack.api:bolt",
+              "call": "filesUpload"
+            }
+          ],
           "changes": [
             {
               "path": "$",

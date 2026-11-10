@@ -82,7 +82,10 @@ $ tiltmeter notice create --from-check 26 --url https://api.partner.example/v1/c
 
 The draft is yours to edit before you sign it: rewrite `summary`, and add a `note` to a
 change wherever the new format matters ("Decimal string in the account currency, such as
-`12.00`"). The [spec](notice-spec.md) lists every member.
+`12.00`"). When you remove an endpoint, add the methods of your SDKs that still call it
+under its [`sdk_calls`](notice-spec.md#sdk-calls), such as `files_upload`: most customers
+go through an SDK and never spell the URL, and the search finds them by the method. The
+[spec](notice-spec.md) lists every member.
 
 | Option | Description |
 |---|---|
@@ -315,7 +318,9 @@ lines (`#`, `//`, `/* */`, `--`) or Python docstrings. A retired value counts sp
 digits, such as `o1`, counts only in quotes. A removed endpoint counts where code spells
 its whole path with no host in front of it, or with a host on the provider's domain that
 is not the one it moved to; through an SDK call, only in a file that names the API, and
-only when the replacement does not look the same to the SDK. An endpoint that moved to the
+only when the replacement does not look the same to the SDK; and through a method the
+notice names for it (`sdk_calls`), such as `client.files_upload(`, in a file that imports
+that SDK. An endpoint that moved to the
 same path on another host, as Hugging Face's `/v1/chat/completions` did, counts wherever
 code still names the old host. When the repository reaches a removed endpoint only
 through the notice's SDK, and every lock file or manifest that pins that SDK is at or

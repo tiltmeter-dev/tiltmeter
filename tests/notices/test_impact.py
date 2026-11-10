@@ -846,3 +846,117 @@ def test_a_call_of_a_removed_endpoint_counts_whatever_the_code_reads(tmp_path: P
     }
     theirs = 'r = get("https://api.other.test/v1/search")\nprint(r["issues"])\n'
     assert not check(tmp_path / "theirs", {"client.py": theirs}, **short).affected
+
+
+def removed_upload(*calls: tuple[str, str, str]) -> dict[str, object]:
+    """An endpoint that is gone, with the SDK methods the notice names for it."""
+    return {
+        "provider": "billing.test",
+        "endpoints": [
+            {
+                "method": "POST",
+                "url": "https://billing.test/api/files.upload",
+                "sdk_calls": [{"ecosystem": e, "name": n, "call": c} for e, n, c in calls],
+                "changes": [{"path": "$", "kind": "endpoint_removed"}],
+            }
+        ],
+        "sdks": [],
+    }
+
+
+PY_UPLOAD = removed_upload(("pypi", "billing-sdk", "files_upload"))
+SDK_CLIENT = "from billing_sdk import WebClient\n\nclient = WebClient()\n"
+
+
+def test_a_call_the_notice_names_reaches_a_removed_endpoint(tmp_path: Path) -> None:
+    # Code that goes through the SDK spells no URL: the method's name is all there is.
+    old = SDK_CLIENT + 'client.files_upload(channels="#reports", file=path)\n'
+    impact = check(tmp_path / "old", {"report.py": old}, **PY_UPLOAD)
+    assert impact.affected
+    assert (impact.endpoints, impact.anchors) == ([0], ["billing-sdk"])
+    index = index_of(tmp_path / "lines", {"report.py": old})
+    model = ApiChangeNotice.model_validate(notice(**PY_UPLOAD))
+    places = locate(index, model, assess(index, model))
+    assert [(p.kind, p.line, p.term) for p in places] == [
+        ("endpoint", 4, "POST /api/files.upload"),
+        ("api", 1, "billing-sdk"),
+    ]
+    # The method that replaced it is another name, and so is a longer one.
+    for other in ("files_upload_v2", "old_files_upload", "files_uploads"):
+        new = old.replace("files_upload(", f"{other}(")
+        migrated = check(tmp_path / other, {"report.py": new}, **PY_UPLOAD)
+        assert not migrated.affected
+        assert migrated.reason == (
+            "the repository never calls POST /api/files.upload, which the notice removes"
+        )
+
+
+def test_a_named_call_counts_only_in_a_file_that_imports_its_sdk(tmp_path: Path) -> None:
+    # Another SDK may give the same name to a method of its own.
+    theirs = "from other_sdk import Client\n\nClient().files_upload(file=path)\n"
+    files = {"app.py": SDK_CLIENT, "storage.py": theirs}
+    assert not check(tmp_path / "theirs", files, **PY_UPLOAD).affected
+    # Nor does a file that gets its client from another one: nothing there says whose
+    # method it is.
+    helper = "def send(client, path):\n    return client.files_upload(file=path)\n"
+    files = {"app.py": SDK_CLIENT, "helper.py": helper}
+    assert not check(tmp_path / "helper", files, **PY_UPLOAD).affected
+    # A comment calls nothing.
+    commented = SDK_CLIENT + "# client.files_upload(file=path)\n"
+    assert not check(tmp_path / "comment", {"app.py": commented}, **PY_UPLOAD).affected
+
+
+def test_a_dotted_call_is_found_along_a_chain(tmp_path: Path) -> None:
+    upload = removed_upload(("npm", "@billing/web-api", "files.upload"))
+    head = "const { WebClient } = require('@billing/web-api');\nconst web = new WebClient();\n"
+    for name, call in {
+        "plain": "await web.files.upload({ file });\n",
+        "optional": "return web?.files?.upload({ file });\n",
+        "chained": "await web.files\n  .upload({ file });\n",
+        "spaced": "web . files . upload ( { file } );\n",
+    }.items():
+        impact = check(tmp_path / name, {"send.js": head + call}, **upload)
+        assert impact.affected, name
+        assert impact.endpoints == [0]
+    for name, call in {
+        "v2": "await web.files.uploadV2({ file });\n",
+        "other": "await web.files.list({});\n",
+        "bare": "upload({ file });\n",
+        "apart": "const files = web.files;\nupload(files);\n",
+    }.items():
+        assert not check(tmp_path / name, {"send.js": head + call}, **upload).affected, name
+
+
+def test_ruby_calls_a_named_method_without_parentheses(tmp_path: Path) -> None:
+    upload = removed_upload(("rubygems", "billing-ruby-client", "files_upload"))
+    head = "require 'billing-ruby-client'\n\nclient = Billing::Client.new\n"
+    bare = head + "client.files_upload channels: '#general', file: io\n"
+    assert check(tmp_path / "bare", {"app.rb": bare}, **upload).affected
+    newer = head + "client.files_upload_v2 channels: '#general', file: io\n"
+    assert not check(tmp_path / "newer", {"app.rb": newer}, **upload).affected
+
+
+def test_a_manifest_stands_for_the_import_where_imports_name_no_package(tmp_path: Path) -> None:
+    # A Java import names a class, not the artifact: the pom is what says the SDK is used.
+    upload = removed_upload(("maven", "test.billing:billing-api-client", "filesUpload"))
+    java = (
+        "import test.billing.api.Billing;\n\n"
+        "class Send {\n  void run() { Billing.methods().filesUpload(r -> r.content(x)); }\n}\n"
+    )
+    pom = "<dependency><artifactId>billing-api-client</artifactId></dependency>\n"
+    impact = check(tmp_path / "listed", {"pom.xml": pom, "src/Send.java": java}, **upload)
+    assert impact.affected
+    assert impact.endpoints == [0]
+    assert not check(tmp_path / "unlisted", {"src/Send.java": java}, **upload).affected
+
+
+def test_long_runs_of_blanks_do_not_slow_a_named_call(tmp_path: Path) -> None:
+    upload = removed_upload(("npm", "@billing/web-api", "files.upload"))
+    crafted = "import '@billing/web-api';\n" + ("web.files" + " " * 200 + "\n.upload\n") * 4_000
+    (tmp_path / "send.js").write_text(crafted, encoding="utf-8")
+    started = time.perf_counter()
+    index = RepoIndex.read(tmp_path, ["send.js"])
+    impact = assess(index, ApiChangeNotice.model_validate(notice(**upload)))
+    assert time.perf_counter() - started < 20
+    assert list(index.texts) == ["send.js"]
+    assert not impact.affected

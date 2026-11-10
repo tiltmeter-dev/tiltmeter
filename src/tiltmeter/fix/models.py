@@ -8,7 +8,14 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from tiltmeter.core.models import ChangeKind, Explanation, NoticeStatus, Severity
 from tiltmeter.llm.explainer import AffectedObject
-from tiltmeter.notices.models import ApiVersionPin, Impact, SdkPin, SdkRelease, SpecInfo
+from tiltmeter.notices.models import (
+    ApiVersionPin,
+    Impact,
+    SdkCall,
+    SdkPin,
+    SdkRelease,
+    SpecInfo,
+)
 
 
 class FixTarget(BaseModel):
@@ -122,6 +129,10 @@ class FixApi(BaseModel):
     description: str | None = None
     targets: list[FixTarget]
     affected: list[AffectedObject] = Field(default_factory=list)
+    sdk_calls: list[SdkCall] = Field(
+        default_factory=list,
+        description="The methods of the provider's SDKs that reach the endpoint, from a notice.",
+    )
 
 
 class NoticeSource(BaseModel):

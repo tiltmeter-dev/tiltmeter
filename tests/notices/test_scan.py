@@ -419,6 +419,30 @@ def test_python_code_on_stripes_sdk_is_found(tmp_path: Path) -> None:
     assert stripe["api_versions"] == []
 
 
+def test_code_on_slacks_sdk_is_found_by_the_method_it_calls(tmp_path: Path) -> None:
+    # The SDK builds the URL, so the code never spells files.upload: the method does.
+    old = (
+        "from slack_sdk import WebClient\n\nclient = WebClient(token=TOKEN)\n\n\n"
+        "def send(path):\n"
+        '    return client.files_upload(channels="#reports", file=path)\n'
+    )
+    (tmp_path / "old").mkdir()
+    (tmp_path / "new").mkdir()
+    repo, _ = make_repo(tmp_path / "old", {"app/report.py": old})
+    code, report = scanned(str(repo))
+    assert code == 1
+    slack = finding(report, "slack-files-upload-sunset")
+    assert [(m["file"], m["line"], m["kind"], m["detail"]) for m in slack["matches"]] == [
+        ("app/report.py", 7, "endpoint", "removed")
+    ]
+    # files_upload_v2 is the method that follows the change.
+    new = old.replace("files_upload(channels=", "files_upload_v2(channel=")
+    repo, _ = make_repo(tmp_path / "new", {"app/report.py": new})
+    code, report = scanned(str(repo))
+    assert code == 0
+    assert report["affected"] == []
+
+
 def test_scan_says_which_release_and_api_version_the_folder_is_on(tmp_path: Path) -> None:
     billing = (
         'import stripe\n\nstripe.api_version = "2024-06-20"\n\n\ndef renews(subscription_id):\n'

@@ -78,6 +78,32 @@ fractional numbers.
 | `method` | yes | `GET`, `POST`, `PUT`, `PATCH` or `DELETE`. |
 | `url` | yes | The `https` URL customers call, without query string, fragment or credentials. `{name}` marks a path parameter, as in OpenAPI: `https://api.partner.example/v1/customers/{id}`. |
 | `changes` | yes | 1 to 200 [changes](#changes) to the responses of that endpoint, or to what its requests may send. |
+| `sdk_calls` | no | Up to 50 [SDK calls](#sdk-calls): the methods of your SDKs that reach this endpoint. |
+
+### SDK calls
+
+Code that goes through an SDK never spells the endpoint's URL, so a reader that looks for
+the URL does not see it. An SDK call names the method that reaches the endpoint, so the
+reader can look for the method instead:
+
+```json
+{ "method": "POST", "url": "https://api.partner.example/v1/files.upload",
+  "sdk_calls": [
+    { "ecosystem": "pypi", "name": "partner-sdk", "call": "files_upload" },
+    { "ecosystem": "npm", "name": "@partner/sdk", "call": "files.upload" }
+  ],
+  "changes": [{ "path": "$", "kind": "endpoint_removed" }] }
+```
+
+| Member | Required | Description |
+|---|---|---|
+| `ecosystem` | yes | As in [SDK releases](#sdk-releases). |
+| `name` | yes | The package that has the method, as in [SDK releases](#sdk-releases). |
+| `call` | yes | The method as code writes it after the client, without the client and without parentheses: `files_upload` for `client.files_upload(...)`, `files.upload` for `web.files.upload(...)`. Up to six names of letters, digits and `_`, joined by dots, 100 characters at most. |
+
+Name the method that still sends the old request, not the one that replaces it. A
+package needs no `fixed_in` here: list it under `sdks` as well when one of its releases
+follows the change without the caller changing anything.
 
 ### SDK releases
 
@@ -146,7 +172,9 @@ A removed endpoint that moved, and a retired model:
 
 `endpoint_removed`, `value_retired`, `moved_to` and `replaced_by` were added to version 1
 in October 2026. Readers older than that (Tiltmeter before 0.7.0) reject notices that use
-them, as they reject any member they do not know.
+them, as they reject any member they do not know. `sdk_calls` was added in November 2026
+(Tiltmeter 0.10.0), with the same effect on older readers: leave it out of a notice that
+they must still read.
 
 ## Signatures
 

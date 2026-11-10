@@ -72,7 +72,10 @@ endpoint's response with the new one's. Keep the code's way of building URLs and
 sending requests. Without moved_to, use the replacement the change's note describes \
 when it names one, such as a sequence of calls or an SDK method, in the code's own way \
 of sending requests. When neither says where the endpoint went, or the replacement needs \
-parameters the code cannot supply, leave the call alone and report it as unresolved.
+parameters the code cannot supply, leave the call alone and report it as unresolved. \
+The request's "sdk call" lines name the methods of the provider's SDKs that reach the \
+endpoint: code that calls one of them calls the endpoint without spelling its URL, so \
+look for those calls too.
    - A retired value (value_retired), such as a model id the API no longer accepts: \
 send replaced_by instead wherever the code sends the old value, including defaults, \
 configuration examples and tests. When the value comes from the user's configuration \
@@ -278,6 +281,8 @@ def render_fix_request(request: FixRequest) -> str:
         if api.endpoint_id:
             parts.append(f"endpoint: {api.endpoint_id}")
         parts.append(f"request: {api.method} {api.url}")
+        for call in api.sdk_calls:
+            parts.append(f"sdk call: {call.ecosystem} {call.name} {call.call}")
         if api.description:
             parts.append(f"description: {api.description}")
         parts += ["</api>", "", "<changes>", json.dumps(changes, indent=2, ensure_ascii=False)]

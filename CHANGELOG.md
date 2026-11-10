@@ -10,6 +10,19 @@ a minor release may include breaking changes.
 
 ### Added
 
+- A notice can name the methods of the provider's SDKs that reach an endpoint, in a new
+  optional `sdk_calls` member of the endpoint: `{"ecosystem": "pypi", "name":
+  "slack-sdk", "call": "files_upload"}`. Code that goes through an SDK never spells the
+  URL, so a removed endpoint was invisible there. Now `tiltmeter scan`, `notices apply`,
+  `fix --notice` and `hunt` count a call of a named method in a file that imports that
+  SDK (for Maven, NuGet and Packagist, in a repository whose manifest lists it), such as
+  `client.files_upload(` or `web.files.upload(`, also along a chain and, in Ruby, without
+  parentheses; `files_upload_v2(` and another library's method of the same name do not
+  count. `hunt` searches each method next to its package, and the fix agent is told the
+  methods. The catalog's Slack entry names the calls of Slack's Python, Node, Go, Java
+  and Ruby SDKs, so `scan` now finds `files.upload` behind them. Readers older than this
+  release reject a notice that uses `sdk_calls`, as they reject any member they do not
+  know; notices without it are unchanged.
 - The catalog `tiltmeter scan` reads knows five more changes, four of them still ahead:
   Claude Sonnet 4.5 retires on November 30, 2026; OpenAI shuts down `gpt-image-1.5` and
   its siblings on December 1, `gpt-5`, `gpt-5-mini`, `gpt-5-nano`, `gpt-5-pro`, `o3` and

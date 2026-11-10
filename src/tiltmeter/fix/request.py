@@ -226,6 +226,7 @@ def build_notice_request(
             method=endpoint.method,
             url=endpoint.url,
             targets=sorted(targets, key=lambda t: _relevance(t, names)) if names else targets,
+            sdk_calls=endpoint.sdk_calls,
         )
         for endpoint in picked
         if (targets := _in_use(notice_targets(endpoint, notice.applies_to), used))
@@ -238,6 +239,7 @@ def build_notice_request(
         if target.kind is ChangeKind.VALUE_RETIRED and target.before
     ]
     terms += [term for api in apis for term in url_terms(api.url)]
+    terms += [call.call for api in apis for call in api.sdk_calls]
     terms += [sdk.name for sdk in notice.sdks]
     source = NoticeSource(
         kind="spec" if spec is not None else "notice",

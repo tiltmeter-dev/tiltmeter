@@ -87,7 +87,7 @@ NO_CLI: Final = (
     "https://cli.github.com and run `gh auth login`"
 )
 
-type QueryKind = Literal["value", "endpoint", "field"]
+type QueryKind = Literal["value", "endpoint", "call", "field"]
 type DropReason = Literal["private", "archived", "fork", "stars", "stale", "large", "gone", "limit"]
 type Sleep = Callable[[float], None]
 type Progress = Callable[[str], None]
@@ -116,7 +116,12 @@ class HuntQuery(BaseModel):
     """A code-search query built from the notice, and what GitHub answered."""
 
     kind: QueryKind
-    term: str = Field(description="What it looks for: the value, the endpoint's path, the field.")
+    term: str = Field(
+        description=(
+            "What it looks for: the value, the endpoint's path, the SDK method that reaches "
+            "it, the field."
+        )
+    )
     q: str = Field(description="The query as GitHub's code search received it.")
     total: int = Field(default=0, description="Results GitHub counted; few of them are read.")
     pages: int = Field(default=0, description=f"Pages of {PER_PAGE} results read.")
@@ -240,10 +245,12 @@ class HuntReport(BaseModel):
 
 def build_queries(notice: ApiChangeNotice) -> list[HuntQuery]:
     """What to ask the code search, the surest sign first: every retired value, every
-    removed endpoint's path, then every changed field next to a name of the API.
+    removed endpoint's path and the SDK methods the notice names for it, then every changed
+    field next to a name of the API.
 
-    A field name is anyone's, and so is a short path, so those come with a name the same
-    file must spell. The fields of a removed endpoint are not asked for: its path says more.
+    A field name is anyone's, and so are a short path and a method name, so those come with
+    a name the same file must spell: the API's, or the SDK's for one of its methods. The
+    fields of a removed endpoint are not asked for: its path says more.
     """
     values: list[HuntQuery] = []
     endpoints: list[HuntQuery] = []
@@ -255,6 +262,9 @@ def build_queries(notice: ApiChangeNotice) -> list[HuntQuery]:
         if removed:
             path = urlsplit(endpoint.url).path
             endpoints.append(_query("endpoint", path, *_path_terms(endpoint.url, api)))
+            endpoints += [
+                _query("call", call.call, call.call, call.name) for call in endpoint.sdk_calls
+            ]
         for change in endpoint.changes:
             if change.kind is ChangeKind.VALUE_RETIRED and change.before:
                 values.append(_query("value", change.before, change.before))

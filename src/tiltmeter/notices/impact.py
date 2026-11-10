@@ -15,7 +15,9 @@ pull requests nobody needs. So Tiltmeter looks first, without an LLM:
 A retired value, such as a model id, is its own anchor: spelled in code, it says which
 API the code calls. A removed endpoint counts only where code spells its whole path (or
 the repository depends on an SDK release that follows the change), so code that already
-calls its replacement, which often starts the same way, is not affected.
+calls its replacement, which often starts the same way, is not affected. Code that goes
+through an SDK spells no path: there the endpoint counts where a file that imports the SDK
+calls the method the notice names for it (``sdk_calls``), such as ``client.files_upload(``.
 
 No anchor, or anchors but none of the fields near them, means not affected. When it is
 affected, the matching files are where the agent starts. Paths in ``fix.ignore`` and
@@ -45,6 +47,7 @@ from tiltmeter.notices.models import (
     ApiChangeNotice,
     Impact,
     NoticeEndpoint,
+    SdkCall,
     SdkName,
     https_host,
     on_domain,
@@ -173,6 +176,24 @@ def sdk_pattern(sdk: SdkName) -> re.Pattern[str]:
     # A Go module carries its major version in its path: github.com/stripe/stripe-go/v81.
     major = r"(?:/v\d+)?" if sdk.ecosystem == "go" else ""
     return re.compile(rf"(?<![A-Za-z0-9_@/.\-]){re.escape(name)}{major}(?![A-Za-z0-9_/\-])", flags)
+
+
+# What comes before a method: client.files_upload, web?.files.upload, $client->filesUpload,
+# Client::upload_file. The gaps are bounded, so a long run of blanks is read once.
+_ACCESS: Final = r"(?:\?\.|\.|->|::)"
+_GAP: Final = r"\s{0,40}"
+
+
+def call_pattern(call: SdkCall) -> re.Pattern[str]:
+    """A method called by the name an SDK gives it, on any object: ``files_upload`` finds
+    ``client.files_upload(`` and ``files.upload`` finds ``web.files.upload(``, across the
+    lines of a chain, but neither finds ``files_upload_v2(``. Ruby may leave the
+    parentheses out."""
+    steps = f"{_GAP}{_ACCESS}{_GAP}".join(re.escape(step) for step in call.call.split("."))
+    opens = rf"{_GAP}\("
+    if call.ecosystem == "rubygems":
+        opens = rf"""(?:{opens}|[ \t]+[A-Za-z0-9_:'"@\[{{])"""
+    return re.compile(rf"{_ACCESS}{_GAP}{steps}{opens}")
 
 
 @cache
@@ -338,8 +359,31 @@ class RepoIndex:
 
     def calling(self, gone: Gone, api_files: Collection[str]) -> list[str]:
         """The code files that call a removed endpoint: where code spells its whole path,
-        or, in ``api_files``, calls it through an SDK."""
-        return [name for name in self._paths if self._calls_gone(gone, name, name in api_files)]
+        or, in ``api_files``, calls it through an SDK, or calls the method the notice
+        names for it in a file that uses that SDK."""
+        listed = self.listing(gone)
+        return [
+            name
+            for name in self._paths
+            if self._calls_gone(gone, name, name in api_files)
+            or any(p.search(self.spoken(name)) for p in gone.calls_in(self.spoken(name), listed))
+        ]
+
+    def listing(self, gone: Gone) -> frozenset[SdkName]:
+        """The SDKs of the endpoint's named calls that a manifest lists, among those whose
+        imports do not name the package (Maven, NuGet, Packagist): there the manifest is
+        what says the code uses the SDK."""
+        return frozenset(
+            call.sdk for call in gone.named if call.imported is None and self._lists(call.sdk)
+        )
+
+    def _lists(self, sdk: SdkName) -> bool:
+        pattern, globs = sdk_pattern(sdk), MANIFESTS[sdk.ecosystem]
+        return any(
+            any(fnmatchcase(PurePosixPath(name).name, glob) for glob in globs)
+            and pattern.search(text) is not None
+            for name, text in self.texts.items()
+        )
 
     def _calls_gone(self, gone: Gone, name: str, near: bool) -> bool:
         if gone.only_with_host:
@@ -541,7 +585,8 @@ class Gone:
     A host spelled in front of the path must be on the provider's domain and not the host
     the endpoint moved to. When it moved to the same path on another host, only the old
     host tells the two apart, so code that names it calls the endpoint. An SDK call counts
-    only when the replacement does not look the same to the SDK.
+    only when the replacement does not look the same to the SDK. A call the notice names
+    (``sdk_calls``) counts in a file that uses its SDK, whatever the path looks like.
     """
 
     method: str
@@ -555,6 +600,7 @@ class Gone:
     strict: re.Pattern[str] | None
     loose: re.Pattern[str] | None
     shape: _CallShape | None
+    named: tuple[_NamedCall, ...] = ()
 
     @classmethod
     def of(cls, endpoint: NoticeEndpoint, provider: str) -> Gone:
@@ -586,6 +632,7 @@ class Gone:
             strict=strict,
             loose=_template_pattern(endpoint.url, versionless=True),
             shape=shape,
+            named=tuple(_NamedCall.of(call) for call in endpoint.sdk_calls),
         )
 
     @property
@@ -608,14 +655,42 @@ class Gone:
         """Whether one of these SDK calls reaches the endpoint."""
         return self.shape is not None and any(_reaches(call, self.shape) for call in calls)
 
-    def in_line(self, line: str, *, near: bool) -> bool:
-        """Whether a line of code calls the endpoint, by :meth:`RepoIndex.calling`'s rules."""
+    def calls_in(self, text: str, listed: Collection[SdkName] = ()) -> list[re.Pattern[str]]:
+        """The named calls that count in a file with this text: those of an SDK the file
+        imports or, where imports do not name the package, of one in ``listed``."""
+        return [
+            call.pattern
+            for call in self.named
+            if call.word in text
+            and (call.sdk in listed if call.imported is None else bool(call.imported.search(text)))
+        ]
+
+    def in_line(self, line: str, *, near: bool, calls: Sequence[re.Pattern[str]] = ()) -> bool:
+        """Whether a line of code calls the endpoint, by :meth:`RepoIndex.calling`'s rules.
+        ``calls`` are the named calls that count in the line's file."""
+        if any(pattern.search(line) for pattern in calls):
+            return True
         if self.only_with_host:
             return names_host(self.old_host, line.lower())
         versionless = near or self.segments >= 2
         if any(self.spelled(path, versionless=versionless) for path in _path_tokens(line)):
             return True
         return near and self.called(_calls_in(line))
+
+
+@dataclass(frozen=True, slots=True)
+class _NamedCall:
+    """A call by the name an SDK gives it, and the import that says a file uses that SDK."""
+
+    sdk: SdkName
+    word: str
+    pattern: re.Pattern[str]
+    imported: re.Pattern[str] | None
+
+    @classmethod
+    def of(cls, call: SdkCall) -> _NamedCall:
+        sdk = SdkName(ecosystem=call.ecosystem, name=call.name)
+        return cls(sdk, call.call.rsplit(".", 1)[-1], call_pattern(call), import_pattern(sdk))
 
 
 # Calls through an SDK, as most SDKs name them: stripe.Subscription.retrieve(...),
@@ -757,7 +832,7 @@ def assess(index: RepoIndex, notice: ApiChangeNotice, *, sdks: Sequence[SdkName]
     )
     paths = list(dict.fromkeys(a for e in notice.endpoints for a in path_anchors(e.url)))
     short = {a for e in notice.endpoints for a in versionless_anchors(e.url)}
-    names = [*notice.sdks, *(sdk for sdk in sdks if sdk.name not in {s.name for s in notice.sdks})]
+    names = _sdk_names(notice, sdks)
     # The provider's domain names the API too, where each customer has a host of its own
     # (your-domain.atlassian.net).
     hosts = list(dict.fromkeys([*notice.hosts, notice.provider]))
@@ -830,6 +905,21 @@ def assess(index: RepoIndex, notice: ApiChangeNotice, *, sdks: Sequence[SdkName]
     return impact.model_copy(
         update={"endpoints": chosen, "sdk_pins": pins, "api_versions": versions}
     )
+
+
+def _sdk_names(notice: ApiChangeNotice, more: Sequence[SdkName] = ()) -> list[SdkName]:
+    """The provider's SDKs: the releases the notice lists, the ones the caller knows of,
+    and the ones whose calls it names. Each names the API where code imports it."""
+    listed = {sdk.name for sdk in notice.sdks}
+    calls = [
+        SdkName(ecosystem=call.ecosystem, name=call.name)
+        for endpoint in notice.endpoints
+        for call in endpoint.sdk_calls
+    ]
+    found: dict[tuple[str, str], SdkName] = {}
+    for sdk in [*notice.sdks, *(sdk for sdk in [*more, *calls] if sdk.name not in listed)]:
+        found.setdefault((sdk.ecosystem, sdk.name), sdk)
+    return list(found.values())
 
 
 def _called(
@@ -1011,10 +1101,11 @@ class _Term:
     pattern: re.Pattern[str] | None = None
     gone: Gone | None = None
     near: bool = False
+    calls: tuple[re.Pattern[str], ...] = ()
 
     def on(self, line: str) -> bool:
         if self.gone is not None:
-            return self.gone.in_line(line, near=self.near)
+            return self.gone.in_line(line, near=self.near, calls=self.calls)
         if self.pattern is not None:
             return self.pattern.search(line) is not None
         return _spelled(self.term, line.lower())
@@ -1029,15 +1120,16 @@ def locate(index: RepoIndex, notice: ApiChangeNotice, impact: Impact) -> list[Pl
     values = {value: retired[value] for value in impact.anchors if value in retired}
     fields = {name: field_pattern(name) for name in impact.fields}
     hosts = list(dict.fromkeys([*notice.hosts, notice.provider]))
-    api = index.api_files(hosts, notice.sdks)
+    api = index.api_files(hosts, _sdk_names(notice))
     removed = [
         Gone.of(notice.endpoints[i], notice.provider)
         for i in impact.endpoints
         if any(c.kind is ChangeKind.ENDPOINT_REMOVED for c in notice.endpoints[i].changes)
     ]
     calling = {gone.term: set(index.calling(gone, api)) for gone in removed}
+    listed_sdks = {gone.term: index.listing(gone) for gone in removed}
     sdks: dict[str, list[SdkName]] = {}
-    for sdk in notice.sdks:
+    for sdk in _sdk_names(notice):
         sdks.setdefault(sdk.name, []).append(sdk)
     names = [term for term in impact.anchors if term not in retired and term not in sdks]
     imports = {
@@ -1067,7 +1159,13 @@ def locate(index: RepoIndex, notice: ApiChangeNotice, impact: Impact) -> list[Pl
                 if v in spoken and p.search(spoken)
             ]
             terms += [
-                _Term("endpoint", gone.term, gone=gone, near=name in api)
+                _Term(
+                    "endpoint",
+                    gone.term,
+                    gone=gone,
+                    near=name in api,
+                    calls=tuple(gone.calls_in(spoken, listed_sdks[gone.term])),
+                )
                 for gone in removed
                 if name in calling[gone.term]
             ]

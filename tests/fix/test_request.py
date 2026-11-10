@@ -375,6 +375,31 @@ def test_moves_and_retired_values_reach_the_agent() -> None:
     assert "For value_retired" not in render_fix_request(notice_request())
 
 
+def test_the_sdk_methods_that_reach_an_endpoint_reach_the_agent() -> None:
+    upload = {
+        "method": "POST",
+        "url": "https://api.billing.test/api/files.upload",
+        "sdk_calls": [
+            {"ecosystem": "pypi", "name": "billing-sdk", "call": "files_upload"},
+            {"ecosystem": "npm", "name": "@billing/web-api", "call": "files.upload"},
+        ],
+        "changes": [{"path": "$", "kind": "endpoint_removed"}],
+    }
+    request = notice_request(endpoints=[upload])
+    assert [call.call for call in request.apis[0].sdk_calls] == ["files_upload", "files.upload"]
+    assert {"files_upload", "files.upload"} <= set(request.search_terms)
+    text = render_fix_request(request)
+    assert (
+        "request: POST https://api.billing.test/api/files.upload\n"
+        "sdk call: pypi billing-sdk files_upload\n"
+        "sdk call: npm @billing/web-api files.upload\n"
+    ) in text
+    from tiltmeter.fix.prompts import SYSTEM_PROMPT
+
+    assert 'The request\'s "sdk call" lines name the methods' in SYSTEM_PROMPT
+    assert "sdk call:" not in render_fix_request(notice_request())
+
+
 def test_only_the_retired_values_the_code_sends_are_kept() -> None:
     retired = {
         "method": "POST",

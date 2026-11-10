@@ -290,8 +290,10 @@ On the customer's side, `tiltmeter notices apply`:
    even when the host comes from the configuration. A retired value, such as a model id,
    counts on its own when code spells it whole, and a removed endpoint only where code
    spells its whole path, with no host in front of it or one of the provider's other than
-   the one it moved to. Values, removed paths and fields in comment lines and Python
-   docstrings do not count. A repository that does not use them is recorded as not affected.
+   the one it moved to, or where a file that imports one of the provider's SDKs calls a
+   method the notice names for that endpoint. Values, removed paths and fields in comment
+   lines and Python docstrings do not count. A repository that does not use them is
+   recorded as not affected.
    For one that does, the release of the notice's SDKs in its lock files and manifests and
    the dated API versions its code pins are read too, for the agent and the pull request;
 4. otherwise turns the notice into the same fix request a check would produce (the
