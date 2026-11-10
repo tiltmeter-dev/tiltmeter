@@ -3,11 +3,13 @@ from __future__ import annotations
 import os
 import sys
 from pathlib import Path
+from typing import Any
 
 import pytest
 
-from tests.fix.kit import git, make_repo
+from tests.fix.kit import commit_files, git, make_repo
 from tiltmeter.errors import FixError
+from tiltmeter.fix._proc import run_tool
 from tiltmeter.fix.git import GhCli, Git, failed_runs, parse_feedback
 
 
@@ -123,6 +125,61 @@ def test_hooks_the_repository_keeps_do_not_run_either(tmp_path: Path) -> None:
     # The agent can edit a hook the repository tracks: git must not run it on the commit.
     edited = f"#!/bin/sh\necho edited >> '{marker.as_posix()}'\n"
     fix_and_push(repo, tmp_path, {".githooks/post-commit": edited})
+    assert not marker.exists()
+
+
+def test_clone_copies_the_latest_commit_to_read(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo, remote = make_repo(tmp_path)
+    commit_files(repo, {"client.py": "print('new')\n"})
+    git(repo, "tag", "v1")
+    git(repo, "push", "--quiet", "origin", "main", "v1")
+    ran: list[tuple[list[str], dict[str, str]]] = []
+
+    def spy(command: list[str], **options: Any) -> Any:
+        ran.append((list(command), dict(options["env"])))
+        return run_tool(command, **options)
+
+    monkeypatch.setattr("tiltmeter.fix.git.run_tool", spy)
+    # A URL, since git ignores --depth for a path on the same disk.
+    copy = Git.clone(remote.as_uri(), tmp_path / "copy", timeout=60)
+    assert (copy.root / "client.py").read_text(encoding="utf-8") == "print('new')\n"
+    assert copy.run("rev-list", "--count", "HEAD").strip() == "1"
+    assert copy.run("tag").strip() == ""
+    command, env = ran[0]
+    assert command[1:5] == ["-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false"]
+    assert command[5:12] == [
+        "clone",
+        "--quiet",
+        "--depth",
+        "1",
+        "--no-tags",
+        "--single-branch",
+        "--",
+    ]
+    assert env["GIT_LFS_SKIP_SMUDGE"] == "1"  # LFS files stay pointers: nothing is downloaded
+    assert env["GIT_TERMINAL_PROMPT"] == "0"
+
+    with pytest.raises(FixError, match=r"`git clone` failed: .*missing"):
+        Git.clone(str(tmp_path / "missing.git"), tmp_path / "other")
+    assert not (tmp_path / "other").exists()
+
+
+def test_clone_runs_no_hook(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _, remote = make_repo(tmp_path)
+    marker = tmp_path / "hooks-ran.txt"
+    template = tmp_path / "template"
+    plant_hooks(template / "hooks", marker)
+    config = tmp_path / "gitconfig"
+    config.write_text(f"[init]\n\ttemplateDir = {template.as_posix()}\n", encoding="utf-8")
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(config))
+    git(tmp_path, "clone", "--quiet", str(remote), "plain")
+    assert "post-checkout" in marker.read_text(encoding="utf-8")  # plain git does run them
+    marker.unlink()
+
+    Git.clone(str(remote), tmp_path / "copy")
+    assert (tmp_path / "copy" / "client.py").is_file()
     assert not marker.exists()
 
 

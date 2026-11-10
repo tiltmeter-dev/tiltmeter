@@ -14,7 +14,8 @@ were committed, discarded on purpose or not needed, 1 when the agent left work
 for a human, 3 when the agent, a git step or a feed failed, 4 for usage errors.
 ``tiltmeter notices check`` exits 1 when there are new notices to act on, and
 ``tiltmeter scan`` when the folder uses a change in the catalog; both exit 3 when
-a feed or the catalog cannot be read.
+a feed or the catalog cannot be read. ``tiltmeter hunt`` exits 1 when a repository it
+checked uses what the notice changes, and 3 when GitHub could not be searched.
 """
 
 from __future__ import annotations
@@ -60,6 +61,7 @@ if TYPE_CHECKING:
         TestRun,
     )
     from tiltmeter.fix.runner import FixSession
+    from tiltmeter.notices.hunt import HuntReport
     from tiltmeter.notices.impact import Candidate, RepoIndex
     from tiltmeter.notices.models import ApiChangeNotice, FeedEntry, FeedReport, Impact, SdkName
     from tiltmeter.notices.reader import LoadedNotice
@@ -1026,6 +1028,96 @@ def scan(
 
         render_scan(out, report, show_all=show_all)
     raise typer.Exit(scan_exit_code(report))
+
+
+# -- public repositories that still use what a notice changes ---------------------
+
+
+def hunt_exit_code(report: HuntReport) -> int:
+    """A search that could not run beats an affected repository, which beats none. When
+    every clone failed, nothing was searched either."""
+    counts = report.counts
+    if report.error or (counts.checked and counts.failed == counts.checked):
+        return EXIT_CHECK_FAILED
+    return EXIT_WARNING if counts.affected else EXIT_OK
+
+
+@app.command()
+def hunt(
+    notice: Annotated[
+        str,
+        typer.Argument(
+            help=(
+                "The change to look for: a notice file or https URL, FEED#ID for an entry "
+                "of a feed, or the id of an entry in the catalog `scan` reads."
+            ),
+        ),
+    ],
+    limit: Annotated[
+        int,
+        typer.Option(
+            "--limit", "-n", min=1, max=200, help="Clone and check at most this many repositories."
+        ),
+    ] = 20,
+    min_stars: Annotated[
+        int, typer.Option("--min-stars", min=0, help="Leave out repositories with fewer stars.")
+    ] = 0,
+    pushed_within: Annotated[
+        int,
+        typer.Option(
+            "--pushed-within",
+            metavar="DAYS",
+            min=1,
+            help="Leave out repositories with no push in this many days.",
+        ),
+    ] = 365,
+    include_forks: Annotated[
+        bool, typer.Option("--include-forks", help="Check forks too.")
+    ] = False,
+    keep: Annotated[
+        Path | None,
+        typer.Option(
+            "--keep",
+            metavar="DIR",
+            help="Keep the clones in this folder, not in a temporary one that is removed.",
+        ),
+    ] = None,
+    as_json: JsonOption = False,
+) -> None:
+    """Find public repositories that still use what a change notice changes.
+
+    Asks GitHub's code search, through the GitHub CLI (gh), for the values the notice
+    retires, the endpoints it removes and the fields it changes. Then clones the most
+    starred repositories it names and checks each clone with the search `tiltmeter scan`
+    uses. It only reads: nothing is forked, pushed or opened on GitHub. Exit code 0: no
+    repository checked is affected; 1: at least one is; 3: the search could not run.
+    """
+    from tiltmeter.notices.hunt import GhSearch, HuntFilters
+    from tiltmeter.notices.hunt import hunt as search
+
+    # Nothing is changed in anyone's code, so an unsigned notice will do; the output says.
+    loaded = _run(_load_notice(notice, allow_unsigned=True))
+    if keep is not None:
+        try:
+            keep.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            _fail(f"cannot keep the clones in {keep}: {exc.strerror}")
+    filters = HuntFilters(
+        limit=limit, min_stars=min_stars, pushed_within=pushed_within, include_forks=include_forks
+    )
+
+    def progress(message: str) -> None:
+        if not as_json:
+            err.print(Text(message, style="dim"))
+
+    report = search(loaded, GhSearch(), filters=filters, keep=keep, progress=progress)
+    if as_json:
+        _print_json(report.model_dump(mode="json"))
+    else:
+        from tiltmeter.console import render_hunt
+
+        render_hunt(out, report)
+    raise typer.Exit(hunt_exit_code(report))
 
 
 # -- provider notices, as a subscriber --------------------------------------------

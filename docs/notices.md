@@ -140,6 +140,13 @@ GitHub Pages:
 The notices in the repository stay unsigned and reviewable like code; the signed feed is
 built on every deploy, and Ed25519 signatures come out the same every time.
 
+### See who still uses the old API
+
+`tiltmeter hunt notice.json` searches public code on GitHub for what a notice changes,
+clones the most starred repositories it finds and lists the lines that still use it. It
+only reads: no repository is forked, changed or told. The [hunt guide](hunt.md) has the
+options, what it sends to GitHub and its limits.
+
 ## For API customers
 
 ### Subscribe
@@ -357,5 +364,6 @@ request, shared out between the endpoints).
 |---|---|---|---|---|
 | `notices check` | nothing new | new notices (that affect `--repo`, when given) | a feed or spec could not be read | usage or config error |
 | [`scan`](scan.md) | nothing in the catalog affects the folder | the folder uses a change in the catalog | the catalog could not be read | usage error |
+| [`hunt`](hunt.md) | no repository checked uses what the notice changes | at least one does | GitHub could not be searched, or every clone failed | usage error |
 | `notices apply` | everything handled | an agent changed nothing but left questions, touched an ignored file, or only edited old code that nothing uses | a fix, a feed or a spec failed | usage or config error |
 | `notice verify` | signed and verified | valid but unsigned | invalid, or the signature does not match | usage error |

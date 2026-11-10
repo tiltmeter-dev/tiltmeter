@@ -27,6 +27,7 @@ if TYPE_CHECKING:
         FixRequest,
         PullFeedback,
     )
+    from tiltmeter.notices.hunt import DropReason, HuntReport, HuntRepository
     from tiltmeter.notices.models import (
         ApiChangeNotice,
         ApiVersionPin,
@@ -43,6 +44,7 @@ if TYPE_CHECKING:
 MAX_DIFF_LINES: Final = 400
 MAX_SCAN_LINES: Final = 5
 MAX_PIN_LINES: Final = 3
+MAX_HUNT_LINES: Final = 3
 
 SEVERITY_STYLE: Final = {
     Severity.BREAKING: "bold red",
@@ -542,21 +544,21 @@ def _when(finding: ScanFinding, now: datetime) -> str:
     return f"takes effect {day}" + (f", {_in_days(left)}" if left is not None else "")
 
 
-def _origin(finding: ScanFinding) -> str:
+def _origin(finding: ScanFinding | HuntReport) -> str:
     if finding.drafted:
         return "unsigned: drafted by Tiltmeter from the provider's public documentation"
     return "signed by the provider" if finding.signed else "unsigned"
 
 
-def _scope_lines(finding: ScanFinding) -> list[Text]:
+def _scope_lines(matches: Sequence[ScanMatch]) -> list[Text]:
     """Who the matched changes affect, when that is not every caller."""
     scoped: dict[str, list[str]] = {}
-    for match in finding.matches:
+    for match in matches:
         if match.applies_to:
             terms = scoped.setdefault(match.applies_to, [])
             if match.term not in terms:
                 terms.append(match.term)
-    if len(scoped) == 1 and all(match.applies_to for match in finding.matches):
+    if len(scoped) == 1 and all(match.applies_to for match in matches):
         return [Text.assemble(("only for some callers: ", "yellow"), next(iter(scoped)))]
     return [
         Text.assemble((f"only for some callers ({', '.join(terms)}): ", "yellow"), scope)
@@ -592,15 +594,13 @@ def render_scan_finding(console: Console, finding: ScanFinding, now: datetime) -
         )
     )
     console.print(Padding(Text(f"{finding.id} · {_origin(finding)}", style="dim"), (0, 0, 0, 4)))
-    for line in _scope_lines(finding):
+    for line in _scope_lines(finding.matches):
         console.print(Padding(line, (0, 0, 0, 4)))
     shown = finding.matches[:MAX_SCAN_LINES]
     for match in shown:
         console.print(Padding(scan_match_text(match), (0, 0, 0, 4)))
-    rest = finding.count - len(shown)
-    if rest > 0:
-        files = f", {finding.files} files in all" if finding.files > 1 else ""
-        more = Text(f"… and {rest} more line{'' if rest == 1 else 's'}{files}", style="dim")
+    if finding.count > len(shown):
+        more = _more_lines(finding.count - len(shown), finding.files)
         console.print(Padding(more, (0, 0, 0, 4)))
     if finding.tests:
         also = Text(f"also in tests: {_places(finding.tests)}", style="dim")
@@ -618,6 +618,11 @@ def render_scan_finding(console: Console, finding: ScanFinding, now: datetime) -
             style="dim",
         )
         console.print(Padding(command, (0, 0, 0, 4)))
+
+
+def _more_lines(rest: int, files: int) -> Text:
+    in_all = f", {files} files in all" if files > 1 else ""
+    return Text(f"… and {rest} more line{'' if rest == 1 else 's'}{in_all}", style="dim")
 
 
 def _places(matches: Sequence[ScanMatch], limit: int = 3) -> str:
@@ -734,6 +739,159 @@ def render_scan(
             Text(
                 "The catalog's entries are drafted by Tiltmeter from each provider's public "
                 "documentation; no provider signed or endorsed them.",
+                style="dim",
+            )
+        )
+
+
+# -- hunt -------------------------------------------------------------------------
+
+
+def _repositories(count: int) -> str:
+    return f"{count:,} repositor{'y' if count == 1 else 'ies'}"
+
+
+def render_hunt_repository(console: Console, repo: HuntRepository) -> None:
+    """One repository that was checked: the lines that still use the change, or one line
+    on why it is not affected or could not be checked."""
+    name = (repo.full_name, "bold")
+    stars = (f"  {repo.stars:,} star{'' if repo.stars == 1 else 's'}", "dim")
+    if repo.error is not None:
+        problem = (f"  could not be checked: {repo.error}", "yellow")
+        console.print(Text.assemble(("! ", "yellow"), name, stars, problem))
+        return
+    if not repo.affected:
+        text = Text.assemble(("- ", "dim"), name, stars, (f"  not affected: {repo.reason}", "dim"))
+        for where, places in (("used only in tests", repo.tests), ("mentioned in docs", repo.docs)):
+            if places:
+                text.append(f"\n    {where}, which do not count: {_places(places)}", "dim")
+        console.print(text)
+        return
+    pushed = f" · pushed {repo.pushed_at:%Y-%m-%d}" if repo.pushed_at is not None else ""
+    branch = f" · {repo.default_branch}" if repo.default_branch else ""
+    console.print(Text.assemble(("✗ ", "red"), name, stars, (f"{pushed}{branch}", "dim")))
+    console.print(Padding(Text(repo.url, style="dim"), (0, 0, 0, 4)))
+    shown = repo.matches[:MAX_HUNT_LINES]
+    for match in shown:
+        console.print(Padding(scan_match_text(match), (0, 0, 0, 4)))
+    if repo.count > len(shown):
+        console.print(Padding(_more_lines(repo.count - len(shown), repo.files), (0, 0, 0, 4)))
+    if repo.tests:
+        also = Text(f"also in tests: {_places(repo.tests)}", style="dim")
+        console.print(Padding(also, (0, 0, 0, 4)))
+    if repo.clone is not None:
+        console.print(Text(f"    clone: {repo.clone}", style="dim"), soft_wrap=True)
+
+
+def hunt_summary(report: HuntReport) -> Text:
+    """How many of the repositories that could be checked still use the change."""
+    counts = report.counts
+    if not report.queries:
+        return Text(
+            f"{report.notice_id} retires no value, removes no endpoint and changes no field "
+            "that code reads, so there is nothing to search for.",
+            style="yellow",
+        )
+    if not counts.checked:
+        return Text(
+            f"No repository to check: the code search named {counts.found:,}, and none "
+            "passed the filters.",
+            style="yellow",
+        )
+    read = counts.checked - counts.failed
+    if not read:
+        return Text(f"None of the {_repositories(counts.checked)} could be checked.", style="red")
+    what = f"what {report.notice_id} changes"
+    if counts.affected:
+        verb = "uses" if counts.affected == 1 else "use"
+        words = f"{counts.affected} of {_repositories(read)} checked still {verb} {what}"
+        text = Text(words, style="bold")
+    else:
+        text = Text(f"None of the {_repositories(read)} checked still uses {what}", style="green")
+    if counts.failed:
+        text.append(f"; {counts.failed} more could not be checked")
+    return text.append(".")
+
+
+def _left_out(report: HuntReport) -> str:
+    """Why repositories the code search named were not checked, in the filters' order."""
+    filters, dropped = report.filters, report.counts.dropped
+    words: dict[DropReason, str] = {
+        "gone": "gone from GitHub",
+        "private": "private",
+        "archived": "archived",
+        "fork": "fork" if dropped.get("fork") == 1 else "forks",
+        "stars": f"under {filters.min_stars:,} stars",
+        "stale": f"not pushed in {filters.pushed_within:,} days",
+        "large": "too large to clone",
+        "limit": f"past --limit {filters.limit}",
+    }
+    return ", ".join(
+        f"{dropped[reason]:,} {said}" for reason, said in words.items() if reason in dropped
+    )
+
+
+def render_hunt(console: Console, report: HuntReport) -> None:
+    """The notice, then each repository that still uses what it changes with its lines,
+    the others in a line each, and a summary of what was searched and left out."""
+    console.print(Text.assemble((report.provider, "bold"), "  ", report.headline))
+    origin = Text(f"{report.notice_id} · {_origin(report)}", style="dim")
+    console.print(Padding(origin, (0, 0, 0, 4)))
+    if report.error:
+        console.print(Text(f"✗ cannot search GitHub: {report.error}", style="red"))
+        return
+    for line in _scope_lines([m for repo in report.repositories for m in repo.matches]):
+        console.print(Padding(line, (0, 0, 0, 4)))
+    console.print()
+    for repo in report.repositories:
+        render_hunt_repository(console, repo)
+        if repo.affected:
+            console.print()
+    if report.repositories and not report.repositories[-1].affected:
+        console.print()
+    console.print(hunt_summary(report), soft_wrap=True)
+    counts = report.counts
+    if report.queries:
+        asked = sum(1 for query in report.queries if query.pages)
+        searched = (
+            f"GitHub's code search named {_repositories(counts.found)} for {asked} "
+            f"quer{'y' if asked == 1 else 'ies'}"
+        )
+        left_out = _left_out(report)
+        console.print(
+            Text(f"{searched}; left out: {left_out}." if left_out else f"{searched}.", style="dim"),
+            soft_wrap=True,
+        )
+    if report.skipped:
+        large = ", ".join(f"{skip.full_name} ({skip.size_mb:,} MB)" for skip in report.skipped)
+        console.print(Text(f"skipped as too large to clone: {large}", style="dim"), soft_wrap=True)
+    refused = [query for query in report.queries if query.error]
+    if refused:
+        terms = ", ".join(query.term for query in refused)
+        console.print(Text(f"note: GitHub refused to search for {terms}", style="yellow"))
+    if report.queries_not_run:
+        console.print(
+            Text(
+                f"note: {report.queries_not_run} of the notice's queries were not run, to "
+                "stay within the rate limit of GitHub's code search.",
+                style="yellow",
+            )
+        )
+    if any(query.incomplete for query in report.queries):
+        console.print(
+            Text(
+                "note: GitHub's code search timed out on some queries, so results are "
+                "missing; a later run may name more repositories.",
+                style="yellow",
+            )
+        )
+    if report.kept is not None and counts.checked > counts.failed:
+        console.print(Text(f"The clones are in {report.kept}.", style="dim"), soft_wrap=True)
+    if report.queries:
+        console.print(
+            Text(
+                "The code search is a heuristic over default branches: a repository it did "
+                "not name can still use the change.",
                 style="dim",
             )
         )

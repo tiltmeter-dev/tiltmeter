@@ -10,6 +10,19 @@ a minor release may include breaking changes.
 
 ### Added
 
+- `tiltmeter hunt NOTICE` finds the public repositories that still use what a notice
+  changes, and where. It builds code-search queries from the notice (each retired value,
+  each removed endpoint's path, each changed field next to the provider's domain or an SDK
+  name), sends them to GitHub through the GitHub CLI at the pace GitHub allows, keeps the
+  most starred repositories that are public, not archived, not forks, pushed within a year
+  and under 500 MB, clones each one and checks the clone with the search `tiltmeter scan`
+  uses, so docs, tests and comments do not count. `NOTICE` is a notice file or URL,
+  `FEED#ID` or the id of a catalog entry, signed or not, and the output says which.
+  `--limit`, `--min-stars`, `--pushed-within` and `--include-forks` choose the
+  repositories, `--keep DIR` keeps the clones and `--json` prints it all. Exit code 0: no
+  repository checked is affected; 1: at least one is; 3: GitHub could not be searched, with
+  what to do, such as `gh auth login`. It only reads: nothing is forked, pushed or opened
+  on GitHub. `docs/hunt.md` says what it sends to GitHub and what it cannot see.
 - `tiltmeter scan`, `fix --notice` and `notices apply` read which release of the
   provider's SDK the code is on, and say it next to the first release that follows the
   change: "installs stripe 11.6.0 (uv.lock), which is older than 12.0.0", "asks for stripe

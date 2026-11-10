@@ -17,7 +17,7 @@ import os
 import re
 import shutil
 import subprocess
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Final, Protocol
@@ -32,12 +32,18 @@ NO_HOOKS: Final = ("-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false
 
 
 def _call(
-    command: Sequence[str], *, cwd: Path, stdin: str | None = None
+    command: Sequence[str],
+    *,
+    cwd: Path,
+    stdin: str | None = None,
+    env: Mapping[str, str] | None = None,
+    timeout: float | None = None,
 ) -> subprocess.CompletedProcess[str]:
-    env = {**os.environ, "GIT_TERMINAL_PROMPT": "0", "GH_PROMPT_DISABLED": "1"}
+    """Run git or gh with the user's environment plus ``env``, and never a prompt."""
+    env = {**os.environ, "GIT_TERMINAL_PROMPT": "0", "GH_PROMPT_DISABLED": "1", **(env or {})}
     if command[0] == "git":
         command = ["git", *NO_HOOKS, *command[1:]]
-    return run_tool(command, cwd=cwd, env=env, stdin=stdin)
+    return run_tool(command, cwd=cwd, env=env, stdin=stdin, timeout=timeout)
 
 
 def _checked(command: Sequence[str], *, cwd: Path, stdin: str | None = None) -> str:
@@ -65,6 +71,22 @@ class Git:
         if not repo.succeeds("rev-parse", "--verify", "--quiet", "HEAD"):
             raise FixError(f"{repo.root} has no commits yet")
         return repo
+
+    @classmethod
+    def clone(cls, url: str, into: Path, *, timeout: float | None = None) -> Git:
+        """A copy of ``url`` in ``into`` to read and nothing more: the latest commit of its
+        default branch, without tags. Git LFS files stay pointers, since the filter that
+        downloads them is a program git would start like a hook."""
+        command = ["git", "clone", "--quiet", "--depth", "1", "--no-tags", "--single-branch"]
+        completed = _call(
+            [*command, "--", url, str(into)],
+            cwd=into.parent,
+            env={"GIT_LFS_SKIP_SMUDGE": "1"},
+            timeout=timeout,
+        )
+        if completed.returncode != 0:
+            raise FixError(f"`git clone` failed: {failure_reason(completed)}")
+        return cls(into)
 
     def run(self, *args: str) -> str:
         return _checked(["git", *args], cwd=self.root)
