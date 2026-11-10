@@ -242,6 +242,7 @@ call it, but the Tiltmeter Action only does it for provider notices so far. See 
 | `tiltmeter show <id> --json` | One check result. |
 | `tiltmeter notices check --json` | Every subscribed feed and its notices, sorted into new, done, skipped and rejected. |
 | `tiltmeter scan --json` | The known API changes the folder uses, with every matching line and the command that fixes each. |
+| `tiltmeter scan --sarif FILE` | The same findings as [SARIF 2.1.0](scan.md#in-github-code-scanning), for GitHub code scanning and other CI systems. |
 | `tiltmeter hunt --json` | The public repositories checked for one notice, with the queries sent to GitHub, why others were left out and every matching line. |
 | `tiltmeter notices apply --json` | The feeds, and what was done about each new notice, including the fix outcome. |
 

@@ -983,6 +983,17 @@ def scan(
             ),
         ),
     ] = None,
+    sarif: Annotated[
+        Path | None,
+        typer.Option(
+            "--sarif",
+            metavar="FILE",
+            help=(
+                "Also write what was found to FILE as SARIF 2.1.0, the format GitHub code "
+                "scanning reads."
+            ),
+        ),
+    ] = None,
     as_json: JsonOption = False,
 ) -> None:
     """Find code that uses API changes that shipped, or are about to. No setup needed.
@@ -1021,6 +1032,16 @@ def scan(
         )
     else:
         report = search(read_folder(path), found, label=label, within=within)
+    if sarif is not None:
+        from tiltmeter.fix.runner import PROJECT_URL
+        from tiltmeter.notices.sarif import sarif as as_sarif
+        from tiltmeter.notices.scan import repository_prefix
+
+        log = as_sarif(report, version=__version__, url=PROJECT_URL, prefix=repository_prefix(path))
+        try:
+            sarif.write_text(json.dumps(log, indent=2, ensure_ascii=False) + "\n", "utf-8")
+        except OSError as exc:
+            _fail(f"cannot write {sarif}: {exc.strerror or exc}")
     if as_json:
         _print_json(dump(report, show_all=show_all))
     else:

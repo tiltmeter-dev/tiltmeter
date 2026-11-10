@@ -33,6 +33,8 @@ record the first baseline.
 - [Reading the output](#reading-the-output)
 - [Options and exit codes](#options-and-exit-codes)
 - [Before a change takes effect](#before-a-change-takes-effect)
+- [In GitHub code scanning](#in-github-code-scanning)
+- [The release and API version you are on](#the-release-and-api-version-you-are-on)
 - [Fixing what it finds](#fixing-what-it-finds)
 - [What counts as a use](#what-counts-as-a-use)
 - [Blind spots](#blind-spots)
@@ -109,7 +111,7 @@ or less once it has, `null` without a date), and `due`, whether it counts for th
 ## Options and exit codes
 
 ```console
-$ tiltmeter scan [PATH] [--catalog FILE_OR_URL] [--within DAYS] [--all] [--json]
+$ tiltmeter scan [PATH] [--catalog FILE_OR_URL] [--within DAYS] [--sarif FILE] [--all] [--json]
 ```
 
 | Option | Description |
@@ -117,6 +119,7 @@ $ tiltmeter scan [PATH] [--catalog FILE_OR_URL] [--within DAYS] [--all] [--json]
 | `PATH` | The folder to search, `.` by default. A git checkout is read as git sees it: tracked files and new ones it does not ignore. Any other folder is read file by file. |
 | `--catalog FILE_OR_URL` | Search for the entries of another feed instead, such as your team's own: a file or an https URL, fetched like any subscribed feed. A signed entry's signature is checked against its provider's key. |
 | `--within DAYS` | Count a change that has not taken effect yet only when it does within `DAYS`. One further away is still listed, marked `·`, and does not make the exit code 1. Without it, every change the folder uses counts. |
+| `--sarif FILE` | Also write what was found to `FILE` as [SARIF](#in-github-code-scanning) 2.1.0. The terminal or JSON output and the exit code stay the same. |
 | `--all` | Also list the entries that do not affect `PATH`, and why. |
 | `--json` | Print JSON instead. |
 
@@ -125,7 +128,7 @@ $ tiltmeter scan [PATH] [--catalog FILE_OR_URL] [--within DAYS] [--all] [--json]
 | 0 | Nothing in the catalog affects `PATH`. |
 | 1 | `PATH` uses at least one change in the catalog that is in effect, has no date, or takes effect within `--within` days. |
 | 3 | The catalog could not be read. |
-| 4 | `PATH` is not a folder, or another usage error. |
+| 4 | `PATH` is not a folder, the `--sarif` file cannot be written, or another usage error. |
 
 ## Before a change takes effect
 
@@ -149,6 +152,42 @@ That run exits with 1. With `--within 7` it would list the same change, marked `
 exit with 0 until a week before the date.
 
 Without `--within`, a change counts as soon as the catalog has it, however far its date.
+
+## In GitHub code scanning
+
+`--sarif FILE` writes the scan as [SARIF 2.1.0](https://docs.oasis-open.org/sarif/sarif/v2.1.0/sarif-v2.1.0.html),
+the format GitHub code scanning, GitLab and most CI systems read. Uploaded to GitHub,
+each line shows up as an alert in the repository's Security tab and as an annotation on
+the pull request that adds it:
+
+```yaml
+permissions:
+  contents: read
+  security-events: write
+steps:
+  - uses: actions/checkout@v4
+  - run: uvx tiltmeter scan --within 30 --sarif tiltmeter.sarif
+    continue-on-error: true   # the alerts carry the result; drop this to also fail the job
+  - uses: github/codeql-action/upload-sarif@v3
+    with:
+      sarif_file: tiltmeter.sarif
+      category: tiltmeter
+```
+
+| In the scan | In SARIF |
+|---|---|
+| A catalog entry the folder uses | A rule, with the id `<provider>/<entry id>`, the headline, the summary and the fix command as its help. |
+| A line that counts | A result at that file and line, with what the change does to what the line spells. |
+| In effect, or undated | Level `error`. |
+| Still ahead | Level `warning`, with the date and the days left. |
+| Ahead, and further away than `--within` | Level `note`. |
+| The catalog could not be read | A run with `executionSuccessful: false`, the reason, and no results. |
+
+Paths start at the repository's root, also when the scan starts in a subfolder, since
+that is where code scanning looks for them. Places in tests and docs are left out, as
+they never count, and so are the lines past the first 50 of an entry. The text of an
+entry is a third party's: it is written as plain text, with `[`, `]` and `\` escaped so
+that none of it turns into a link.
 
 ## The release and API version you are on
 

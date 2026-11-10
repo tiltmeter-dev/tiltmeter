@@ -312,6 +312,16 @@ def read_folder(path: Path) -> Folder:
     return Folder(path, sorted({name for name in listed.split("\0") if name}), git=True)
 
 
+def repository_prefix(path: Path) -> str:
+    """Where ``path`` lies in its git repository, such as ``services/api/``: what turns a
+    file's name under ``path`` into its name from the repository's root. Empty at the
+    root and outside git."""
+    try:
+        return Git(path).run("rev-parse", "--show-prefix").strip()
+    except FixError:
+        return ""
+
+
 def _walk(root: Path, limit: int = MAX_WALKED) -> tuple[list[str], bool]:
     """The files under ``root`` that could hold code, and whether the walk stopped before
     the end. Pictures and archives are not collected, so they use none of the limit. Nor
