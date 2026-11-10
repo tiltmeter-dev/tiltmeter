@@ -18,7 +18,7 @@ from tiltmeter.fix.codex import (
     PROFILE,
     CodexFixAgent,
     deny_globs,
-    install_root,
+    own_files,
     parse_result,
     permission_profile,
     toml_value,
@@ -191,17 +191,80 @@ def test_the_profile_survives_a_round_trip_through_toml() -> None:
     assert tomllib.loads(f"value = {toml_value(profile)}")["value"] == profile
 
 
-def test_install_root_follows_links(tmp_path: Path) -> None:
-    release = tmp_path / "releases" / "1.0"
+STANDALONE = "home/.codex/packages/standalone/releases/1.0"
+NPM = "home/.nvm/versions/node/v24/lib/node_modules/@openai/codex"
+
+
+def readable_for(tmp_path: Path, binary: str, *, home: str = "home", state: str = ".codex") -> str:
+    """What the sandbox may read for a ``codex`` at ``binary``, both relative to ``tmp_path``."""
+    # The name of a test is part of tmp_path: one that says "codex" would name Codex here.
+    assert "codex" not in str(tmp_path).lower()
+    path = tmp_path / binary
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("", encoding="utf-8")
+    base = (tmp_path / home).resolve()
+    found = own_files(str(path), home=base, codex_home=base / state)
+    return found.relative_to(tmp_path.resolve()).as_posix()
+
+
+@pytest.mark.parametrize(
+    ("binary", "root"),
+    [
+        (f"{STANDALONE}/bin/codex", STANDALONE),
+        (f"{NPM}/bin/codex.js", NPM),
+        ("brew/Cellar/codex/1.0/bin/codex", "brew/Cellar/codex/1.0"),
+        ("nix/store/abc123-codex-1.0/bin/codex", "nix/store/abc123-codex-1.0"),
+        ("opt/codex/bin/codex", "opt/codex"),
+        ("home/tools/codex-1.0/bin/codex", "home/tools/codex-1.0"),
+    ],
+)
+def test_an_installation_of_its_own_is_readable(tmp_path: Path, binary: str, root: str) -> None:
+    assert readable_for(tmp_path, binary) == root
+
+
+@pytest.mark.parametrize(
+    "binary",
+    [
+        "home/.cargo/bin/codex",  # one step up is ~/.cargo, with the crates.io token
+        "home/.local/bin/codex",
+        "home/bin/codex",  # ...the home folder
+        "home/tools/codex",
+        "home/codex",  # ...the folder that holds every home
+        "home/.codex/bin/codex",  # ...Codex's own home, with the login
+        "home/src/codexplorer/bin/codex",  # not Codex's by name
+        "usr/local/bin/codex",
+    ],
+)
+def test_in_a_shared_folder_only_the_binary_is_readable(tmp_path: Path, binary: str) -> None:
+    assert readable_for(tmp_path, binary) == binary
+
+
+def test_a_home_or_a_state_folder_named_after_it_is_never_readable(tmp_path: Path) -> None:
+    # A user called codex does not make every folder of theirs Codex's.
+    shared = "users/codex/.cargo/bin/codex"
+    assert readable_for(tmp_path, shared, home="users/codex") == shared
+    # CODEX_HOME can be anywhere, and holds the login wherever it is.
+    moved = "home/state/codex/bin/codex"
+    assert readable_for(tmp_path, moved, state="state/codex") == moved
+    assert readable_for(tmp_path, "home/apps/codex/bin/codex", state="state/codex") == (
+        "home/apps/codex"
+    )
+
+
+def test_the_installation_is_found_through_links(tmp_path: Path) -> None:
+    release = tmp_path / STANDALONE
     (release / "bin").mkdir(parents=True)
-    binary = release / "bin" / "codex"
-    binary.write_text("", encoding="utf-8")
-    link = tmp_path / "codex"
+    (release / "bin" / "codex").write_text("", encoding="utf-8")
+    current = release.parent.parent / "current"
+    link = tmp_path / "home" / ".local" / "bin" / "codex"
+    link.parent.mkdir(parents=True)
     try:
-        link.symlink_to(binary)
+        current.symlink_to(release)
+        link.symlink_to(current / "bin" / "codex")
     except OSError:
         pytest.skip("symlinks are not available")
-    assert install_root(str(link)) == release.resolve()
+    home = (tmp_path / "home").resolve()
+    assert own_files(str(link), home=home, codex_home=home / ".codex") == release.resolve()
 
 
 class LoginStatus:
@@ -216,8 +279,11 @@ class LoginStatus:
         return subprocess.CompletedProcess(command, self.code, stdout="", stderr="")
 
 
+CODEX_PATH = "/opt/codex/bin/codex"
+
+
 def installed(monkeypatch: pytest.MonkeyPatch, status: LoginStatus) -> None:
-    monkeypatch.setattr("tiltmeter.fix.codex.shutil.which", lambda *_, **__: "/opt/c/bin/codex")
+    monkeypatch.setattr("tiltmeter.fix.codex.shutil.which", lambda *_, **__: CODEX_PATH)
     monkeypatch.setattr("tiltmeter.fix.codex.run_tool", status)
 
 
@@ -232,7 +298,7 @@ def test_from_config_needs_a_login(monkeypatch: pytest.MonkeyPatch) -> None:
     installed(monkeypatch, status)
     with pytest.raises(FixError, match="Codex is not logged in"):
         CodexFixAgent.from_config(FixConfig(agent="codex"), environ={})
-    assert status.calls == [["/opt/c/bin/codex", "login", "status"]]
+    assert status.calls == [[CODEX_PATH, "login", "status"]]
 
 
 def test_from_config_with_a_login_or_a_key(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -248,6 +314,6 @@ def test_from_config_with_a_login_or_a_key(monkeypatch: pytest.MonkeyPatch) -> N
     assert len(status.calls) == 1  # an API key needs no login check
     assert keyed.model_name == "Codex with gpt-5.5-codex"
     command = keyed.command(Path("wt"), schema_file=Path("s"), last_message_file=Path("m"))
-    assert command[0] == "/opt/c/bin/codex"
+    assert command[0] == CODEX_PATH
     profile = overrides(command)[f"permissions.{PROFILE}"]
-    assert profile["filesystem"][str(Path("/opt/c").resolve())] == "read"
+    assert profile["filesystem"][str(Path("/opt/codex").resolve())] == "read"

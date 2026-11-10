@@ -27,6 +27,13 @@ a minor release may include breaking changes.
   followed when it would send the `body` there: the check fails with `redirected to
   another server`. Before, only `Authorization` stayed behind, and an `X-Api-Key` went
   along. Slack and webhook notifications no longer follow redirects at all.
+- `--agent codex` no longer lets Codex's sandbox read a shared folder. The sandbox must
+  read Codex's installation, which Tiltmeter took to be two folders up from the binary:
+  `~/.cargo` for `~/.cargo/bin/codex`, `~/.local` for `~/.local/bin/codex`, the whole
+  home folder for `~/bin/codex`. Commands the model ran could read what is in there, such
+  as SSH keys and tokens. That folder is now readable only when it is Codex's alone
+  (a standalone release, an npm package, a Homebrew keg); otherwise only the binary is,
+  and never the home folder or Codex's own home.
 
 ### Fixed
 
