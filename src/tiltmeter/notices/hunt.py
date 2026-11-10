@@ -41,9 +41,16 @@ from tiltmeter.fix._proc import failure_reason, run_tool
 from tiltmeter.fix.git import Git
 from tiltmeter.fix.request import field_name, is_target, reads_response
 from tiltmeter.notices.impact import _DISTINCTIVE_SEGMENTS, _VERSION, import_pattern
-from tiltmeter.notices.models import ApiChangeNotice, NoticeEndpoint, https_host, printable
+from tiltmeter.notices.models import (
+    ApiChangeNotice,
+    ApiVersionPin,
+    NoticeEndpoint,
+    SdkPin,
+    https_host,
+    printable,
+)
 from tiltmeter.notices.reader import LoadedNotice
-from tiltmeter.notices.scan import Catalog, ScanMatch, headline, read_folder, scan
+from tiltmeter.notices.scan import Catalog, ScanMatch, days_until, headline, read_folder, scan
 
 GITHUB: Final = "github.com"
 PER_PAGE: Final = 100
@@ -172,6 +179,16 @@ class HuntRepository(BaseModel):
     docs: list[ScanMatch] = Field(
         default_factory=list, description="Mentions in docs of a repository that is not affected."
     )
+    sdk_pins: list[SdkPin] = Field(
+        default_factory=list,
+        description=(
+            "The release of each of the notice's SDKs it asks for, next to the first one "
+            "that follows the change."
+        ),
+    )
+    api_versions: list[ApiVersionPin] = Field(
+        default_factory=list, description="Dated API versions its code pins next to the API."
+    )
     truncated: bool = Field(
         default=False, description="It has more text files than a search reads."
     )
@@ -184,6 +201,15 @@ class HuntReport(BaseModel):
     notice_id: str
     provider: str
     headline: str = Field(description="The first sentence of the notice's summary.")
+    published_at: AwareDatetime
+    effective_at: AwareDatetime | None = None
+    days_left: int | None = Field(
+        default=None,
+        description=(
+            "Days until the change takes effect: 0 or less once it has, null when the notice "
+            "gives no date."
+        ),
+    )
     source: str = Field(description="Where the notice was read from.")
     signed: bool = Field(description="Signed by the provider, with the signature checked.")
     drafted: bool = Field(
@@ -490,10 +516,14 @@ def hunt(
     search, and ``progress`` hears what is going on, for whoever prints.
     """
     notice = loaded.notice
+    moment = now or datetime.now(UTC)
     report = HuntReport(
         notice_id=notice.id,
         provider=notice.provider,
         headline=headline(notice.summary),
+        published_at=notice.published_at,
+        effective_at=notice.effective_at,
+        days_left=days_until(notice.effective_at, moment),
         source=loaded.location,
         signed=loaded.verified,
         drafted=from_catalog(loaded.location),
@@ -512,7 +542,7 @@ def hunt(
         return report
     counts = report.counts
     counts.found = len(names)
-    chosen = _rank(list(facts.values()), report, now or datetime.now(UTC))
+    chosen = _rank(list(facts.values()), report, moment)
     if counts.found > len(facts):
         counts.dropped["gone"] = counts.found - len(facts)
     with _workspace(keep) as root:
@@ -692,6 +722,7 @@ def _read(checked: HuntRepository, clone: Path, loaded: LoadedNotice) -> None:
         checked.matches = finding.matches
         checked.count, checked.files = finding.count, finding.files
         checked.tests = finding.tests
+        checked.sdk_pins, checked.api_versions = finding.sdk_pins, finding.api_versions
     for miss in found.unaffected:
         checked.reason = miss.reason
         checked.tests, checked.docs = miss.tests, miss.docs

@@ -21,8 +21,10 @@ a minor release may include breaking changes.
   `--limit`, `--min-stars`, `--pushed-within` and `--include-forks` choose the
   repositories, `--keep DIR` keeps the clones and `--json` prints it all. Exit code 0: no
   repository checked is affected; 1: at least one is; 3: GitHub could not be searched, with
-  what to do, such as `gh auth login`. It only reads: nothing is forked, pushed or opened
-  on GitHub. `docs/hunt.md` says what it sends to GitHub and what it cannot see.
+  what to do, such as `gh auth login`. It says when the change takes effect and, for each
+  repository, which release of the provider's SDK it is on. It only reads: nothing is
+  forked, pushed or opened on GitHub. `docs/hunt.md` says what it sends to GitHub and what
+  it cannot see.
 - `tiltmeter scan`, `fix --notice` and `notices apply` read which release of the
   provider's SDK the code is on, and say it next to the first release that follows the
   change: "installs stripe 11.6.0 (uv.lock), which is older than 12.0.0", "asks for stripe

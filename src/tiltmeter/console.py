@@ -533,7 +533,7 @@ def _in_days(days: int) -> str:
     return "tomorrow" if days == 1 else f"in {days} days"
 
 
-def _when(finding: ScanFinding, now: datetime) -> str:
+def _when(finding: ScanFinding | HuntReport, now: datetime) -> str:
     """When the change took or takes effect, and how far away that is."""
     if finding.effective_at is None:
         return f"published {finding.published_at:%Y-%m-%d}"
@@ -779,6 +779,8 @@ def render_hunt_repository(console: Console, repo: HuntRepository) -> None:
     if repo.tests:
         also = Text(f"also in tests: {_places(repo.tests)}", style="dim")
         console.print(Padding(also, (0, 0, 0, 4)))
+    for pinned in pin_lines(repo.sdk_pins, repo.api_versions):
+        console.print(Padding(pinned, (0, 0, 0, 4)))
     if repo.clone is not None:
         console.print(Text(f"    clone: {repo.clone}", style="dim"), soft_wrap=True)
 
@@ -831,10 +833,14 @@ def _left_out(report: HuntReport) -> str:
     )
 
 
-def render_hunt(console: Console, report: HuntReport) -> None:
-    """The notice, then each repository that still uses what it changes with its lines,
-    the others in a line each, and a summary of what was searched and left out."""
-    console.print(Text.assemble((report.provider, "bold"), "  ", report.headline))
+def render_hunt(console: Console, report: HuntReport, *, now: datetime | None = None) -> None:
+    """The notice and when it takes effect, then each repository that still uses what it
+    changes with its lines, the others in a line each, and a summary of what was searched
+    and left out."""
+    moment = now or datetime.now(UTC)
+    ahead = report.effective_at is not None and report.effective_at > moment
+    when = (f"  {_when(report, moment)}", "yellow" if ahead else "dim")
+    console.print(Text.assemble((report.provider, "bold"), "  ", report.headline, when))
     origin = Text(f"{report.notice_id} · {_origin(report)}", style="dim")
     console.print(Padding(origin, (0, 0, 0, 4)))
     if report.error:

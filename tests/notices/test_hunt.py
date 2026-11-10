@@ -688,7 +688,7 @@ def test_every_failed_clone_means_the_hunt_could_not_run() -> None:
     def report(**counts: int) -> HuntReport:
         raw = {"notice_id": "x", "provider": "acme.test", "headline": "", "source": "x"}
         flags = {"signed": False, "drafted": False, "filters": HuntFilters(), "counts": counts}
-        return HuntReport.model_validate({**raw, **flags})
+        return HuntReport.model_validate({**raw, **flags, "published_at": NOW})
 
     assert hunt_exit_code(report()) == 0
     assert hunt_exit_code(report(checked=3, unaffected=2, failed=1)) == 0
@@ -747,6 +747,38 @@ def test_hunt_shows_who_still_uses_the_change(
     assert text.index("✗ acme/app") < text.index("- acme/mentions") < text.index("1 of 2")
 
 
+def test_hunt_says_when_the_change_takes_effect_and_which_release_each_one_is_on(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    behind = {
+        "client.py": CLIENT,
+        "requirements.txt": "billing-sdk==2.9.0\n",
+        "uv.lock": '[[package]]\nname = "billing-sdk"\nversion = "2.9.0"\n',
+    }
+    facts = [repo_facts("acme/behind", source(tmp_path, "behind", behind), stars=40)]
+    github(monkeypatch, FakeCodeSearch(facts))
+    soon = (datetime.now(UTC) + timedelta(days=24, hours=1)).isoformat()
+    raw = notice(effective_at=soon, published_at="2026-01-01T00:00:00Z")
+    outcome = invoke("hunt", notice_file(tmp_path, raw))
+    assert outcome.exit_code == 1, outcome.output
+    text = flat(outcome.output)
+    assert f"takes effect {soon[:10]}, in 25 days" in text
+    assert (
+        "installs billing-sdk 2.9.0 (uv.lock), which is older than 3.0.0, the first release "
+        "that follows the change"
+    ) in text
+    report = json.loads(invoke("hunt", notice_file(tmp_path, raw), "--json").stdout)
+    assert report["days_left"] == 25
+    assert report["effective_at"] is not None
+    [repo] = report["repositories"]
+    assert [(pin["file"], pin["version"], pin["follows"]) for pin in repo["sdk_pins"]] == [
+        ("uv.lock", "2.9.0", False)
+    ]
+    assert repo["api_versions"] == []
+    undated = notice_file(tmp_path, notice(effective_at=None))
+    assert "published 2026-11-03" in flat(invoke("hunt", undated).output)
+
+
 def test_hunt_prints_json(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     facts = [
         repo_facts("acme/app", source(tmp_path, "app"), stars=1505),
@@ -761,6 +793,9 @@ def test_hunt_prints_json(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> No
         "notice_id",
         "provider",
         "headline",
+        "published_at",
+        "effective_at",
+        "days_left",
         "source",
         "signed",
         "drafted",
@@ -816,6 +851,8 @@ def test_hunt_prints_json(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> No
         "files",
         "tests",
         "docs",
+        "sdk_pins",
+        "api_versions",
         "truncated",
         "clone",
     ]

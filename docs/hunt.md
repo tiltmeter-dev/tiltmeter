@@ -8,7 +8,7 @@ repositories the search names and checks each clone with the search `scan` uses:
 
 ```console
 $ tiltmeter hunt groq-retired-models-2026-08 --limit 3
-api.groq.com  Groq no longer serves 16 models it retired, the latest on August 16, 2026.
+api.groq.com  Groq no longer serves 16 models it retired, the latest on August 16, 2026.  took effect 2026-08-16, 2 months ago
     groq-retired-models-2026-08 · unsigned: drafted by Tiltmeter from the provider's public documentation
     only for some callers (llama-3.3-70b-versatile): Free and developer-tier keys. Not Groq enterprise customers with a committed-spend contract.
 
@@ -135,15 +135,18 @@ The report stays on your machine, and the repositories are not told.
 
 While the hunt runs, a line per step goes to stderr (not with `--json`). Then:
 
-- two lines on the notice: the provider, the first sentence of its summary, its id and
-  whether it is signed by the provider, unsigned, or an unsigned draft from Tiltmeter's
-  catalog;
+- two lines on the notice: the provider, the first sentence of its summary and when the
+  change took or takes effect, with how far away that is, then its id and whether it is
+  signed by the provider, unsigned, or an unsigned draft from Tiltmeter's catalog;
 - `only for some callers`, when a matched change affects only some of them, such as one
   plan. Tiltmeter can't tell which of them a repository serves;
 - each **affected** repository, most stars first: its name, stars, last push and default
   branch, its URL, and up to three places as `file:line` with what changes for them and
   the line itself, the surest first. The rest is counted, and `also in tests` lists the
-  places in test files;
+  places in test files. When the notice names SDK releases, the release the repository
+  installs or asks for comes next, with whether it is older than the first one that
+  follows the change, and so do the dated API versions its code pins
+  ([details](scan.md#the-release-and-api-version-you-are-on));
 - each repository that is **not affected**, in one line with the reason, and where its
   tests or docs mention the change anyway. These are the false alarms of the code search;
 - each repository that **could not be checked**, with git's reason;
@@ -153,15 +156,16 @@ While the hunt runs, a line per step goes to stderr (not with `--json`). Then:
 Repository names, file lines and the notice's text are printed as plain text, never as
 markup.
 
-`--json` prints one object instead: `notice_id`, `provider`, `headline`, `source`,
-`signed` and `drafted`; the `filters` used; `queries`, each with its `kind`, `term`, the
+`--json` prints one object instead: `notice_id`, `provider`, `headline`, `published_at`,
+`effective_at` and `days_left` (the days until the change takes effect, zero or less once
+it has), `source`, `signed` and `drafted`; the `filters` used; `queries`, each with its `kind`, `term`, the
 `q` sent, the `total` GitHub counted, the `pages` read and the `repositories` they named;
 `queries_not_run`; `counts` (`found`, `dropped` by reason, `eligible`, `checked`,
 `affected`, `unaffected`, `failed`); `skipped`, the repositories too large to clone; and
 `repositories`, the ones checked, each with `full_name`, `url`, `stars`, `pushed_at`,
 `default_branch`, `fork`, `affected`, `reason`, `error`, its `matches` (up to 50, as in
 [`scan --json`](scan.md#reading-the-output)), `count`, `files`, `tests`, `docs`,
-`truncated` and, with `--keep`, where its `clone` is. `error` at the top says why the
+`sdk_pins`, `api_versions`, `truncated` and, with `--keep`, where its `clone` is. `error` at the top says why the
 search could not run.
 
 ## Options and exit codes

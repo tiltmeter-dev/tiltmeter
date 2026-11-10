@@ -58,7 +58,7 @@ and on macOS and Windows with Python 3.13. It also builds the package and checks
 | `tiltmeter/llm` | The Claude explainer and its prompt. |
 | `tiltmeter/notify` | Slack and webhook notifiers. |
 | `tiltmeter/fix` | `tiltmeter fix`: the fix request, the agents (Deep Agents, Claude Code, Codex), the git worktree and the pull request. |
-| `tiltmeter/notices` | Provider mode: the change notice format, signatures, reading feeds, the "is this repository affected?" search, drafting notices and `tiltmeter scan`. |
+| `tiltmeter/notices` | Provider mode: the change notice format, signatures, reading feeds, the "is this repository affected?" search, drafting notices, `tiltmeter scan` and `tiltmeter hunt`. |
 | `tiltmeter/catalog` | The catalog of known API changes that `tiltmeter scan` reads, as package data. |
 | `tiltmeter/mcp_server` | The MCP server. |
 | `tiltmeter/service.py` | The service the CLI and the MCP server share. |
