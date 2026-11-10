@@ -8,7 +8,7 @@ import pytest
 
 from tests.fix.kit import git, make_repo
 from tiltmeter.errors import FixError
-from tiltmeter.fix.git import GhCli, Git
+from tiltmeter.fix.git import GhCli, Git, failed_runs, parse_feedback
 
 
 def test_open_finds_the_repository_root(tmp_path: Path) -> None:
@@ -185,3 +185,173 @@ def test_recent_titles_leave_out_merges(tmp_path: Path) -> None:
     ]
     assert main.recent_titles("side", count=1) == ["fix(side): add a side file"]
     assert main.recent_titles("no-such-branch") == []
+
+
+# -- answering a review ----------------------------------------------------------------
+
+
+def viewed(**overrides: object) -> dict[str, object]:
+    """What `gh pr view --json` answers, in the shapes GitHub uses."""
+    data: dict[str, object] = {
+        "number": 7,
+        "url": "https://github.com/pbek/QOwnNotes/pull/7",
+        "title": "Replace the models api.groq.com retired",
+        "state": "OPEN",
+        "headRefName": "fix/groq-retired-models",
+        "baseRefName": "main",
+        "headRepository": {"name": "QOwnNotes", "nameWithOwner": ""},
+        "headRepositoryOwner": {"login": "tiltmeter-dev"},
+        "reviews": [
+            {
+                "author": {"login": "pbek"},
+                "authorAssociation": "OWNER",
+                "state": "CHANGES_REQUESTED",
+                "body": "Please follow the commit message setting.",
+            },
+            {"author": {"login": "pbek"}, "authorAssociation": "OWNER", "state": "APPROVED"},
+        ],
+        "comments": [
+            {
+                "author": {"login": "torrresagus"},
+                "authorAssociation": "CONTRIBUTOR",
+                "body": "Thanks, pushed an update.",
+                "viewerDidAuthor": True,
+            },
+            {
+                "author": {"login": "spammer"},
+                "authorAssociation": "NONE",
+                "body": "hidden as spam",
+                "isMinimized": True,
+            },
+            {
+                "author": {"login": "review-bot[bot]"},
+                "authorAssociation": "NONE",
+                "body": "x" * 5000,
+            },
+        ],
+        "statusCheckRollup": [
+            {
+                "__typename": "CheckRun",
+                "name": "build",
+                "conclusion": "FAILURE",
+                "detailsUrl": "https://github.com/pbek/QOwnNotes/actions/runs/1/job/22",
+            },
+            {"__typename": "CheckRun", "name": "lint", "conclusion": "SUCCESS"},
+            {"__typename": "StatusContext", "context": "cla", "state": "ERROR", "targetUrl": ""},
+        ],
+    }
+    data.update(overrides)
+    return data
+
+
+THREADS = {
+    "data": {
+        "repository": {
+            "pullRequest": {
+                "reviewThreads": {
+                    "nodes": [
+                        {
+                            "isResolved": False,
+                            "path": "src/ai.cpp",
+                            "line": None,
+                            "originalLine": 151,
+                            "comments": {
+                                "nodes": [
+                                    {
+                                        "author": {"login": "willem-bd"},
+                                        "authorAssociation": "CONTRIBUTOR",
+                                        "body": "This default is not valid for the new model.",
+                                    }
+                                ]
+                            },
+                        },
+                        {
+                            "isResolved": True,
+                            "path": "README.md",
+                            "line": 3,
+                            "comments": {
+                                "nodes": [{"author": {"login": "pbek"}, "body": "settled"}]
+                            },
+                        },
+                    ]
+                }
+            }
+        }
+    }
+}
+
+
+def test_feedback_keeps_what_others_said_and_which_checks_failed() -> None:
+    log = "https://github.com/pbek/QOwnNotes/actions/runs/1/job/22"
+    assert failed_runs(viewed()) == [log]
+    feedback = parse_feedback(viewed(), THREADS, {log: "error: no member named 'model'"})
+    assert (feedback.number, feedback.branch, feedback.base) == (
+        7,
+        "fix/groq-retired-models",
+        "main",
+    )
+    assert feedback.repository == "tiltmeter-dev/QOwnNotes"  # where the branch lives: the fork
+    said = [(n.author, n.role, n.kind, n.verdict, n.path, n.line) for n in feedback.notes]
+    assert said == [
+        ("pbek", "owner", "review", "changes requested", None, None),
+        ("review-bot[bot]", "bot", "comment", None, None, None),
+        ("willem-bd", "contributor", "line", None, "src/ai.cpp", 151),
+    ]
+    # Not there: an approval without a word, the viewer's own reply, a hidden comment and
+    # a resolved thread. A long comment is cut.
+    assert len(feedback.notes[1].body) == 2000
+    assert [(c.name, c.log) for c in feedback.failed_checks] == [
+        ("build", "error: no member named 'model'"),
+        ("cla", ""),
+    ]
+    assert not feedback.empty
+    quiet = parse_feedback(viewed(reviews=[], comments=[], statusCheckRollup=[]), {})
+    assert quiet.empty
+
+
+def test_feedback_is_bounded() -> None:
+    many = [
+        {"author": {"login": f"u{i}"}, "authorAssociation": "NONE", "body": f"note {i}"}
+        for i in range(60)
+    ]
+    checks = [{"name": f"job {i}", "conclusion": "FAILURE"} for i in range(9)]
+    feedback = parse_feedback(viewed(reviews=[], comments=many, statusCheckRollup=checks), None)
+    assert [n.body for n in feedback.notes][:2] == ["note 20", "note 21"]  # the latest 40
+    assert len(feedback.notes) == 40
+    assert len(feedback.failed_checks) == 3
+
+
+def test_a_remote_is_found_by_its_github_repository(tmp_path: Path) -> None:
+    repo, _ = make_repo(tmp_path)
+    main = Git.open(repo)
+    assert main.remote_of("acme/app") is None  # origin is a folder here
+    git(repo, "remote", "add", "fork", "git@github.com:Tiltmeter-Dev/App.git")
+    git(repo, "remote", "add", "upstream", "https://github.com/acme/app")
+    assert main.remote_of("tiltmeter-dev/app") == "fork"
+    assert main.remote_of("acme/app") == "upstream"
+    assert main.remote_of("acme/application") is None
+
+
+def test_a_commit_is_pushed_onto_another_branch_but_never_forced(tmp_path: Path) -> None:
+    repo, remote = make_repo(tmp_path)
+    main = Git.open(repo)
+    git(repo, "push", "--quiet", "origin", "main:refs/heads/pr")
+    start = main.fetch("origin", "pr")
+    worktree = main.add_worktree(tmp_path / "wt", "mine", start)
+    (worktree.root / "client.py").write_text("print('answer')\n", encoding="utf-8")
+    worktree.stage_all()
+    worktree.commit("Address the review", "Body.")
+    main.push_to("origin", "mine", "pr")
+    assert git(remote, "log", "-1", "--format=%s", "pr").strip() == "Address the review"
+    # Someone else pushed in the meantime: the remote says no, and nothing is overwritten.
+    theirs = main.add_worktree(tmp_path / "theirs", "theirs", main.fetch("origin", "pr"))
+    (theirs.root / "models.py").write_text("THEIRS = True\n", encoding="utf-8")
+    theirs.stage_all()
+    theirs.commit("A commit of the maintainer's", "Body.")
+    main.push_to("origin", "theirs", "pr")
+    (worktree.root / "client.py").write_text("print('again')\n", encoding="utf-8")
+    worktree.stage_all()
+    worktree.commit("Address the review again", "Body.")
+    with pytest.raises(FixError, match="`git push --quiet` failed"):
+        main.push_to("origin", "mine", "pr")
+    assert git(remote, "log", "-1", "--format=%s", "pr").strip() == "A commit of the maintainer's"

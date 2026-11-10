@@ -17,7 +17,7 @@ from pydantic import Field
 from tests.helpers import explanation, make_endpoint
 from tiltmeter.core.models import Change, ChangeKind, CheckResult, Severity
 from tiltmeter.errors import FixError
-from tiltmeter.fix.models import FixReport, FixRequest
+from tiltmeter.fix.models import FixReport, FixRequest, PullFeedback, ReviewNote
 from tiltmeter.fix.request import build_fix_request
 
 CLIENT = """\
@@ -193,13 +193,71 @@ class FakeFixAgent:
         return self.result
 
 
-class FakeGitHub:
-    """Records pull requests instead of opening them."""
+PR_BRANCH = "tiltmeter/fix-billing-customers-2"
 
-    def __init__(self, problem: str | None = None, error: str | None = None) -> None:
+
+def review(*notes: ReviewNote, **overrides: Any) -> PullFeedback:
+    """What the maintainer said about the kit's pull request, #7."""
+    asked = ReviewNote(
+        author="pbek",
+        role="owner",
+        kind="review",
+        verdict="changes requested",
+        body="Please keep reading the old name as a fallback.",
+    )
+    data: dict[str, Any] = {
+        "number": 7,
+        "url": PR_URL,
+        "title": "Adapt to the billing_customers API change",
+        "repository": "acme/app",
+        "branch": PR_BRANCH,
+        "base": "main",
+        "notes": list(notes) or [asked],
+    }
+    data.update(overrides)
+    return PullFeedback.model_validate(data)
+
+
+def open_pull_request(repo: Path, remote: Path) -> None:
+    """Push a first fix to ``remote`` on :data:`PR_BRANCH`, as an earlier run would have,
+    and call the remote ``acme/app`` on GitHub while git keeps talking to the folder."""
+    git(repo, "checkout", "--quiet", "-b", PR_BRANCH)
+    (repo / "client.py").write_text(CLIENT.replace('["phone"]', '["phone_number"]'))
+    git(repo, "commit", "--quiet", "-am", "Adapt to the billing_customers API change")
+    git(repo, "push", "--quiet", "origin", PR_BRANCH)
+    git(repo, "checkout", "--quiet", "main")
+    git(repo, "branch", "--quiet", "-D", PR_BRANCH)
+    url = "https://github.com/acme/app.git"
+    git(repo, "config", f"url.{remote}.insteadOf", url)
+    git(repo, "remote", "set-url", "origin", url)
+
+
+class FakeGitHub:
+    """Records pull requests and comments instead of sending them."""
+
+    def __init__(
+        self,
+        problem: str | None = None,
+        error: str | None = None,
+        feedback: PullFeedback | None = None,
+    ) -> None:
         self._problem = problem
         self._error = error
+        self.review = feedback
         self.created: list[dict[str, Any]] = []
+        self.comments: list[dict[str, str]] = []
+        self.asked: list[str] = []
+
+    def feedback(self, *, cwd: Path, pull: str) -> PullFeedback:
+        self.asked.append(pull)
+        if self.review is None:
+            raise FixError(f"pull request #{pull} is closed: nothing to answer")
+        return self.review
+
+    def comment(self, *, cwd: Path, pull: str, body: str) -> None:
+        if self._error is not None:
+            raise FixError(self._error)
+        self.comments.append({"pull": pull, "body": body})
 
     def problem(self, cwd: Path) -> str | None:
         return self._problem

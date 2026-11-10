@@ -14,15 +14,17 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 from collections.abc import Sequence
 from datetime import datetime
 from pathlib import Path
-from typing import Final, Protocol
+from typing import Any, Final, Protocol
 
 from tiltmeter.errors import FixError
 from tiltmeter.fix._proc import failure_reason, run_tool
+from tiltmeter.fix.models import FailedCheck, PullFeedback, ReviewNote
 
 # Options for every git command: no folder to look for hooks in, and no file-system
 # monitor, which is a hook under another name.
@@ -102,6 +104,23 @@ class Git:
             return "origin"
         return remotes[0] if remotes else None
 
+    def remote_of(self, repository: str) -> str | None:
+        """The remote whose URL is the GitHub repository ``owner/name``, if there is one.
+        The URL is the one written in the configuration, before any ``insteadOf``."""
+        wanted = repository.lower().removesuffix(".git")
+        for remote in self.run("remote").split():
+            completed = _call(["git", "config", "--get-all", f"remote.{remote}.url"], cwd=self.root)
+            for url in completed.stdout.lower().split():
+                found = _GITHUB_REPOSITORY.search(url)
+                if found and found[1].removesuffix(".git") == wanted:
+                    return remote
+        return None
+
+    def fetch(self, remote: str, branch: str) -> str:
+        """Fetch ``branch`` from ``remote`` and return the commit it points to."""
+        self.run("fetch", "--quiet", "--no-tags", remote, f"refs/heads/{branch}")
+        return self.run("rev-parse", "FETCH_HEAD").strip()
+
     def remote_branch_exists(self, remote: str, name: str) -> bool:
         """Whether ``remote`` already has the branch; False when it cannot be asked."""
         completed = _call(
@@ -132,9 +151,9 @@ class Git:
 
     # -- worktrees ------------------------------------------------------------
 
-    def add_worktree(self, path: Path, branch: str) -> Git:
-        """Check out a new ``branch`` from HEAD into ``path``."""
-        self.run("worktree", "add", "--quiet", "-b", branch, str(path), "HEAD")
+    def add_worktree(self, path: Path, branch: str, start: str = "HEAD") -> Git:
+        """Check out a new ``branch`` from ``start`` (HEAD by default) into ``path``."""
+        self.run("worktree", "add", "--quiet", "-b", branch, str(path), start)
         return Git(path)
 
     def remove_worktree(self, path: Path) -> None:
@@ -172,6 +191,11 @@ class Git:
     def push(self, remote: str, branch: str) -> None:
         self.run("push", "--quiet", "--set-upstream", remote, branch)
 
+    def push_to(self, remote: str, branch: str, target: str) -> None:
+        """Push ``branch`` onto the remote branch ``target``. Never forced: a remote that
+        moved on in the meantime refuses it."""
+        self.run("push", "--quiet", remote, f"refs/heads/{branch}:refs/heads/{target}")
+
 
 class GitHub(Protocol):
     """Where pull requests are opened."""
@@ -188,6 +212,15 @@ class GitHub(Protocol):
 
     def find_pull_request(self, *, cwd: Path, head: str) -> str | None:
         """The URL of a pull request from ``head``, open or not, if there is one."""
+        ...
+
+    def feedback(self, *, cwd: Path, pull: str) -> PullFeedback:
+        """What reviewers and checks said about the open pull request ``pull``, a number
+        or a URL."""
+        ...
+
+    def comment(self, *, cwd: Path, pull: str, body: str) -> None:
+        """Comment on a pull request."""
         ...
 
 
@@ -217,6 +250,153 @@ class GhCli:
             raise FixError(f"`gh pr list` answered something unexpected: {exc}") from exc
         urls = [item.get("url") for item in found if isinstance(item, dict)]
         return next((url for url in urls if isinstance(url, str)), None)
+
+    def feedback(self, *, cwd: Path, pull: str) -> PullFeedback:
+        viewed = self._json(["gh", "pr", "view", pull, "--json", _PULL_FIELDS], cwd, "pr view")
+        if not isinstance(viewed, dict):
+            raise FixError("`gh pr view` answered something unexpected")
+        if viewed.get("state") != "OPEN":
+            state = str(viewed.get("state") or "not open").lower()
+            raise FixError(f"pull request #{viewed.get('number')} is {state}: nothing to answer")
+        found = _PULL_URL.fullmatch(str(viewed.get("url") or ""))
+        if found is None:
+            raise FixError("`gh pr view` gave no pull request URL")
+        owner, name, number = found[1], found[2], found[3]
+        query = ["gh", "api", "graphql", "-f", f"query={_THREADS}"]
+        query += ["-F", f"owner={owner}", "-F", f"name={name}", "-F", f"number={number}"]
+        try:
+            threads = self._json(query, cwd, "api graphql")
+        except FixError:
+            threads = {}  # notes on lines are a bonus; reviews and comments are enough
+        logs = {
+            check: self._failed_log(check, f"{owner}/{name}", cwd) for check in failed_runs(viewed)
+        }
+        return parse_feedback(viewed, threads, logs)
+
+    def comment(self, *, cwd: Path, pull: str, body: str) -> None:
+        _checked(["gh", "pr", "comment", pull, "--body-file", "-"], cwd=cwd, stdin=body)
+
+    def _json(self, command: Sequence[str], cwd: Path, what: str) -> Any:
+        try:
+            return json.loads(_checked(command, cwd=cwd) or "null")
+        except ValueError as exc:
+            raise FixError(f"`gh {what}` answered something unexpected: {exc}") from exc
+
+    def _failed_log(self, details_url: str, repository: str, cwd: Path) -> str:
+        """The end of a failed GitHub Actions job's log, or nothing when it cannot be read."""
+        job = _ACTIONS_JOB.search(details_url)
+        if job is None:
+            return ""
+        command = ["gh", "run", "view", "--repo", repository, "--job", job[1], "--log-failed"]
+        completed = _call(command, cwd=cwd)
+        return completed.stdout[-MAX_LOG:] if completed.returncode == 0 else ""
+
+
+# A review can be long, and anyone may write one: what reaches the agent is bounded.
+MAX_NOTES: Final = 40
+MAX_NOTE: Final = 2_000
+MAX_FAILED_CHECKS: Final = 3
+MAX_LOG: Final = 3_000
+_PULL_FIELDS: Final = (
+    "number,url,title,state,headRefName,baseRefName,headRepository,headRepositoryOwner,"
+    "reviews,comments,statusCheckRollup"
+)
+_PULL_URL: Final = re.compile(r"https://github\.com/([^/\s]+)/([^/\s]+)/pull/(\d+)")
+_GITHUB_REPOSITORY: Final = re.compile(r"github\.com[:/]([^/\s]+/[^/\s]+?)/?$")
+_ACTIONS_JOB: Final = re.compile(r"/actions/runs/\d+/job/(\d+)")
+_FAILED: Final = frozenset({"FAILURE", "ERROR", "TIMED_OUT", "STARTUP_FAILURE", "ACTION_REQUIRED"})
+_THREADS: Final = (
+    "query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){"
+    "pullRequest(number:$number){reviewThreads(first:100){nodes{isResolved isOutdated path line "
+    "originalLine comments(first:20){nodes{author{login} authorAssociation body "
+    "viewerDidAuthor}}}}}}}"
+)
+
+
+def _failed_checks(viewed: dict[str, Any]) -> list[tuple[str, str]]:
+    """The name and details URL of each check that failed, each name once."""
+    found: dict[str, str] = {}
+    for check in viewed.get("statusCheckRollup") or []:
+        if not isinstance(check, dict):
+            continue
+        verdict = str(check.get("conclusion") or check.get("state") or "").upper()
+        name = str(check.get("name") or check.get("context") or "")
+        if name and verdict in _FAILED:
+            found.setdefault(name, str(check.get("detailsUrl") or check.get("targetUrl") or ""))
+    return list(found.items())[:MAX_FAILED_CHECKS]
+
+
+def failed_runs(viewed: dict[str, Any]) -> list[str]:
+    """The details URLs of the failed checks whose logs are worth asking for."""
+    return [url for _, url in _failed_checks(viewed) if url]
+
+
+def _note(
+    kind: str, item: dict[str, Any], *, path: str | None = None, line: Any = None
+) -> ReviewNote | None:
+    """One thing someone wrote, unless it is empty, hidden or the viewer's own."""
+    author = item.get("author") if isinstance(item.get("author"), dict) else {}
+    login = str((author or {}).get("login") or "")
+    body = str(item.get("body") or "").strip()
+    if not login or not body or item.get("viewerDidAuthor") or item.get("isMinimized"):
+        return None
+    bot = login.endswith("[bot]") or bool((author or {}).get("is_bot"))
+    state = str(item.get("state") or "").replace("_", " ").lower() if kind == "review" else None
+    return ReviewNote(
+        author=login,
+        role="bot" if bot else str(item.get("authorAssociation") or "none").lower(),
+        kind="review" if kind == "review" else "line" if kind == "line" else "comment",
+        body=body[:MAX_NOTE],
+        verdict=state or None,
+        path=path,
+        line=line if isinstance(line, int) else None,
+    )
+
+
+def parse_feedback(
+    viewed: dict[str, Any], threads: Any, logs: dict[str, str] | None = None
+) -> PullFeedback:
+    """Turn what ``gh pr view --json`` and the review-threads query answered into feedback.
+
+    Left out: what the person running Tiltmeter wrote, hidden comments, reviews that
+    approve without a word, and threads that are resolved. The latest notes are kept when
+    there are too many. ``logs`` maps a failed check's details URL to the end of its log.
+    """
+    notes: list[ReviewNote] = []
+    for review in viewed.get("reviews") or []:
+        if isinstance(review, dict) and (note := _note("review", review)) is not None:
+            notes.append(note)
+    for comment in viewed.get("comments") or []:
+        if isinstance(comment, dict) and (note := _note("comment", comment)) is not None:
+            notes.append(note)
+    try:
+        nodes = threads["data"]["repository"]["pullRequest"]["reviewThreads"]["nodes"]
+    except (KeyError, TypeError):
+        nodes = []
+    for thread in nodes or []:
+        if not isinstance(thread, dict) or thread.get("isResolved"):
+            continue
+        line = thread.get("line") or thread.get("originalLine")
+        for comment in (thread.get("comments") or {}).get("nodes") or []:
+            if isinstance(comment, dict):
+                note = _note("line", comment, path=str(thread.get("path") or ""), line=line)
+                if note is not None:
+                    notes.append(note)
+    owner = (viewed.get("headRepositoryOwner") or {}).get("login") or ""
+    name = (viewed.get("headRepository") or {}).get("name") or ""
+    return PullFeedback(
+        number=int(viewed.get("number") or 0),
+        url=str(viewed.get("url") or ""),
+        title=str(viewed.get("title") or ""),
+        repository=f"{owner}/{name}",
+        branch=str(viewed.get("headRefName") or ""),
+        base=str(viewed.get("baseRefName") or ""),
+        notes=notes[-MAX_NOTES:],
+        failed_checks=[
+            FailedCheck(name=name, log=(logs or {}).get(url, ""))
+            for name, url in _failed_checks(viewed)
+        ],
+    )
 
 
 def _pull_request_url(output: str) -> str:

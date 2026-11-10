@@ -6,14 +6,17 @@ from pathlib import Path
 import pytest
 
 from tests.fix.kit import (
+    PR_BRANCH,
     PR_URL,
     FakeFixAgent,
     FakeGitHub,
     commit_files,
     git,
     make_repo,
+    open_pull_request,
     rename_request,
     report,
+    review,
 )
 from tests.fix.test_request import notice_request, spec_request
 from tests.fix.test_usage import OLD, SOL, WEATHER_TS
@@ -651,3 +654,126 @@ def test_a_partly_scoped_notice_names_what_each_scope_covers() -> None:
     assert "**Some of these changes affect only some callers" in body
     assert "b-1: Free keys. Enterprise contracts keep b-1." in body
     assert "keep the old behaviour; the other changes affect every caller." in body
+
+
+# -- answering a review ----------------------------------------------------------------
+
+
+def keep_the_old_name(root: Path) -> None:
+    client = root / "client.py"
+    client.write_text(
+        client.read_text(encoding="utf-8").replace(
+            'customer["phone_number"]', 'customer.get("phone_number") or customer["phone"]'
+        ),
+        encoding="utf-8",
+    )
+
+
+def answering(tmp_path: Path) -> tuple[Path, Path, FakeFixAgent]:
+    repo, remote = make_repo(tmp_path)
+    open_pull_request(repo, remote)
+    return repo, remote, FakeFixAgent(edit=keep_the_old_name)
+
+
+async def test_a_review_is_answered_on_the_pull_request_s_own_branch(tmp_path: Path) -> None:
+    repo, remote, agent = answering(tmp_path)
+    feedback, github = review(), FakeGitHub()
+    request = rename_request().model_copy(update={"feedback": feedback})
+    answer = report(summary="Kept phone as a fallback, as asked.", unresolved=["Sign the CLA."])
+    with FixSession.follow(repo, request, feedback) as session:
+        # The agent starts from the pull request as it stands, not from main.
+        assert 'customer["phone_number"]' in (session.root / "client.py").read_text()
+        assert session.base == "main"
+        await agent_pass(session, agent)
+        preview = session.review(answer)
+        assert preview.files == ["client.py"]
+        outcome = session.deliver(preview, push=True, github=github, model_name="fake-fixer")
+    assert (outcome.status, outcome.pr_url, outcome.branch) == ("updated", PR_URL, None)
+    assert github.created == []  # no second pull request
+    titles = git(remote, "log", "-2", "--format=%s", PR_BRANCH).splitlines()
+    assert titles == ["Address the review", "Adapt to the billing_customers API change"]
+    message = git(remote, "log", "-1", "--format=%b", PR_BRANCH)
+    assert message.strip() == (
+        "Kept phone as a fallback, as asked.\n\n"
+        "Follows the review of the pull request for this change."
+    )
+    assert not git(repo, "branch", "--list", "tiltmeter/fix-follow-up-7").strip()
+    assert git(repo, "status", "--porcelain").strip() == ""
+    [comment] = github.comments
+    short = git(remote, "rev-parse", "--short", PR_BRANCH).strip()
+    assert comment["pull"] == PR_URL
+    assert comment["body"].startswith(f"Pushed `{short}` in answer to the review.")
+    assert "```text\nKept phone as a fallback, as asked.\n```" in comment["body"]
+    assert "Not done, left for a person:\n\n```text\n- Sign the CLA.\n```" in comment["body"]
+    assert "written automatically by [Tiltmeter]" in comment["body"]
+
+
+async def test_a_branch_that_moved_keeps_the_answer_for_a_push_by_hand(tmp_path: Path) -> None:
+    repo, remote, agent = answering(tmp_path)
+    feedback, github = review(), FakeGitHub()
+    request = rename_request().model_copy(update={"feedback": feedback})
+    with FixSession.follow(repo, request, feedback) as session:
+        await agent_pass(session, agent)
+        preview = session.review(report())
+        # The maintainer pushes to the branch while the agent works.
+        theirs = session.repo.add_worktree(tmp_path / "theirs", "theirs", "FETCH_HEAD")
+        (theirs.root / "models.py").write_text("THEIRS = True\n", encoding="utf-8")
+        theirs.stage_all()
+        theirs.commit("A commit of the maintainer's", "Body.")
+        session.repo.push_to("origin", "theirs", PR_BRANCH)
+        outcome = session.deliver(preview, push=True, github=github, model_name="fake-fixer")
+    assert outcome.status == "committed"
+    assert outcome.error is not None
+    assert outcome.branch == "tiltmeter/fix-follow-up-7"
+    assert outcome.commands == [f"git push origin tiltmeter/fix-follow-up-7:{PR_BRANCH}"]
+    assert github.comments == []  # nothing was pushed, so there is nothing to announce
+    assert git(repo, "branch", "--list", "tiltmeter/fix-follow-up-7").strip()
+    assert git(remote, "log", "-1", "--format=%s", PR_BRANCH).strip() == (
+        "A commit of the maintainer's"
+    )
+
+
+async def test_an_answer_can_stay_local_or_go_without_a_comment(tmp_path: Path) -> None:
+    repo, remote, agent = answering(tmp_path)
+    feedback = review()
+    request = rename_request().model_copy(update={"feedback": feedback})
+    with FixSession.follow(repo, request, feedback) as session:
+        await agent_pass(session, agent)
+        local = session.deliver(
+            session.review(report()), push=False, github=None, model_name="fake-fixer"
+        )
+    assert (local.status, local.branch) == ("committed", "tiltmeter/fix-follow-up-7")
+    assert git(remote, "log", "-1", "--format=%s", PR_BRANCH).strip() != "Address the review"
+    with pytest.raises(FixError, match="already exists from an earlier run"):
+        FixSession.follow(repo, request, feedback)
+    git(repo, "branch", "--quiet", "-D", "tiltmeter/fix-follow-up-7")
+
+    failing = FakeGitHub(error="HTTP 403")
+    with FixSession.follow(repo, request, feedback) as session:
+        await agent_pass(session, agent)
+        outcome = session.deliver(
+            session.review(report()), push=True, github=failing, model_name="fake-fixer"
+        )
+    assert outcome.status == "updated"  # the push is what counts
+    assert outcome.notes == ["pushed, but could not comment on the pull request: HTTP 403"]
+
+
+def test_a_review_needs_the_remote_the_branch_is_in(tmp_path: Path) -> None:
+    repo, remote = make_repo(tmp_path)
+    request = rename_request()
+    with pytest.raises(FixError, match="no remote of this checkout is acme/app"):
+        FixSession.follow(repo, request, review())
+    open_pull_request(repo, remote)
+    with pytest.raises(FixError, match="`git fetch --quiet` failed"):
+        FixSession.follow(repo, request, review(branch="no-such-branch"))
+    assert not list(Path(tmp_path).glob("tiltmeter-fix-*"))
+
+
+def test_an_agent_s_answer_is_titled_like_its_commits() -> None:
+    request = rename_request().model_copy(update={"feedback": review()})
+    assert commit_title(request, report()) == "Address the review"
+    titled = report(commit_title="fix(billing): keep phone as a fallback")
+    assert commit_title(request, titled) == "fix(billing): keep phone as a fallback"
+    assert commit_body(request, report(summary="See https://evil.test")) == (
+        "Follows the review of the pull request for this change."
+    )

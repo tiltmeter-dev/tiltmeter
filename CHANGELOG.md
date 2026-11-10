@@ -8,6 +8,15 @@ a minor release may include breaking changes.
 
 ## [Unreleased]
 
+### Added
+
+- `tiltmeter fix --follow-up PULL_REQUEST` answers the review of a fix that is already
+  open. It reads the reviews, comments, unresolved notes on lines and failed checks of the
+  pull request, hands them to the agent as data together with the change, pushes the new
+  commit onto the pull request's branch (never forced) and comments there on what changed
+  and what was left for a person. `--no-comment` pushes without the comment. A pull
+  request nobody answered needs no agent, and one that is closed is refused.
+
 ### Security
 
 - `tiltmeter fix` and `notices apply` run no git hook at any step. Before, only

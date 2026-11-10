@@ -33,6 +33,7 @@ from tiltmeter.fix.models import (
     FixStatus,
     FixTarget,
     NoticeSource,
+    PullFeedback,
     TestRun,
     UnusedFile,
 )
@@ -80,6 +81,8 @@ def commit_title(request: FixRequest, report: FixReport | None = None) -> str:
     proposed = _proposed_title(report)
     if proposed is not None:
         return proposed
+    if request.feedback is not None:
+        return "Address the review"
     retired = _retired_title(request)
     if retired is not None:
         return retired
@@ -149,6 +152,9 @@ def commit_body(request: FixRequest, report: FixReport) -> str:
     else:
         api = request.apis[0]
         found = f"Tiltmeter check #{request.check_id} found the change in {api.method} {api.url}."
+    if request.feedback is not None:
+        # The pull request already says where the change came from.
+        found = "Follows the review of the pull request for this change."
     summary = " ".join(report.summary.split())
     return f"{summary}\n\n{found}" if summary and _inert(summary) else found
 
@@ -364,6 +370,31 @@ def _check_section(request: FixRequest) -> list[str]:
     return lines
 
 
+def follow_up_comment(preview: FixPreview, commit: str, *, model_name: str) -> str:
+    """What Tiltmeter says on the pull request after pushing an answer to its review. The
+    agent's words are quoted as plain text, like everywhere else."""
+    lines = [
+        f"Pushed {_code(commit)} in answer to the review.",
+        "",
+        "What changed:",
+        "",
+        *_plain_text(_paragraphs(preview.report.summary)),
+    ]
+    if preview.tests is not None:
+        lines += ["", *_tests_section(preview.tests)]
+    unresolved = [" ".join(item.split()) for item in preview.report.unresolved if item.strip()]
+    if unresolved:
+        lines += ["", "Not done, left for a person:", ""]
+        lines += _plain_text([f"- {item}" for item in unresolved])
+    lines += [
+        "",
+        "---",
+        f"This comment was written automatically by [Tiltmeter]({PROJECT_URL}). An AI agent "
+        f"({model_name}) made these edits; review them like any other change.",
+    ]
+    return "\n".join(lines) + "\n"
+
+
 def _tests_section(tests: TestRun) -> list[str]:
     command = _code(tests.command)
     if tests.status == "skipped":
@@ -434,7 +465,10 @@ def pull_request_body(request: FixRequest, preview: FixPreview, *, model_name: s
 
 
 class FixSession:
-    """A worktree on a new branch where the agent works, and what happens to its edits."""
+    """A worktree on a new branch where the agent works, and what happens to its edits.
+
+    A session that answers a review (:meth:`follow`) starts from the pull request's branch
+    instead of HEAD, and its commit goes onto that branch: no second pull request."""
 
     def __init__(
         self,
@@ -445,6 +479,7 @@ class FixSession:
         branch: str,
         base: str | None,
         workspace: Path,
+        remote: str | None = None,
     ) -> None:
         self.repo = repo
         self.worktree = worktree
@@ -452,7 +487,9 @@ class FixSession:
         self.branch = branch
         self.base = base
         self._workspace = workspace
+        self._remote = remote
         self._committed = False
+        self._landed = False
         self._closed = False
 
     @classmethod
@@ -484,6 +521,43 @@ class FixSession:
             base=base or repo.current_branch(),
             workspace=workspace,
         )
+
+    @classmethod
+    def follow(cls, path: Path, request: FixRequest, feedback: PullFeedback) -> FixSession:
+        """Check out the branch of an open pull request, as its remote has it now, on a
+        local branch of this session's own. The commit is pushed back onto the pull
+        request's branch; the local branch only holds it until then."""
+        repo = Git.open(path)
+        remote = repo.remote_of(feedback.repository)
+        if remote is None:
+            raise FixError(
+                f"no remote of this checkout is {feedback.repository}, where the branch of "
+                f"pull request #{feedback.number} lives; add it with `git remote add`"
+            )
+        name = f"{DEFAULT_BRANCH_PREFIX}-follow-up-{feedback.number}"
+        if repo.branch_exists(name):
+            raise FixError(f"branch {name} already exists from an earlier run; delete it first")
+        start = repo.fetch(remote, feedback.branch)
+        workspace = Path(tempfile.mkdtemp(prefix="tiltmeter-fix-"))
+        try:
+            worktree = repo.add_worktree(workspace / "repo", name, start)
+        except FixError:
+            shutil.rmtree(workspace, ignore_errors=True)
+            raise
+        return cls(
+            repo,
+            worktree,
+            request,
+            branch=name,
+            base=feedback.base,
+            workspace=workspace,
+            remote=remote,
+        )
+
+    @property
+    def feedback(self) -> PullFeedback | None:
+        """The pull request this session answers, when it follows one."""
+        return self.request.feedback if self._remote is not None else None
 
     @property
     def root(self) -> Path:
@@ -526,7 +600,7 @@ class FixSession:
             endpoint_id=self.request.apis[0].endpoint_id if self.request.apis else None,
             notice_id=notice.id if notice else None,
             provider=notice.provider if notice else None,
-            branch=self.branch if self._committed else None,
+            branch=self.branch if self._committed and not self._landed else None,
             base=self.base,
             preview=preview,
             **fields,
@@ -554,6 +628,10 @@ class FixSession:
         title = commit_title(self.request, preview.report)
         self.worktree.commit(title, commit_body(self.request, preview.report))
         self._committed = True
+        if (feedback := self.feedback) is not None and self._remote is not None:
+            return self._update(
+                preview, feedback, self._remote, push=push, github=github, model_name=model_name
+            )
         remote = self.repo.remote()
         open_pr = f"gh pr create --head {self.branch} --fill" + (
             f" --base {self.base}" if self.base else ""
@@ -596,14 +674,48 @@ class FixSession:
             return self.outcome("pushed", preview, error=str(exc), commands=[open_pr])
         return self.outcome("opened", preview, pr_url=url)
 
+    def _update(
+        self,
+        preview: FixPreview,
+        feedback: PullFeedback,
+        remote: str,
+        *,
+        push: bool,
+        github: GitHub | None,
+        model_name: str,
+    ) -> FixOutcome:
+        """Push the commit onto the pull request's branch and say there what changed. When
+        the push is not asked for, or the remote refuses it, the commit stays on the
+        session's branch with the command. A comment that fails leaves a note."""
+        by_hand = f"git push {remote} {self.branch}:{feedback.branch}"
+        if not push:
+            return self.outcome("committed", preview, pr_url=feedback.url, commands=[by_hand])
+        try:
+            self.repo.push_to(remote, self.branch, feedback.branch)
+        except FixError as exc:
+            return self.outcome(
+                "committed", preview, pr_url=feedback.url, error=str(exc), commands=[by_hand]
+            )
+        self._landed = True
+        if github is None:
+            return self.outcome("updated", preview, pr_url=feedback.url)
+        body = follow_up_comment(preview, self.worktree.head(), model_name=model_name)
+        try:
+            github.comment(cwd=self.repo.root, pull=feedback.url, body=body)
+        except FixError as exc:
+            note = f"pushed, but could not comment on the pull request: {exc}"
+            return self.outcome("updated", preview, pr_url=feedback.url, notes=[note])
+        return self.outcome("updated", preview, pr_url=feedback.url)
+
     def close(self) -> None:
-        """Remove the worktree, and the branch unless it holds a commit."""
+        """Remove the worktree, and the branch unless it holds a commit that is nowhere
+        else: one pushed onto a pull request's branch needs no local copy."""
         if self._closed:
             return
         self._closed = True
         self.repo.remove_worktree(self.root)
         shutil.rmtree(self._workspace, ignore_errors=True)
-        if not self._committed:
+        if not self._committed or self._landed:
             self.repo.delete_branch(self.branch)
 
     def __enter__(self) -> FixSession:
