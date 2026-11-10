@@ -56,6 +56,7 @@ if TYPE_CHECKING:
         FixPreview,
         FixReport,
         FixRequest,
+        PullFeedback,
         TestRun,
     )
     from tiltmeter.fix.runner import FixSession
@@ -443,6 +444,8 @@ class _Delivery:
     dry_run: bool = False
     as_json: bool = False
     allow_unused: bool = False
+    follow_up: str | None = None
+    comment: bool = True
 
 
 class _FixFailed(Exception):
@@ -472,6 +475,9 @@ def _decide(
             return session.outcome("discarded", preview, notes=[note])
         if delivery.no_pr:
             question = "Commit to a local branch?"
+        elif session.feedback is not None:
+            says = " and say there what changed" if delivery.comment else ""
+            question = f"Commit, push to pull request #{session.feedback.number}{says}?"
         elif preview.likely_dead and not delivery.allow_unused:
             question = (
                 "Nothing else in the repository imports or names the changed code, and it "
@@ -486,10 +492,11 @@ def _decide(
             approved = False
         if not approved:
             return session.outcome("discarded", preview)
+    silent = delivery.no_pr or (session.feedback is not None and not delivery.comment)
     return session.deliver(
         preview,
         push=not delivery.no_pr,
-        github=None if delivery.no_pr else GhCli(),
+        github=None if silent else GhCli(),
         model_name=model_name,
         # A yes to the question above is as good as the flag.
         allow_unused=delivery.allow_unused or not delivery.yes,
@@ -517,19 +524,38 @@ def _attempt_fix(
     intro: Callable[[], None],
 ) -> FixOutcome:
     """Let the agent work on a fresh worktree, show the diff and deliver it as asked."""
-    from tiltmeter.console import render_fix_preview
+    from tiltmeter.console import render_feedback, render_fix_preview
+    from tiltmeter.fix.models import FixOutcome
     from tiltmeter.fix.runner import FixSession
 
     if settings.test_command:
         request = request.model_copy(update={"test_command": shlex.join(settings.test_command)})
     try:
-        session = FixSession.open(
-            delivery.repo,
-            request,
-            branch=delivery.branch,
-            prefix=settings.branch_prefix,
-            base=delivery.base,
-        )
+        feedback = _feedback(delivery)
+        if feedback is not None and feedback.empty:
+            notice = request.notice
+            return FixOutcome(
+                status="unchanged",
+                check_id=request.check_id,
+                notice_id=notice.id if notice else None,
+                provider=notice.provider if notice else None,
+                pr_url=feedback.url,
+                notes=[
+                    f"nobody has asked for changes on pull request #{feedback.number}, and "
+                    "none of its checks failed"
+                ],
+            )
+        if feedback is not None:
+            request = request.model_copy(update={"feedback": feedback})
+            session = FixSession.follow(delivery.repo, request, feedback)
+        else:
+            session = FixSession.open(
+                delivery.repo,
+                request,
+                branch=delivery.branch,
+                prefix=settings.branch_prefix,
+                base=delivery.base,
+            )
     except TiltmeterError as exc:
         raise _FixFailed(str(exc), EXIT_USAGE) from exc
     with session:
@@ -539,11 +565,14 @@ def _attempt_fix(
         )
         if not delivery.as_json:
             intro()
-            start = f"{session.base} at " if session.base else ""
-            out.print(
-                f"Working on a new branch, [bold]{session.branch}[/], "
-                f"from {start}{session.repo.head()}."
-            )
+            if feedback is not None:
+                render_feedback(out, feedback)
+            else:
+                start = f"{session.base} at " if session.base else ""
+                out.print(
+                    f"Working on a new branch, [bold]{session.branch}[/], "
+                    f"from {start}{session.repo.head()}."
+                )
             if session.repo.has_uncommitted_changes():
                 out.print("[dim]note: uncommitted changes in your checkout are left out[/]")
         try:
@@ -561,6 +590,15 @@ def _attempt_fix(
             return _decide(session, preview, model_name=agent.model_name, delivery=delivery)
         except TiltmeterError as exc:
             raise _FixFailed(f"fix failed: {exc}", EXIT_CHECK_FAILED) from exc
+
+
+def _feedback(delivery: _Delivery) -> PullFeedback | None:
+    """What the pull request named by --follow-up was told, or None without the option."""
+    from tiltmeter.fix.git import GhCli
+
+    if delivery.follow_up is None:
+        return None
+    return GhCli().feedback(cwd=delivery.repo, pull=delivery.follow_up)
 
 
 def _test_and_retry(
@@ -625,7 +663,9 @@ def _fix_check(
             )
         except _FixFailed as exc:
             _fail(str(exc), exc.code)
-        if outcome.pr_url or outcome.branch:
+        if outcome.status == "updated":
+            service.store.append_notes(check_id, [f"fix: answered the review of {outcome.pr_url}"])
+        elif outcome.status != "unchanged" and (outcome.pr_url or outcome.branch):
             where = f"pull request {outcome.pr_url}" if outcome.pr_url else outcome.branch
             service.store.append_notes(check_id, [f"fix: {where}"])
     return outcome
@@ -781,8 +821,9 @@ def _fix_notice(
         except _FixFailed as exc:
             _fail(str(exc), exc.code)
         # Only a verified notice is recorded: an unsigned file must not stand in for the
-        # provider's notice with the same id.
-        if service is not None and loaded.verified:
+        # provider's notice with the same id. An answer to a review changes nothing about
+        # the notice: its pull request is already recorded.
+        if service is not None and loaded.verified and delivery.follow_up is None:
             _record_fix(service, notice, outcome, delivery)
         return outcome
     finally:
@@ -831,6 +872,24 @@ def fix(
         bool, typer.Option("--dry-run", help="Show the agent's edits, then discard them.")
     ] = False,
     allow_unused: AllowUnusedOption = False,
+    follow_up: Annotated[
+        str | None,
+        typer.Option(
+            "--follow-up",
+            metavar="PULL_REQUEST",
+            help=(
+                "Answer the review of the open pull request for this change, by number or "
+                "URL: the agent reads what reviewers and failed checks said, edits the "
+                "pull request's branch, and the commit is pushed onto it."
+            ),
+        ),
+    ] = None,
+    no_comment: Annotated[
+        bool,
+        typer.Option(
+            "--no-comment", help="With --follow-up: push without commenting on what changed."
+        ),
+    ] = False,
     agent_kind: Annotated[
         FixAgentKind | None,
         typer.Option("--agent", help="The agent that edits the code (default: fix.agent)."),
@@ -843,7 +902,12 @@ def fix(
     announced in a change notice (`tiltmeter fix --notice URL`). The default agent
     needs ANTHROPIC_API_KEY and the fix extra (pip install "tiltmeter\\[fix]").
     --agent claude-code or --agent codex runs on your Claude Code or Codex login instead.
+    With --follow-up, the same change is taken up again where reviewers left it.
     """
+    if follow_up is not None and (branch is not None or base is not None):
+        _fail("--follow-up works on the pull request's own branch: leave out --branch and --base")
+    if no_comment and follow_up is None:
+        _fail("--no-comment goes with --follow-up")
     delivery = _Delivery(
         repo=repo,
         branch=branch,
@@ -853,6 +917,8 @@ def fix(
         dry_run=dry_run,
         as_json=as_json,
         allow_unused=allow_unused,
+        follow_up=follow_up,
+        comment=not no_comment,
     )
     if notice is None:
         if check_id is None:

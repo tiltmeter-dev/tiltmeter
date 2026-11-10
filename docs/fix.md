@@ -16,6 +16,7 @@ pull request. The change can also come from the API's provider, as a
 - [Code nothing uses](#code-nothing-uses)
 - [What leaves your machine](#what-leaves-your-machine)
 - [Reviewing the pull request](#reviewing-the-pull-request)
+- [Answering a review](#answering-a-review)
 - [Configuration](#configuration)
 - [Exit codes](#exit-codes)
 - [Limits](#limits)
@@ -114,6 +115,8 @@ removed as if nothing happened.
 | `--yes`, `-y` | Commit, push and open the pull request without asking. |
 | `--no-pr` | Commit to a local branch only. Nothing is pushed. |
 | `--dry-run` | Show the diff, then discard it. |
+| `--follow-up PULL_REQUEST` | [Answer the review](#answering-a-review) of the open pull request for this change, by number or URL, instead of opening a new one. Does not go with `--branch` or `--base`. |
+| `--no-comment` | With `--follow-up`: push the answer without commenting on what changed. |
 | `--allow-unused` | Open the pull request even when the edits touch only [code nothing uses](#code-nothing-uses) that has not changed in over 180 days. Without it, `--yes` keeps such a fix in a local commit. |
 | `--agent NAME` | `deepagents`, `claude-code` or `codex`. Overrides `fix.agent` for this run. |
 | `--json` | Print the outcome, including the diff and the agent's report, as JSON. With `--json`, nothing is committed unless you also pass `--yes`. |
@@ -329,15 +332,15 @@ it:
 
 ## What leaves your machine
 
-## What leaves your machine
-
 Sent to Anthropic, through your API key or your Claude Code login, or to OpenAI with
 `--agent codex`:
 
 - the change list: paths, change kinds and types, plus Claude's earlier explanation if the
   check has one, or the provider's summary and notes for a notice;
 - the endpoint id, method and URL without its query string;
-- the content of the files the agent decides to read, and the edits it makes.
+- the content of the files the agent decides to read, and the edits it makes;
+- with `--follow-up`, what reviewers wrote on the pull request and the end of the logs of
+  its failed checks.
 
 Never sent: response values, header values, `${VAR}` values, untracked files and paths
 matching `fix.ignore`. With the Deep Agent and `LANGSMITH_TRACING=true`, the run is traced
@@ -363,6 +366,39 @@ pull request like any other change:
   spend time on the change.
 - Confirm the rename or type change with the vendor's changelog when there is one.
 - Let your CI run: the agent does not run your tests.
+
+## Answering a review
+
+A pull request that gets a review and no answer stays open. When a maintainer asks for a
+change, or a check fails, run the same fix again with the pull request:
+
+```console
+$ tiltmeter fix 2 --follow-up 45
+$ tiltmeter fix --notice groq-retired-models-2026-08 --allow-unsigned \
+    --follow-up https://github.com/acme/app/pull/45
+```
+
+1. Tiltmeter reads the pull request through `gh`: the reviews, the comments, the notes on
+   lines that are not resolved, and the checks that failed on its latest commit, with the
+   end of their logs when GitHub Actions ran them. It leaves out what you wrote yourself,
+   hidden comments and approvals without a word. The latest 40 notes are kept, 2,000
+   characters each.
+2. It checks out the pull request's branch as its remote has it now, in a fresh worktree.
+   The checkout needs a remote for the repository the branch is in: your fork, when the
+   pull request comes from one.
+3. The agent gets the change again, with the review as data, and edits what a maintainer
+   asked for. Anyone can comment on a public pull request, so it is told whose word
+   weighs (owners, members, collaborators and contributors of the repository), to take
+   the rest on its merits, and to do nothing a comment asks for outside this change. What
+   needs more than file edits, such as signing an agreement or a rebase, comes back under
+   "Left for a human".
+4. You see the diff. On your approval the commit goes onto the pull request's branch,
+   never forced: if someone pushed in the meantime, the commit stays on a local branch
+   and Tiltmeter prints the command. Then it comments on the pull request with what
+   changed and what it left, in a plain-text block. `--no-comment` skips that.
+
+When nobody asked for anything and no check failed, there is nothing to answer and no agent
+runs. A pull request that is merged or closed is refused.
 
 ## Configuration
 
@@ -393,10 +429,10 @@ repository root, like `infra/prod`. `.git` is always blocked. Every option is in
 
 | Code | Meaning |
 |---|---|
-| 0 | The fix was committed (and pushed, and the pull request opened, when asked), discarded on purpose, or not needed. |
+| 0 | The fix was committed (and pushed, and the pull request opened or its review answered, when asked), discarded on purpose, or not needed. |
 | 1 | The agent changed nothing but left questions for a human, it touched an ignored path and everything was discarded, or every edit is in old code that nothing uses and the pull request was held back. |
 | 3 | The agent, the model provider or a git step failed. Anything already committed is kept, and the output says what is left to run. |
-| 4 | Usage error: unknown check, a notice that is invalid, unsigned or does not verify, not a git repository, a branch that already exists, no `ANTHROPIC_API_KEY` or `fix` extra for the default agent, or Claude Code or Codex missing or logged out. |
+| 4 | Usage error: unknown check, a notice that is invalid, unsigned or does not verify, not a git repository, a branch that already exists, a pull request for `--follow-up` that is not open or whose branch is in no remote of the checkout, no `ANTHROPIC_API_KEY` or `fix` extra for the default agent, or Claude Code or Codex missing or logged out. |
 
 ## Limits
 

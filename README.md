@@ -295,7 +295,7 @@ ready-to-copy jobs for GitHub Actions, GitLab CI and cron.
 | `tiltmeter watch` | Checks on an interval until stopped. |
 | `tiltmeter history`, `show ID`, `schema ENDPOINT` | The stored checks, one check, and the learned schema. |
 | `tiltmeter explain ID` | Asks Claude what a check's changes mean. |
-| `tiltmeter fix ID` | Lets an agent adapt your code to a check's drift, in a pull request. `--notice` takes a notice file, URL or catalog entry instead. |
+| `tiltmeter fix ID` | Lets an agent adapt your code to a check's drift, in a pull request. `--notice` takes a notice file, URL or catalog entry instead, and `--follow-up` answers the review of a pull request that is already open. |
 | `tiltmeter notices check`, `notices apply` | Lists, or applies, the new notices and spec changes of the providers you follow. |
 | `tiltmeter notice create`, `sign`, `publish`, `verify` | Writes and publishes change notices, as a provider. |
 | `tiltmeter serve` | Runs the MCP server on stdio. |

@@ -62,6 +62,55 @@ class TestRun(BaseModel):
     offline: bool = Field(default=True, description="Whether the network was cut for them.")
 
 
+class ReviewNote(BaseModel):
+    """What someone wrote on a pull request: a review, a comment, or a note on a line."""
+
+    model_config = ConfigDict(frozen=True)
+
+    author: str
+    role: str = Field(
+        description="The author's tie to the repository as GitHub names it, in lower case: "
+        "owner, member, collaborator, contributor, none; or bot."
+    )
+    kind: Literal["review", "comment", "line"]
+    body: str
+    verdict: str | None = Field(
+        default=None, description="A review's state: approved, changes requested, commented."
+    )
+    path: str | None = Field(default=None, description="The file a note on a line is about.")
+    line: int | None = None
+
+
+class FailedCheck(BaseModel):
+    """A check that failed on the pull request's latest commit."""
+
+    model_config = ConfigDict(frozen=True)
+
+    name: str
+    log: str = Field(default="", description="The end of its log, when it could be read.")
+
+
+class PullFeedback(BaseModel):
+    """An open pull request, and what reviewers and its checks said about it. The words are
+    other people's: they reach the agent as data and are shown as plain text."""
+
+    model_config = ConfigDict(frozen=True)
+
+    number: int
+    url: str
+    title: str
+    repository: str = Field(description="owner/name of the repository the branch is in.")
+    branch: str = Field(description="The branch the pull request comes from.")
+    base: str
+    notes: list[ReviewNote] = Field(default_factory=list)
+    failed_checks: list[FailedCheck] = Field(default_factory=list)
+
+    @property
+    def empty(self) -> bool:
+        """Nobody asked for anything and no check failed."""
+        return not self.notes and not self.failed_checks
+
+
 class FixApi(BaseModel):
     """One endpoint whose responses changed, and the changes code has to follow."""
 
@@ -125,6 +174,10 @@ class FixRequest(BaseModel):
     commit_titles: list[str] = Field(
         default_factory=list,
         description="The repository's latest commit titles, which show its title convention.",
+    )
+    feedback: PullFeedback | None = Field(
+        default=None,
+        description="The pull request this run answers, when the fix is already open.",
     )
 
     @property
@@ -239,7 +292,9 @@ class FixPreview(BaseModel):
         return not self.files
 
 
-type FixStatus = Literal["opened", "pushed", "committed", "discarded", "unchanged", "blocked"]
+type FixStatus = Literal[
+    "opened", "updated", "pushed", "committed", "discarded", "unchanged", "blocked"
+]
 
 
 class FixOutcome(BaseModel):

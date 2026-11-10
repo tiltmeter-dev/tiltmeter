@@ -20,7 +20,13 @@ from rich.text import Text
 from tiltmeter.core.models import Change, CheckResult, Severity
 
 if TYPE_CHECKING:
-    from tiltmeter.fix.models import AppliedNotice, FixOutcome, FixPreview, FixRequest
+    from tiltmeter.fix.models import (
+        AppliedNotice,
+        FixOutcome,
+        FixPreview,
+        FixRequest,
+        PullFeedback,
+    )
     from tiltmeter.notices.models import (
         ApiChangeNotice,
         FeedEntry,
@@ -242,6 +248,38 @@ def _ago(days: int) -> str:
     return f"{days // 365} years ago"
 
 
+def render_feedback(console: Console, feedback: PullFeedback) -> None:
+    """The pull request a fix answers, and who said what about it, one line each. The words
+    are other people's: plain text, cut short."""
+    from tiltmeter.notices.models import printable
+
+    console.print(
+        Text.assemble(
+            "Answering the review of ",
+            (f"#{feedback.number}", "bold"),
+            " ",
+            (printable(feedback.title, 80), "bold"),
+            (f"  {feedback.repository}:{feedback.branch}", "dim"),
+        )
+    )
+    for note in feedback.notes:
+        where = f"{note.path}:{note.line}" if note.kind == "line" and note.line else note.kind
+        if note.verdict:
+            where += f", {note.verdict}"
+        console.print(
+            Padding(
+                Text.assemble(
+                    (f"{printable(note.author, 40)} ({note.role}, {where})  ", "dim"),
+                    printable(note.body, 140),
+                ),
+                (0, 0, 0, 2),
+            )
+        )
+    for check in feedback.failed_checks:
+        failed = Text.assemble(("✗ ", "red"), printable(check.name, 100), (" failed", "dim"))
+        console.print(Padding(failed, (0, 0, 0, 2)))
+
+
 def render_fix_outcome(console: Console, outcome: FixOutcome) -> None:
     """One line on how the fix ended, then whatever is left to do by hand."""
     preview = outcome.preview
@@ -250,6 +288,9 @@ def render_fix_outcome(console: Console, outcome: FixOutcome) -> None:
             line = Text.assemble(
                 ("✓ ", "green"), ("opened ", "green"), (outcome.pr_url or "", "bold")
             )
+        case "updated":
+            answered = ("answered the review of ", "green")
+            line = Text.assemble(("✓ ", "green"), answered, (outcome.pr_url or "", "bold"))
         case "pushed":
             line = Text.assemble(("✓ ", "green"), f"pushed branch {outcome.branch}")
         case "committed" if outcome.held_back:

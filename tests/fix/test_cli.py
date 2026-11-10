@@ -7,7 +7,16 @@ from typing import Any
 import pytest
 import respx
 
-from tests.fix.kit import PR_URL, FakeFixAgent, FakeGitHub, git, make_repo
+from tests.fix.kit import (
+    PR_BRANCH,
+    PR_URL,
+    FakeFixAgent,
+    FakeGitHub,
+    git,
+    make_repo,
+    open_pull_request,
+    review,
+)
 from tests.fix.test_runner import move_to_one_call_3
 from tests.fix.test_usage import OLD, SOL
 from tests.test_cli import URL, flat, invoke, runner, write_config
@@ -386,3 +395,71 @@ def test_recently_changed_unused_code_warns_but_opens_the_pull_request(
     assert "(today)" in text
     assert f"✓ opened {PR_URL}" in text
     assert "Possibly unused" in github.created[0]["body"]
+
+
+# -- answering a review ----------------------------------------------------------------
+
+
+def keep_the_old_name(root: Path) -> None:
+    client = root / "client.py"
+    text = client.read_text(encoding="utf-8")
+    client.write_text(text.replace('["phone_number"]', '.get("phone_number")'), encoding="utf-8")
+
+
+def test_fix_answers_the_review_of_its_pull_request(
+    tmp_path: Path, drifted: Path, fakes: tuple[FakeFixAgent, FakeGitHub]
+) -> None:
+    agent, github = fakes
+    agent.edit = keep_the_old_name
+    github.review = review()
+    repo, remote = make_repo(tmp_path)
+    open_pull_request(repo, remote)
+    outcome = fix(drifted, repo, "--follow-up", "7", "--yes")
+    assert outcome.exit_code == 0, outcome.output
+    text = flat(outcome.output)
+    assert "Answering the review of #7 Adapt to the billing_customers API change" in text
+    assert "pbek (owner, review, changes requested) Please keep reading the old name" in text
+    assert f"✓ answered the review of {PR_URL}" in text
+    assert github.asked == ["7"]
+    [request] = agent.requests
+    assert request.feedback == github.review
+    assert github.created == []
+    assert len(github.comments) == 1
+    assert git(remote, "log", "-1", "--format=%s", PR_BRANCH).strip() == "Address the review"
+    shown = flat(invoke("show", "2", "-c", str(drifted)).output)
+    assert f"note: fix: answered the review of {PR_URL}" in shown
+
+    # Asked first, and told what the yes covers.
+    agent.edit = lambda root: (root / "models.py").write_text("PHONE = None\n", encoding="utf-8")
+    asked = fix(drifted, repo, "--follow-up", "7", "--no-comment", stdin="n\n")
+    assert "Commit, push to pull request #7?" in flat(asked.output)
+    assert "discarded the edits" in flat(asked.output)
+    assert len(github.comments) == 1
+
+
+def test_a_pull_request_nobody_answered_needs_no_agent(
+    tmp_path: Path, drifted: Path, fakes: tuple[FakeFixAgent, FakeGitHub]
+) -> None:
+    agent, github = fakes
+    github.review = review(notes=[])
+    repo, _ = make_repo(tmp_path)
+    outcome = fix(drifted, repo, "--follow-up", PR_URL, "--yes")
+    assert outcome.exit_code == 0, outcome.output
+    assert "nobody has asked for changes on pull request #7" in flat(outcome.output)
+    assert agent.requests == []
+
+
+def test_follow_up_refuses_what_it_cannot_answer(
+    tmp_path: Path, drifted: Path, fakes: tuple[FakeFixAgent, FakeGitHub]
+) -> None:
+    agent, _ = fakes
+    repo, _ = make_repo(tmp_path)
+    closed = fix(drifted, repo, "--follow-up", "7", "--yes")  # the fake has no open one
+    assert closed.exit_code == 4
+    assert "pull request #7 is closed: nothing to answer" in flat(closed.output)
+    named = fix(drifted, repo, "--follow-up", "7", "--branch", "mine")
+    assert named.exit_code == 4
+    assert "leave out --branch and --base" in flat(named.output)
+    alone = fix(drifted, repo, "--no-comment")
+    assert alone.exit_code == 4
+    assert agent.requests == []
