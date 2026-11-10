@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from types import SimpleNamespace
 from typing import Any
 
 import httpx
@@ -8,6 +9,7 @@ import pytest
 import respx
 
 from tests.helpers import API, env_of, make_endpoint, no_sleep
+from tiltmeter.core import fetch
 from tiltmeter.core.fetch import USER_AGENT, Expander, observe_endpoint
 from tiltmeter.errors import MissingVariableError
 
@@ -266,7 +268,7 @@ async def test_a_redirect_loop_is_an_error() -> None:
 
 
 @respx.mock
-async def test_failures_nobody_planned_for_are_errors_too() -> None:
+async def test_failures_nobody_planned_for_are_errors_too(monkeypatch: pytest.MonkeyPatch) -> None:
     respx.get(URL).mock(
         side_effect=lambda request: httpx.Response(
             200, headers={"content-encoding": "gzip"}, stream=httpx.ByteStream(b"not gzip")
@@ -280,12 +282,22 @@ async def test_failures_nobody_planned_for_are_errors_too() -> None:
     assert newline.error is not None
     assert newline.error.startswith("the URL is not valid: ")
 
+    # Some Python builds parse JSON this deep and some run out of stack: neither may raise.
     deep = b"[" * 100_000 + b"]" * 100_000
     respx.get(URL).respond(200, content=deep, headers={"content-type": "application/json"})
     nested = await observe()
     assert nested.error is None
     assert nested.status_code == 200
-    assert not nested.json_ok
+
+    def out_of_stack(body: bytes) -> Any:
+        raise RecursionError("maximum recursion depth exceeded")
+
+    with monkeypatch.context() as patched:
+        patched.setattr(fetch, "json", SimpleNamespace(loads=out_of_stack))
+        exhausted = await observe()
+    assert exhausted.error is None
+    assert exhausted.status_code == 200
+    assert not exhausted.json_ok  # reported like any body that is not JSON
 
     respx.get(URL).mock(side_effect=RuntimeError("no route for key=SUPERSECRET"))
     endpoint = make_endpoint(params={"key": "${API_KEY}"})
