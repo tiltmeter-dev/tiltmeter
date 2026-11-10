@@ -1,0 +1,78 @@
+name: Catalog watch
+
+# Every week, compare the providers' deprecation pages with the catalog of known API
+# changes (scripts/watch.py) and keep one issue up to date with what the catalog lacks.
+# It changes no file: a person drafts the entries. The pages are third-party text, so the
+# report reaches the issue as a file and never passes through the shell.
+on:
+  schedule:
+    - cron: "23 7 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: catalog-watch
+  cancel-in-progress: false
+
+env:
+  FORCE_COLOR: "1"
+
+jobs:
+  watch:
+    name: Compare the pages with the catalog
+    # Forks have no use for the issue.
+    if: github.repository == 'tiltmeter-dev/tiltmeter'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          python-version: "3.13"
+          enable-cache: true
+      - run: uv sync --locked
+      - name: Read the pages
+        id: watch
+        # No token in this step: it only fetches public pages.
+        run: |
+          set +e
+          uv run python scripts/watch.py --report report.md
+          echo "code=$?" >> "$GITHUB_OUTPUT"
+      - name: Keep the issue up to date
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          CODE: ${{ steps.watch.outputs.code }}
+        run: |
+          set -euo pipefail
+          number=$(gh issue list --label catalog-watch --state open --json number --jq '.[0].number // empty')
+          if [ "$CODE" = "0" ]; then
+            if [ -n "$number" ]; then
+              gh issue close "$number" --comment "The catalog has every retirement the pages list now."
+            fi
+            exit 0
+          fi
+          if [ "$CODE" != "1" ]; then
+            echo "::error::A deprecation page could not be read; see the step above."
+            exit 1
+          fi
+          gh label create catalog-watch --force --color 0e8a16 \
+            --description "Retirements the providers' pages list and the catalog lacks"
+          if [ -z "$number" ]; then
+            gh issue create --label catalog-watch --body-file report.md \
+              --title "The catalog lacks retirements the providers' pages list"
+            exit 0
+          fi
+          new=$(grep -o 'catalog-watch:[0-9a-f]*' report.md || true)
+          old=$(gh issue view "$number" --json body --jq .body | grep -o 'catalog-watch:[0-9a-f]*' || true)
+          gh issue edit "$number" --body-file report.md
+          if [ "$new" != "$old" ]; then
+            gh issue comment "$number" --body "The list changed since last week: the description has it."
+          fi
