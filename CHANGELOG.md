@@ -8,6 +8,43 @@ a minor release may include breaking changes.
 
 ## [Unreleased]
 
+### Security
+
+- `tiltmeter fix` and `notices apply` run no git hook at any step. Before, only
+  `pre-commit` and `commit-msg` were skipped, so a hook that the agent edited in a hooks
+  folder under version control, or that the tests from `fix.test_command` left in
+  `.git/hooks`, ran with your environment and network when Tiltmeter restored the edits,
+  committed or pushed. Git LFS uploads through a hook: a fix that changes an LFS file
+  now needs a `git lfs push` by hand.
+- The fix agent's summary, its "Left for a human" items, the names of the files it changed
+  and the explanation of a check reach pull requests as plain text or code. Before, they
+  were Markdown: text injected through the repository or a notice could embed an image
+  that sends data away when someone opens the pull request, mention people or close
+  issues. The summary reaches the commit message only when it is plain prose, and a
+  proposed title that names an issue, such as `(#12)`, is no longer used.
+- The `headers` of an endpoint go only to the server its `url` names. A redirect to
+  another host or port, or from `https` to `http`, is followed without them, and is not
+  followed when it would send the `body` there: the check fails with `redirected to
+  another server`. Before, only `Authorization` stayed behind, and an `X-Api-Key` went
+  along. Slack and webhook notifications no longer follow redirects at all.
+
+### Fixed
+
+- A query string written in an endpoint's `url` is sent. It was dropped without a word,
+  so `https://api.example.com/items?expand=data` was checked as `/items`. `params` join
+  it, and a parameter of the same name replaces the one in the URL.
+- One endpoint can no longer end a run for the others. A redirect loop, a body that
+  cannot be decompressed, a URL that is invalid once its `${VAR}` is expanded or JSON
+  nested thousands of levels deep is a failed check like any other, with exit code 3,
+  and so is any error in a check that nobody planned for. `tiltmeter watch` keeps going.
+- A crash never exits with 1, the code for warning-level drift, which a CI gate could
+  read as a warning and let through. An unexpected error exits 3 after its traceback,
+  and a history database that is damaged, unreadable or written by a newer Tiltmeter is
+  reported in one line with exit code 4.
+- Files and repositories that the tests from `fix.test_command` create inside the
+  worktree are always removed before the commit. A nested git repository used to stay
+  and was committed as a submodule.
+
 ### Changed
 
 - A clean `tiltmeter scan` result now explains that it checked the known-change catalog,

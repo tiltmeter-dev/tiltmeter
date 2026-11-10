@@ -36,6 +36,7 @@ from tiltmeter.core.models import (
     StoredChange,
 )
 from tiltmeter.core.shape import Shape, fingerprint_of
+from tiltmeter.errors import TiltmeterError
 
 SCHEMA_VERSION: Final = 3
 DB_FILENAME: Final = "tiltmeter.db"
@@ -141,7 +142,7 @@ class FrozenSpecChange:
     entry: str
 
 
-class StoreError(Exception):
+class StoreError(TiltmeterError):
     """The history database cannot be used."""
 
 
@@ -149,17 +150,35 @@ class Store:
     """History of checks for every endpoint, in one SQLite file."""
 
     def __init__(self, path: str | Path) -> None:
+        """Open the history at ``path``, creating or migrating it first.
+
+        A file that cannot be opened, read as a database or migrated is a
+        :class:`StoreError`, which callers report as a setup problem: an uncaught
+        ``sqlite3`` error would end the command with exit code 1, the code for drift."""
         self.path = str(path)
         in_memory = self.path == ":memory:"
-        if not in_memory:
-            Path(self.path).parent.mkdir(parents=True, exist_ok=True)
-        self._db = sqlite3.connect(self.path, check_same_thread=False)
-        self._db.row_factory = sqlite3.Row
-        self._db.execute("PRAGMA foreign_keys = ON")
-        self._db.execute(f"PRAGMA busy_timeout = {BUSY_TIMEOUT_SECONDS * 1000}")
-        if not in_memory:
-            self._use_wal()
-        self._migrate()
+        try:
+            if not in_memory:
+                Path(self.path).parent.mkdir(parents=True, exist_ok=True)
+            self._db = sqlite3.connect(self.path, check_same_thread=False)
+        except (sqlite3.Error, OSError) as exc:
+            raise StoreError(self._unusable(exc)) from exc
+        try:
+            self._db.row_factory = sqlite3.Row
+            self._db.execute("PRAGMA foreign_keys = ON")
+            self._db.execute(f"PRAGMA busy_timeout = {BUSY_TIMEOUT_SECONDS * 1000}")
+            if not in_memory:
+                self._use_wal()
+            self._migrate()
+        except sqlite3.Error as exc:
+            self._db.close()
+            raise StoreError(self._unusable(exc)) from exc
+        except StoreError:
+            self._db.close()
+            raise
+
+    def _unusable(self, exc: Exception) -> str:
+        return f"the history database {self.path} cannot be used: {exc}"
 
     def _use_wal(self) -> None:
         # Switching to WAL takes an exclusive lock, and SQLite reports "database is locked"

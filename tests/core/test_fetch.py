@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from types import SimpleNamespace
 from typing import Any
 
 import httpx
@@ -8,6 +9,7 @@ import pytest
 import respx
 
 from tests.helpers import API, env_of, make_endpoint, no_sleep
+from tiltmeter.core import fetch
 from tiltmeter.core.fetch import USER_AGENT, Expander, observe_endpoint
 from tiltmeter.errors import MissingVariableError
 
@@ -175,3 +177,129 @@ async def test_excerpt_is_kept_on_request_and_scrubbed() -> None:
     assert observation.excerpt is not None
     assert "TOPSECRET1" not in observation.excerpt
     assert "***" in observation.excerpt
+
+
+@respx.mock
+async def test_the_query_string_written_in_the_url_is_sent() -> None:
+    route = respx.get(url__startswith=URL).respond(200, json={})
+    await observe(make_endpoint(url=f"{URL}?limit=10&expand=data"))
+    assert route.calls.last.request.url.query == b"limit=10&expand=data"
+    # Parameters join it, and one of the same name replaces what the URL says.
+    await observe(make_endpoint(url=f"{URL}?limit=10&page=1", params={"page": 2, "q": "a b"}))
+    assert dict(route.calls.last.request.url.params) == {"limit": "10", "page": "2", "q": "a b"}
+
+
+OTHER = "https://cdn.other.test"
+SECRET = "sekret-value"
+KEYED = {"X-Api-Key": "${KEY}", "Authorization": "Bearer ${KEY}", "User-Agent": "custom"}
+
+
+def redirect(status: int, location: str) -> httpx.Response:
+    return httpx.Response(status, headers={"location": location})
+
+
+@respx.mock
+async def test_redirects_on_the_same_server_keep_the_headers() -> None:
+    respx.get(URL).mock(return_value=redirect(302, "/v2/items"))
+    moved = respx.get(f"{API}/v2/items").respond(200, json={"ok": True})
+    observation = await observe(make_endpoint(headers=KEYED), env_of(KEY=SECRET))
+    assert observation.status_code == 200
+    assert observation.json_ok
+    assert moved.calls.last.request.headers["x-api-key"] == SECRET
+    assert moved.calls.last.request.headers["authorization"] == f"Bearer {SECRET}"
+
+    # The same host answering on https is still the server the config names.
+    plain = URL.replace("https://", "http://")
+    respx.get(plain).mock(return_value=redirect(301, URL))
+    secure = respx.get(URL).respond(200, json={"ok": True})
+    await observe(make_endpoint(url=plain, headers=KEYED), env_of(KEY=SECRET))
+    assert secure.calls.last.request.headers["x-api-key"] == SECRET
+
+
+@pytest.mark.parametrize(
+    "elsewhere",
+    [f"{OTHER}/collect", "https://api.test:8443/collect", "http://api.test/collect"],
+    ids=["another host", "another port", "https to http"],
+)
+@respx.mock
+async def test_redirects_elsewhere_leave_the_headers_of_the_config_behind(elsewhere: str) -> None:
+    respx.get(URL).mock(return_value=redirect(302, elsewhere))
+    # ...and they stay behind when a later redirect comes back.
+    other = respx.get(elsewhere).mock(return_value=redirect(302, f"{API}/v2/items"))
+    back = respx.get(f"{API}/v2/items").respond(200, json={"ok": True})
+    observation = await observe(make_endpoint(headers=KEYED), env_of(KEY=SECRET))
+    assert observation.json_ok
+    for request in (other.calls.last.request, back.calls.last.request):
+        assert "x-api-key" not in request.headers
+        assert "authorization" not in request.headers
+        assert SECRET not in repr(request.headers.raw)
+        assert request.headers["user-agent"] == USER_AGENT
+
+
+@respx.mock
+async def test_a_redirect_never_carries_the_body_to_another_server() -> None:
+    endpoint = make_endpoint(method="post", body={"client_secret": "${KEY}"})
+    respx.post(URL).mock(return_value=redirect(307, f"{OTHER}/collect"))
+    other = respx.route(host="cdn.other.test").respond(200, json={})
+    observation = await observe(endpoint, env_of(KEY=SECRET))
+    assert observation.error == (
+        "redirected to another server (cdn.other.test), which would get the request body; "
+        "not followed"
+    )
+    assert not other.called
+
+    # A 303 asks for a GET without the body, and the same server may have the body again.
+    respx.post(URL).mock(return_value=redirect(303, f"{OTHER}/result"))
+    assert (await observe(endpoint, env_of(KEY=SECRET))).json_ok
+    assert other.calls.last.request.method == "GET"
+    assert other.calls.last.request.content == b""
+    respx.post(URL).mock(return_value=redirect(307, "/v2/items"))
+    moved = respx.post(f"{API}/v2/items").respond(200, json={})
+    assert (await observe(endpoint, env_of(KEY=SECRET))).json_ok
+    assert json.loads(moved.calls.last.request.content) == {"client_secret": SECRET}
+
+
+@respx.mock
+async def test_a_redirect_loop_is_an_error() -> None:
+    route = respx.get(URL).mock(return_value=redirect(302, URL))
+    observation = await observe()
+    assert observation.error == "redirected more than 20 times"
+    assert route.call_count == 21
+
+
+@respx.mock
+async def test_failures_nobody_planned_for_are_errors_too(monkeypatch: pytest.MonkeyPatch) -> None:
+    respx.get(URL).mock(
+        side_effect=lambda request: httpx.Response(
+            200, headers={"content-encoding": "gzip"}, stream=httpx.ByteStream(b"not gzip")
+        )
+    )
+    garbled = await observe()
+    assert garbled.error is not None
+    assert garbled.error.startswith("request failed (DecodingError)")
+
+    newline = await observe(make_endpoint(url="${BASE}/v1/items"), env_of(BASE=f"{API}\n"))
+    assert newline.error is not None
+    assert newline.error.startswith("the URL is not valid: ")
+
+    # Some Python builds parse JSON this deep and some run out of stack: neither may raise.
+    deep = b"[" * 100_000 + b"]" * 100_000
+    respx.get(URL).respond(200, content=deep, headers={"content-type": "application/json"})
+    nested = await observe()
+    assert nested.error is None
+    assert nested.status_code == 200
+
+    def out_of_stack(body: bytes) -> Any:
+        raise RecursionError("maximum recursion depth exceeded")
+
+    with monkeypatch.context() as patched:
+        patched.setattr(fetch, "json", SimpleNamespace(loads=out_of_stack))
+        exhausted = await observe()
+    assert exhausted.error is None
+    assert exhausted.status_code == 200
+    assert not exhausted.json_ok  # reported like any body that is not JSON
+
+    respx.get(URL).mock(side_effect=RuntimeError("no route for key=SUPERSECRET"))
+    endpoint = make_endpoint(params={"key": "${API_KEY}"})
+    odd = await observe(endpoint, env_of(API_KEY="SUPERSECRET"))
+    assert odd.error == "request failed (RuntimeError): no route for key=***"

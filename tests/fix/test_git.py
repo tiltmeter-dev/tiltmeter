@@ -69,6 +69,63 @@ def test_worktree_stage_commit_and_push(tmp_path: Path) -> None:
     assert not main.branch_exists("tiltmeter/fix-x-1")
 
 
+HOOKS = ("post-checkout", "prepare-commit-msg", "post-commit", "pre-push", "reference-transaction")
+
+
+def plant_hooks(folder: Path, marker: Path) -> None:
+    """Hooks that add a line to ``marker`` whenever git runs them."""
+    folder.mkdir(parents=True, exist_ok=True)
+    for name in HOOKS:
+        hook = folder / name
+        hook.write_text(f"#!/bin/sh\necho {name} >> '{marker.as_posix()}'\n", encoding="utf-8")
+        hook.chmod(0o755)
+
+
+def fix_and_push(repo: Path, tmp_path: Path, edits: dict[str, str]) -> None:
+    """What a fix does with git: a worktree, the edits, a restore, a commit, a push, a cleanup."""
+    main = Git.open(repo)
+    worktree = main.add_worktree(tmp_path / "wt", "tiltmeter/fix-x-1")
+    for name, text in edits.items():
+        (worktree.root / name).write_text(text, encoding="utf-8")
+    worktree.stage_all()
+    worktree.run("checkout", "--", ".")
+    worktree.commit("Adapt to the x API change", "Body line.")
+    worktree.push("origin", "tiltmeter/fix-x-1")
+    main.remove_worktree(worktree.root)
+    main.delete_branch("tiltmeter/fix-x-1")
+
+
+def test_no_git_hook_runs(tmp_path: Path) -> None:
+    repo, remote = make_repo(tmp_path)
+    marker = tmp_path / "hooks-ran.txt"
+    plant_hooks(repo / ".git" / "hooks", marker)
+    git(repo, "commit", "--quiet", "--allow-empty", "-m", "Run the hooks once")
+    assert "post-commit" in marker.read_text(encoding="utf-8")  # plain git does run them
+    marker.unlink()
+
+    fix_and_push(repo, tmp_path, {"client.py": "print('new')\n"})
+    assert git(remote, "log", "-1", "--format=%s", "tiltmeter/fix-x-1").strip() == (
+        "Adapt to the x API change"
+    )
+    assert not marker.exists()
+
+
+def test_hooks_the_repository_keeps_do_not_run_either(tmp_path: Path) -> None:
+    repo, _ = make_repo(tmp_path)
+    marker = tmp_path / "hooks-ran.txt"
+    plant_hooks(repo / ".githooks", marker)
+    git(repo, "config", "core.hooksPath", ".githooks")
+    git(repo, "add", "--all")
+    git(repo, "commit", "--quiet", "-m", "Keep the hooks in the repository")
+    assert "post-commit" in marker.read_text(encoding="utf-8")
+    marker.unlink()
+
+    # The agent can edit a hook the repository tracks: git must not run it on the commit.
+    edited = f"#!/bin/sh\necho edited >> '{marker.as_posix()}'\n"
+    fix_and_push(repo, tmp_path, {".githooks/post-commit": edited})
+    assert not marker.exists()
+
+
 def test_failures_carry_git_s_reason(tmp_path: Path) -> None:
     repo, _ = make_repo(tmp_path)
     with pytest.raises(FixError, match=r"`git push --quiet` failed: .*nowhere"):

@@ -142,7 +142,7 @@ notify:
 | `method` | `GET` | `GET`, `POST`, `PUT`, `PATCH` or `DELETE`. |
 | `description` | none | Shown by `list_endpoints` and passed to the LLM as context. |
 | `headers` | none | Request headers. Values may use placeholders. Tiltmeter sends `User-Agent: tiltmeter/<version>` unless you set your own. |
-| `params` | none | Query parameters. Values may use placeholders. Numbers and booleans are sent as text. |
+| `params` | none | Query parameters. Values may use placeholders. Numbers and booleans are sent as text. They join any query string written in `url`, and a parameter of the same name replaces the one there. |
 | `body` | none | A JSON request body, for GraphQL and other POST APIs. Strings anywhere inside may use placeholders. |
 | `timeout` | `10` | Seconds per request, up to 300. |
 | `retries` | `2` | Extra attempts, up to 10, after a timeout, a connection error or HTTP 429, 500, 502, 503 or 504. Waits 0.5 s, 1 s, 2 s and so on, up to 8 s, or what `Retry-After` asks for, up to 10 s. |
@@ -155,9 +155,13 @@ notify:
 | `severity_overrides` | none | Per change kind, on top of the global ones. |
 | `store_samples` | `false` | Keep the first 4,000 characters of each response in the history. Off by default because responses often contain personal data. |
 
-Redirects are followed. Only JSON responses are supported: a 2xx response whose body is
-not valid JSON fails the first check, and on later checks it is reported as
-`content_type_changed`.
+Redirects are followed, up to 20 of them. `headers` go only to the server that `url`
+names: a redirect to another host or port, or from `https` to `http`, is followed without
+them, and it is not followed at all when it would send the `body` there. The check then
+fails with `redirected to another server`. To send them to that server, name it in `url`.
+
+Only JSON responses are supported: a 2xx response whose body is not valid JSON fails the
+first check, and on later checks it is reported as `content_type_changed`.
 
 ## Placeholders and secrets
 
@@ -348,7 +352,9 @@ notify:
 ```
 
 Tiltmeter sends a `POST` with this JSON body. `event` is `drift.detected` or
-`check.failed`, and `result` is the same object that `tiltmeter show <id> --json` prints:
+`check.failed`, and `result` is the same object that `tiltmeter show <id> --json` prints.
+Notifications do not follow redirects: a 3xx answer is a failed delivery, noted on the
+check, so the headers and the result go only to the URL you wrote.
 
 ```json
 {

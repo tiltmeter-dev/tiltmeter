@@ -6,7 +6,8 @@ possible: no network unless ``fix.test_network`` allows it (an unshared network 
 on Linux, ``sandbox-exec`` on macOS; without either the tests are skipped), an
 environment with only ``PATH``, the locale and the names in ``fix.test_env``, and an
 empty home folder. Whatever the run writes to the worktree is thrown away afterwards, so
-only the agent's own edits are ever committed.
+only the agent's own edits are ever committed, and no git hook runs on the way
+(:mod:`tiltmeter.fix.git`): one the tests left behind would start outside all of this.
 
 ``PATH`` leaves out Tiltmeter's own virtual environment when it lives outside the
 repository, as with ``uvx``, ``pipx`` or the GitHub Action: ``python`` must be the
@@ -114,7 +115,8 @@ def run_tests(
         passed, output = _run([*prefix, *command], worktree.root, env, timeout)
     finally:
         worktree.run("checkout", "--", ".")
-        worktree.run("clean", "-f", "-d", "-x", "-q")
+        # -f twice: a repository the tests created would otherwise stay, and be committed.
+        worktree.run("clean", "-f", "-f", "-d", "-x", "-q")
     return TestRun(
         command=shown,
         status="passed" if passed else "failed",

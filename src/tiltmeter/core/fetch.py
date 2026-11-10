@@ -3,6 +3,11 @@
 Placeholders like ``${STRIPE_API_KEY}`` are expanded here, right before the
 request, and every value that came from the environment is scrubbed from error
 messages so a failing check never leaks a credential into logs or history.
+
+Redirects are followed here too, one hop at a time, because the headers of the config
+are where credentials live: they go to the server the config names and to no other.
+A request that fails in a way nobody planned for still ends as an observation with an
+error, so the other endpoints of the run are checked and reported.
 """
 
 from __future__ import annotations
@@ -12,7 +17,7 @@ import json
 import re
 import statistics
 import time
-from collections.abc import Awaitable, Callable, Mapping
+from collections.abc import Awaitable, Callable, Collection, Mapping
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Final
 
@@ -32,6 +37,8 @@ type Sleep = Callable[[float], Awaitable[None]]
 USER_AGENT: Final = f"tiltmeter/{__version__}"
 RETRY_STATUSES: Final = frozenset({429, 500, 502, 503, 504})
 EXCERPT_CHARS: Final = 4000
+MAX_REDIRECTS: Final = 20
+_MAX_ERROR: Final = 300
 _MAX_RETRY_AFTER: Final = 10.0
 _MIN_SECRET_LENGTH: Final = 4
 _VARIABLE: Final = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-([^}]*))?\}")
@@ -107,45 +114,101 @@ def _backoff(attempt: int) -> float:
     return float(min(0.5 * 2**attempt, 8.0))
 
 
+def _target(url: str, params: Mapping[str, str]) -> httpx.URL:
+    """``url`` with ``params`` added to the query string it already has; a parameter of the
+    same name replaces the one written in the URL. (Given to httpx as ``params``, they
+    would replace the whole query string, even when there are none.)"""
+    target = httpx.URL(url)
+    return target.copy_merge_params(dict(params)) if params else target
+
+
+def _same_origin(target: httpx.URL, other: httpx.URL) -> bool:
+    """Whether ``other`` is the server ``target`` names: the same scheme, host and port,
+    or that host moving from http to https on the default ports."""
+    if other.host != target.host:
+        return False
+    here, there = (target.scheme, target.port), (other.scheme, other.port)
+    return here == there or (here, there) == (("http", None), ("https", None))
+
+
+def _redirected(
+    target: httpx.URL,
+    sent: httpx.Request,
+    following: httpx.Request,
+    *,
+    private: Collection[str],
+    has_body: bool,
+) -> httpx.Request:
+    """The request a redirect asks for, as httpx built it from the one just sent.
+
+    Away from the server the config names, it goes without the headers of the config
+    (httpx alone drops only ``Authorization``, not an ``X-Api-Key``), and it is refused
+    when it would carry the request body there. Headers left behind stay behind, even
+    when a later redirect comes back.
+    """
+    if _same_origin(target, following.url):
+        return following
+    if has_body and following.method == sent.method:
+        raise FetchError(
+            f"redirected to another server ({following.url.host}), which would get the "
+            "request body; not followed"
+        )
+    for name in private:
+        if name in following.headers:
+            del following.headers[name]
+    following.headers.setdefault("User-Agent", USER_AGENT)
+    return following
+
+
 async def _request_once(
     client: httpx.AsyncClient,
     method: str,
-    url: str,
+    target: httpx.URL,
     *,
     headers: httpx.Headers,
-    params: Mapping[str, str],
+    private: Collection[str],
     body: Any,
     request_timeout: float,
     max_bytes: int,
 ) -> _Response:
     started = time.perf_counter()
-    async with client.stream(
-        method, url, headers=headers, params=params, json=body, timeout=request_timeout
-    ) as response:
-        chunks: list[bytes] = []
-        size = 0
-        async for chunk in response.aiter_bytes():
-            size += len(chunk)
-            if size > max_bytes:
-                raise FetchError(f"response body is larger than {max_bytes} bytes")
-            chunks.append(chunk)
-    elapsed_ms = (time.perf_counter() - started) * 1000
-    return _Response(
-        status_code=response.status_code,
-        media_type=_media_type(response.headers.get("content-type")),
-        body=b"".join(chunks),
-        elapsed_ms=elapsed_ms,
-        retry_after=_retry_after(response.headers.get("retry-after")),
+    request = client.build_request(
+        method, target, headers=headers, json=body, timeout=request_timeout
     )
+    for _ in range(MAX_REDIRECTS + 1):
+        response = await client.send(request, stream=True, follow_redirects=False)
+        try:
+            following = response.next_request
+            if following is None:
+                chunks: list[bytes] = []
+                size = 0
+                async for chunk in response.aiter_bytes():
+                    size += len(chunk)
+                    if size > max_bytes:
+                        raise FetchError(f"response body is larger than {max_bytes} bytes")
+                    chunks.append(chunk)
+                return _Response(
+                    status_code=response.status_code,
+                    media_type=_media_type(response.headers.get("content-type")),
+                    body=b"".join(chunks),
+                    elapsed_ms=(time.perf_counter() - started) * 1000,
+                    retry_after=_retry_after(response.headers.get("retry-after")),
+                )
+        finally:
+            await response.aclose()
+        request = _redirected(
+            target, request, following, private=private, has_body=body is not None
+        )
+    raise FetchError(f"redirected more than {MAX_REDIRECTS} times")
 
 
 async def _send(
     client: httpx.AsyncClient,
     method: str,
-    url: str,
+    target: httpx.URL,
     *,
     headers: httpx.Headers,
-    params: Mapping[str, str],
+    private: Collection[str],
     body: Any,
     request_timeout: float,
     retries: int,
@@ -158,9 +221,9 @@ async def _send(
             response = await _request_once(
                 client,
                 method,
-                url,
+                target,
                 headers=headers,
-                params=params,
+                private=private,
                 body=body,
                 request_timeout=request_timeout,
                 max_bytes=max_bytes,
@@ -170,7 +233,7 @@ async def _send(
                 raise FetchError(f"timed out after {request_timeout:g}s") from None
             await sleep(_backoff(attempt))
             continue
-        except httpx.TransportError as exc:
+        except httpx.RequestError as exc:  # the transport, or a body that cannot be decoded
             if last:
                 raise FetchError(f"request failed ({type(exc).__name__}): {exc}") from None
             await sleep(_backoff(attempt))
@@ -200,8 +263,11 @@ async def observe_endpoint(
             headers[name] = expander.expand(value)
         params = {name: expander.expand(value) for name, value in endpoint.params.items()}
         body = expander.expand_value(endpoint.body)
+        target = _target(url, params)
     except MissingVariableError as exc:
         return Observation(error=str(exc))
+    except httpx.InvalidURL as exc:
+        return Observation(error=expander.scrub(f"the URL is not valid: {exc}"))
 
     shape = Shape()
     statuses: list[int] = []
@@ -215,9 +281,9 @@ async def observe_endpoint(
             response = await _send(
                 client,
                 endpoint.method,
-                url,
+                target,
                 headers=headers,
-                params=params,
+                private=tuple(endpoint.headers),
                 body=body,
                 request_timeout=endpoint.timeout,
                 retries=endpoint.retries,
@@ -226,6 +292,11 @@ async def observe_endpoint(
             )
         except FetchError as exc:
             return Observation(error=expander.scrub(str(exc)))
+        except Exception as exc:
+            # Nobody planned for this one. It ends here all the same: this is the only
+            # place that can scrub its message, and the other endpoints must go on.
+            reason = expander.scrub(f"request failed ({type(exc).__name__}): {exc}")
+            return Observation(error=reason[:_MAX_ERROR])
         statuses.append(response.status_code)
         latencies.append(response.elapsed_ms)
         media_type = media_type or response.media_type
@@ -234,7 +305,7 @@ async def observe_endpoint(
         if 200 <= response.status_code < 300:
             try:
                 document = json.loads(response.body)
-            except ValueError:
+            except (ValueError, RecursionError):  # not JSON, or nested past any real document
                 parsed_ok = False
             else:
                 shape.add(document)

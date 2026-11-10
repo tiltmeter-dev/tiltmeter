@@ -5,8 +5,9 @@ Exit codes, so CI can gate on drift:
 * 0: no new drift (info-only changes and new baselines included)
 * 1: warning-level drift
 * 2: breaking drift
-* 3: a check could not run (network error, bad status, invalid JSON) and nothing broke
-* 4: usage or configuration error
+* 3: a check could not run (network error, bad status, invalid JSON) and nothing broke;
+  also an error inside Tiltmeter that nobody planned for, with its traceback
+* 4: usage or configuration error, or a history database that cannot be used
 
 ``tiltmeter fix`` and ``tiltmeter notices apply`` reuse them: 0 when the edits
 were committed, discarded on purpose or not needed, 1 when the agent left work
@@ -22,6 +23,7 @@ import asyncio
 import json
 import shlex
 import sys
+import traceback
 from collections.abc import Callable, Coroutine, Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -71,6 +73,7 @@ EXIT_CHECK_FAILED: Final = 3
 EXIT_USAGE: Final = 4
 
 STATE_IGNORE_LINE: Final = ".tiltmeter/"
+ISSUES_URL: Final = "https://github.com/tiltmeter-dev/tiltmeter/issues"
 
 app = typer.Typer(
     name="tiltmeter",
@@ -1724,7 +1727,8 @@ def serve(config: ConfigOption = Path(DEFAULT_CONFIG_FILE)) -> None:
 
 
 def main(argv: Sequence[str] | None = None) -> None:
-    """Entry point. Maps usage errors to exit code 4 so they never look like drift."""
+    """Entry point. Maps usage errors to exit code 4 so they never look like drift, and an
+    error nobody planned for to 3: Python would end with 1, the code for a warning."""
     try:
         result = app(args=list(argv) if argv is not None else None, standalone_mode=False)
     except typer.TyperException as exc:
@@ -1738,4 +1742,11 @@ def main(argv: Sequence[str] | None = None) -> None:
     except typer.Abort:
         err.print("aborted")
         sys.exit(130)
+    except Exception as exc:
+        # The traceback stays: it is what a bug report needs.
+        traceback.print_exc()
+        reason = f"unexpected {type(exc).__name__}: {exc}".removesuffix(": ")
+        err.print(f"[bold red]error:[/] {escape(reason)}", markup=True, highlight=False)
+        err.print(f"This is probably a bug in Tiltmeter. Please report it: {ISSUES_URL}")
+        sys.exit(EXIT_CHECK_FAILED)
     sys.exit(result if isinstance(result, int) else EXIT_OK)

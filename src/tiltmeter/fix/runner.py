@@ -68,6 +68,10 @@ def default_branch(request: FixRequest, prefix: str = DEFAULT_BRANCH_PREFIX) -> 
 
 
 MAX_TITLE_LENGTH: Final = 100
+# What GitHub turns into a mention, HTML, a link or an image, wherever it shows the text.
+_LIVE_MARKS: Final = ("@", "<", ">", "](", "://", "www.")
+# "#12" and "GH-12" name an issue, which "Closes" or "Fixes" in front would close on merge.
+_ISSUE: Final = re.compile(r"#\d|\bGH-\d", re.IGNORECASE)
 
 
 def commit_title(request: FixRequest, report: FixReport | None = None) -> str:
@@ -88,15 +92,21 @@ def commit_title(request: FixRequest, report: FixReport | None = None) -> str:
     return title
 
 
+def _inert(text: str) -> bool:
+    """Whether GitHub shows ``text`` as written: nothing in it mentions someone, links,
+    embeds an image or names an issue. The agent wrote it from untrusted repository text."""
+    return not any(mark in text for mark in _LIVE_MARKS) and _ISSUE.search(text) is None
+
+
 def _proposed_title(report: FixReport | None) -> str | None:
-    """The agent's commit_title, unless it is too short, too long or could link, mention or
-    format something: the agent wrote it from untrusted repository text."""
+    """The agent's commit_title, unless it is too short, too long or could link, mention,
+    close or format something."""
     if report is None or report.commit_title is None:
         return None
     title = " ".join(report.commit_title.split())
     if not 8 <= len(title) <= MAX_TITLE_LENGTH:
         return None
-    if any(mark in title for mark in ("@", "`", "<", ">", "](", "://")):
+    if "`" in title or not _inert(title):
         return None
     return title
 
@@ -115,6 +125,9 @@ def _retired_title(request: FixRequest) -> str | None:
 
 
 def commit_body(request: FixRequest, report: FixReport) -> str:
+    """Where the change came from, after the agent's summary when that is plain prose. A
+    commit message has no code block to quote it in, so a summary that could mention
+    someone, link or close an issue is left to the pull request, which shows it as text."""
     if request.notice is not None and request.notice.spec is not None:
         found = (
             f"Tiltmeter found the change by comparing two versions of "
@@ -136,7 +149,8 @@ def commit_body(request: FixRequest, report: FixReport) -> str:
     else:
         api = request.apis[0]
         found = f"Tiltmeter check #{request.check_id} found the change in {api.method} {api.url}."
-    return f"{report.summary}\n\n{found}"
+    summary = " ".join(report.summary.split())
+    return f"{summary}\n\n{found}" if summary and _inert(summary) else found
 
 
 def _cell(text: str) -> str:
@@ -152,6 +166,11 @@ def _plain_text(lines: Sequence[str]) -> list[str]:
     """Third-party text as a plain code block: no links, mentions, images or HTML."""
     body = [textwrap.fill(line.replace("`", "'"), PLAIN_WIDTH) for line in lines]
     return ["```text", *body, "```"]
+
+
+def _paragraphs(text: str) -> list[str]:
+    """The lines of free text that say something, for :func:`_plain_text`."""
+    return [line for line in text.splitlines() if line.strip()] or ["(nothing)"]
 
 
 def _changes_table(
@@ -339,7 +358,9 @@ def _check_section(request: FixRequest) -> list[str]:
         *_changes_table(api, request.shown(MAX_CHANGES_IN_BODY)[0], announced=False),
     ]
     if request.explanation is not None:
-        lines += ["", request.explanation.summary]
+        # A model wrote it from the API's field names: quoted like any third-party text.
+        lines += ["", "The explanation written when the drift was found:", ""]
+        lines += _plain_text(_paragraphs(request.explanation.summary))
     return lines
 
 
@@ -363,6 +384,12 @@ def _unused_line(unused: Sequence[UnusedFile]) -> str:
 
 
 def pull_request_body(request: FixRequest, preview: FixPreview, *, model_name: str) -> str:
+    """The description of the pull request.
+
+    The agent's summary, its unresolved items and the names of the files it touched are
+    quoted as plain text or code: it wrote them after reading untrusted text, and in
+    Markdown they could embed an image that sends data away when someone opens the page,
+    mention people, close issues or pass for one of Tiltmeter's own sections."""
     notice = request.notice
     if notice is not None and notice.spec is not None:
         lines = _spec_section(request, notice, notice.spec)
@@ -370,19 +397,22 @@ def pull_request_body(request: FixRequest, preview: FixPreview, *, model_name: s
         lines = _notice_section(request, notice)
     else:
         lines = _check_section(request)
-    lines += ["", "## What this pull request changes", "", preview.report.summary, ""]
-    lines += [f"- `{name}`" for name in preview.files]
+    lines += ["", "## What this pull request changes", "", "The agent's summary:", ""]
+    lines += [*_plain_text(_paragraphs(preview.report.summary)), ""]
+    lines += [f"- {_code(name)}" for name in preview.files]
     if preview.unused:
         lines += ["", _unused_line(preview.unused)]
     if preview.tests is not None:
         lines += ["", "## Tests", "", *_tests_section(preview.tests)]
-    unresolved = list(preview.report.unresolved)
-    if preview.tests is not None and preview.tests.status == "failed":
-        unresolved.insert(0, "The tests still fail with these edits: see Tests above.")
+    unresolved = [" ".join(item.split()) for item in preview.report.unresolved if item.strip()]
+    failing = preview.tests is not None and preview.tests.status == "failed"
     lines += ["", "## Left for a human", ""]
+    if failing:
+        lines += ["- The tests still fail with these edits: see Tests above."]
     if unresolved:
-        lines += [f"- {item}" for item in unresolved]
-    else:
+        lines += ["", "What the agent could not decide:", ""] if failing else []
+        lines += _plain_text([f"- {item}" for item in unresolved])
+    elif not failing:
         lines.append("Nothing: the agent flagged nothing it could not decide.")
     if notice is not None and notice.spec is not None:
         origin = f"from a diff of {notice.provider}'s OpenAPI spec"

@@ -99,6 +99,23 @@ async def test_send_errors_never_reveal_the_url() -> None:
 
 
 @respx.mock
+async def test_notifications_do_not_follow_redirects() -> None:
+    respx.post("https://hooks.test/dw").respond(307, headers={"location": "https://evil.test/dw"})
+    elsewhere = respx.post("https://evil.test/dw").respond(200)
+    config = WebhookNotifierConfig(
+        type="webhook",
+        url="https://hooks.test/dw",
+        headers={"X-Hook-Token": "${HOOK_TOKEN}"},
+    )
+    # A client that would follow them, as an embedding application might pass.
+    async with httpx.AsyncClient(follow_redirects=True) as client:
+        notifier = WebhookNotifier(config, client=client, env=env_of(HOOK_TOKEN="tok"))
+        with pytest.raises(NotificationError, match=r"HTTP 307 \(redirects are not followed\)"):
+            await notifier.send(drift())
+    assert not elsewhere.called
+
+
+@respx.mock
 async def test_webhook_payload_and_headers() -> None:
     route = respx.post("https://hooks.test/dw").respond(204)
     config = WebhookNotifierConfig(

@@ -11,8 +11,8 @@ service.
 | 0 | No new drift. Info-only changes and new baselines also exit 0. |
 | 1 | Warning-level drift. |
 | 2 | Breaking drift. |
-| 3 | A check could not run (network error, unexpected status, invalid JSON) and nothing broke. |
-| 4 | Usage or configuration error. |
+| 3 | A check could not run (network error, unexpected status, invalid JSON) and nothing broke. An error inside Tiltmeter that nobody planned for also exits 3, after its traceback. |
+| 4 | Usage or configuration error, or a history database that cannot be used. |
 
 When several endpoints are checked at once, breaking drift wins over a failed check,
 which wins over a warning.
