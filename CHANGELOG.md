@@ -10,6 +10,12 @@ a minor release may include breaking changes.
 
 ### Added
 
+- `tiltmeter scan` says how far each change is: "took effect 2026-08-16, 2 months ago" or
+  "takes effect 2026-12-04, in 24 days". What already broke is listed first, then what
+  breaks soonest, and the JSON has `days_left` and `due` for each change. With
+  `--within DAYS`, a change that takes effect later than that is still listed and does not
+  make the exit code 1, so a CI job can fail a month before a shutdown and not a year
+  before.
 - `tiltmeter fix --follow-up PULL_REQUEST` answers the review of a fix that is already
   open. It reads the reviews, comments, unresolved notes on lines and failed checks of the
   pull request, hands them to the agent as data together with the change, pushes the new
@@ -46,6 +52,9 @@ a minor release may include breaking changes.
 
 ### Fixed
 
+- A call of a removed endpoint counts even when the code reads none of the fields the same
+  notice renames. `scan` and `notices apply` said "no file near those mentions reads ..."
+  about code whose request was about to fail, as with HubSpot's Pipelines API v1.
 - `tiltmeter scan` and `notices apply` no longer miss code in these cases:
   - Python code below a string that spans lines, such as a prompt assigned to a name. The
     closing quotes were read as the start of a docstring, and everything down to the next

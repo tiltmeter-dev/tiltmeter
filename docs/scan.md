@@ -32,6 +32,7 @@ record the first baseline.
 - [What the catalog holds](#what-the-catalog-holds)
 - [Reading the output](#reading-the-output)
 - [Options and exit codes](#options-and-exit-codes)
+- [Before a change takes effect](#before-a-change-takes-effect)
 - [Fixing what it finds](#fixing-what-it-finds)
 - [What counts as a use](#what-counts-as-a-use)
 - [Blind spots](#blind-spots)
@@ -69,7 +70,9 @@ the scan cannot tell which case your code is in.
 For each change the folder uses:
 
 - a line with the provider, the first sentence of the entry's summary and the date it took
-  effect (or takes effect, for HubSpot's), or was published when it has no such date;
+  effect with how long ago that was, or the date it takes effect with the days left, or
+  the date it was published when it has no such date. What already broke comes first,
+  marked `✗`; what has not taken effect yet follows, soonest first, marked `!`;
 - the entry's id and where it comes from;
 - `only for some callers`, when a change affects only some of them, such as one plan, one
   deployment or one API version, with who it affects. Tiltmeter can't tell which of them
@@ -91,27 +94,52 @@ and where tests or docs mention it anyway. `--json` prints the same as one JSON 
 and `fix_command`, and each match's `applies_to` says who its change affects, or is
 `null` for every caller; `unaffected` comes with `--all`; `rejected` lists entries of a
 `--catalog` that are not valid notices; `truncated` is true when the folder has more text
-files than a scan reads.
+files than a scan reads. Each change has `days_left`, the days until it takes effect (zero
+or less once it has, `null` without a date), and `due`, whether it counts for the exit code.
 
 ## Options and exit codes
 
 ```console
-$ tiltmeter scan [PATH] [--catalog FILE_OR_URL] [--all] [--json]
+$ tiltmeter scan [PATH] [--catalog FILE_OR_URL] [--within DAYS] [--all] [--json]
 ```
 
 | Option | Description |
 |---|---|
 | `PATH` | The folder to search, `.` by default. A git checkout is read as git sees it: tracked files and new ones it does not ignore. Any other folder is read file by file. |
 | `--catalog FILE_OR_URL` | Search for the entries of another feed instead, such as your team's own: a file or an https URL, fetched like any subscribed feed. A signed entry's signature is checked against its provider's key. |
+| `--within DAYS` | Count a change that has not taken effect yet only when it does within `DAYS`. One further away is still listed, marked `·`, and does not make the exit code 1. Without it, every change the folder uses counts. |
 | `--all` | Also list the entries that do not affect `PATH`, and why. |
 | `--json` | Print JSON instead. |
 
 | Exit code | Meaning |
 |---|---|
 | 0 | Nothing in the catalog affects `PATH`. |
-| 1 | `PATH` uses at least one change in the catalog. |
+| 1 | `PATH` uses at least one change in the catalog that is in effect, has no date, or takes effect within `--within` days. |
 | 3 | The catalog could not be read. |
 | 4 | `PATH` is not a folder, or another usage error. |
+
+## Before a change takes effect
+
+An entry whose date is still ahead, such as a model with a shutdown date, is found like
+any other, and the scan says how many days are left. In CI that makes the scan a warning
+you can time: fail the job for what is broken now or will be within a month, and only list
+the rest.
+
+```console
+$ tiltmeter scan --within 30
+! api.hubapi.com  HubSpot sunsets the Pipelines API v1 on December 4, 2026.  takes effect 2026-12-04, in 24 days
+    hubspot-pipelines-v1-sunset · unsigned: drafted by Tiltmeter from the provider's public documentation
+    sync.py:5  GET /crm-pipelines/v1/pipelines/{objectType}: removed; moved to GET /crm/v3/pipelines/{objectType}
+        return requests.get("https://api.hubapi.com/crm-pipelines/v1/pipelines/{objectType}", ...
+    fix: tiltmeter fix --notice hubspot-pipelines-v1-sunset --allow-unsigned --repo .
+
+1 of 10 known API changes affects .: 1 line in 1 file. 1 of them takes effect later: in 24 days.
+```
+
+That run exits with 1. With `--within 7` it would list the same change, marked `·`, and
+exit with 0 until a week before the date.
+
+Without `--within`, a change counts as soon as the catalog has it, however far its date.
 
 ## Fixing what it finds
 
@@ -174,6 +202,9 @@ The search reads text; it does not run or parse your code. Known gaps:
 - **A field that moved keeps its name.** Stripe's `current_period_end` now lives on each
   subscription item, so code that already reads `items.data[0].current_period_end`
   matches too. Check that the line reads it from the subscription.
+- **A removed endpoint counts by its call.** When an entry removes an endpoint and also
+  renames fields of its response, code that calls the endpoint is affected whether or not
+  it reads those fields: the call is what stops working.
 - **Calls through an SDK.** A removed endpoint is found where code spells its path, or
   calls it through an SDK in the usual `resource.verb(` form. A method the notice never
   names, such as Slack's `files_upload` in the Python SDK, is not.

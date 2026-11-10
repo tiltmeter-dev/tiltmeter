@@ -502,11 +502,19 @@ def applied_line(applied: AppliedNotice) -> Text:
 # -- scan -------------------------------------------------------------------------
 
 
+def _in_days(days: int) -> str:
+    return "tomorrow" if days == 1 else f"in {days} days"
+
+
 def _when(finding: ScanFinding, now: datetime) -> str:
+    """When the change took or takes effect, and how far away that is."""
     if finding.effective_at is None:
         return f"published {finding.published_at:%Y-%m-%d}"
-    verb = "took" if finding.effective_at <= now else "takes"
-    return f"{verb} effect {finding.effective_at:%Y-%m-%d}"
+    day = f"{finding.effective_at:%Y-%m-%d}"
+    left = finding.days_left
+    if finding.effective_at <= now:
+        return f"took effect {day}" + (f", {_ago(-left)}" if left is not None else "")
+    return f"takes effect {day}" + (f", {_in_days(left)}" if left is not None else "")
 
 
 def _origin(finding: ScanFinding) -> str:
@@ -547,13 +555,15 @@ def render_scan_finding(console: Console, finding: ScanFinding, now: datetime) -
     """One change the folder uses: a line on what and when, a few places, and the fix."""
     ahead = finding.effective_at is not None and finding.effective_at > now
     icon, style = ("!", "yellow") if ahead else ("✗", "red")
+    if not finding.due:
+        icon, style = ("·", "dim")
     console.print(
         Text.assemble(
             (f"{icon} ", style),
             (finding.provider, "bold"),
             "  ",
             finding.headline,
-            (f"  {_when(finding, now)}", "dim"),
+            (f"  {_when(finding, now)}", "yellow" if ahead and finding.due else "dim"),
         )
     )
     console.print(Padding(Text(f"{finding.id} · {_origin(finding)}", style="dim"), (0, 0, 0, 4)))
@@ -634,7 +644,22 @@ def scan_summary(report: ScanReport, *, show_all: bool = False) -> Text:
     )
     if unused:
         words += f", {len(unused)} file{'' if len(unused) == 1 else 's'} possibly unused"
-    return Text(f"{words}.", style="bold")
+    text = Text(f"{words}.", style="bold")
+    ahead = sorted(
+        f.days_left for f in report.affected if f.days_left is not None and f.days_left > 0
+    )
+    if ahead:
+        soonest = f"the first {_in_days(ahead[0])}" if len(ahead) > 1 else _in_days(ahead[0])
+        verb = "takes" if len(ahead) == 1 else "take"
+        text.append(f" {len(ahead)} of them {verb} effect later: {soonest}.", style="yellow")
+    later = sum(1 for finding in report.affected if not finding.due)
+    if later and report.within is not None:
+        text.append(
+            f" {later} {'is' if later == 1 else 'are'} more than {report.within} days away and "
+            "did not count.",
+            style="dim",
+        )
+    return text
 
 
 def render_scan(
