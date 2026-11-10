@@ -90,7 +90,8 @@ and where tests or docs mention it anyway. `--json` prints the same as one JSON 
 `affected` lists each change with all its `matches` (up to 50), `count`, `files`, `tests`
 and `fix_command`, and each match's `applies_to` says who its change affects, or is
 `null` for every caller; `unaffected` comes with `--all`; `rejected` lists entries of a
-`--catalog` that are not valid notices.
+`--catalog` that are not valid notices; `truncated` is true when the folder has more text
+files than a scan reads.
 
 ## Options and exit codes
 
@@ -141,7 +142,12 @@ view:
   `tiltmeter.yaml`, installed or generated code (`node_modules`, `.venv`, `dist`), binaries,
   files over 1 MB and symbolic links are not read as code.
 - **Not in comments.** A retired value, a removed endpoint's path or a changed field counts
-  only outside comment lines (`#`, `//`, `/* */`, `--`, `<!--`) and Python docstrings.
+  only outside comment lines (`#`, `//`, `/* */`, `--`, `<!--`) and Python docstrings. In
+  JavaScript and TypeScript `#` opens no comment, so a private member such as
+  `#model = "..."` is code. A string that spans lines, like a prompt assigned to a name, is
+  code too.
+- **Hosts whole.** `slack.com` is named by `slack.com` and by `hooks.slack.com`, not by
+  `myslack.com`, `slack.community` or `slack.commands`.
 - **Tests apart.** Files in `test`, `tests`, `spec`, `__tests__`, `fixtures` and similar
   folders, or named like `test_*.py`, `*_test.go`, `*.test.ts`, `*.spec.js` or
   `*Test.java`, are searched on their own. They are listed, and never make a folder
@@ -175,8 +181,11 @@ The search reads text; it does not run or parse your code. Known gaps:
   on, whether a Spotify app has extended quota, or which Groq tier a key is on.
 - **Generated or vendored code** in folders with unusual names, data files such as JSON
   corpora, and text inside strings (an error message that names a model) are read as code.
-- **Large trees.** At most 20,000 files are read, and the unused-code check gives up above
-  that.
+- **Large trees.** At most 20,000 text files are read, and the unused-code check gives up
+  above that. Pictures, archives and lock files do not count towards the limit. A folder
+  with more has its code read first, docs and data tables last, and the scan says so: a
+  note after the summary, `truncated` in the JSON, and "so this is not certain" in the
+  reason of each entry it did not find. Scan its folders one by one to cover the rest.
 
 ## Adding an entry to the catalog
 

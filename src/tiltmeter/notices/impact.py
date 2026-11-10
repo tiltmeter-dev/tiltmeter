@@ -30,6 +30,7 @@ from collections import Counter
 from collections.abc import Collection, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from fnmatch import fnmatchcase
+from functools import cache
 from pathlib import Path, PurePosixPath
 from typing import Final, Literal
 from urllib.parse import urlsplit
@@ -37,7 +38,7 @@ from urllib.parse import urlsplit
 from tiltmeter.core.models import ChangeKind
 from tiltmeter.fix.ignore import is_ignored
 from tiltmeter.fix.request import field_name, is_target, reads_response
-from tiltmeter.fix.tree import LOCK_FILES, MAX_FILES, is_ours, read_text
+from tiltmeter.fix.tree import BINARY_SUFFIXES, LOCK_FILES, MAX_FILES, is_ours, read_text
 from tiltmeter.notices.models import (
     FEED_SPEC,
     NOTICE_SPEC,
@@ -100,8 +101,9 @@ def import_pattern(sdk: SdkName) -> re.Pattern[str] | None:
             )
         case "pypi":
             module = re.escape(re.sub(r"[-.]", "_", sdk.name.lower()))
+            # Spaces and tabs only before it: \s would run over every blank line below.
             return re.compile(
-                rf"^\s*(?:import\s+{module}\b|from\s+{module}(?:\.|\s+import\b))", re.M
+                rf"^[ \t]*(?:import\s+{module}\b|from\s+{module}(?:\.|\s+import\b))", re.M
             )
         case "go":
             return re.compile(rf'"{name}(?:/[^"]*)?"')
@@ -163,7 +165,22 @@ def sdk_pattern(sdk: SdkName) -> re.Pattern[str]:
         body = "[-_.]".join(re.escape(part) for part in re.split(r"[-_.]+", name) if part)
         return re.compile(rf"(?<![A-Za-z0-9_.\-]){body}(?![A-Za-z0-9_.\-])", re.IGNORECASE)
     flags = re.IGNORECASE if sdk.ecosystem == "nuget" else 0
-    return re.compile(rf"(?<![A-Za-z0-9_@/.\-]){re.escape(name)}(?![A-Za-z0-9_/\-])", flags)
+    # A Go module carries its major version in its path: github.com/stripe/stripe-go/v81.
+    major = r"(?:/v\d+)?" if sdk.ecosystem == "go" else ""
+    return re.compile(rf"(?<![A-Za-z0-9_@/.\-]){re.escape(name)}{major}(?![A-Za-z0-9_/\-])", flags)
+
+
+@cache
+def _host_pattern(host: str) -> re.Pattern[str]:
+    """A host as lowercased text names it: whole, or as the end of a longer host
+    (``your-domain.atlassian.net``), but not inside another name: ``acme.dev`` is not in
+    ``myacme.dev``, ``acme.developers`` or ``acme.device``."""
+    return re.compile(rf"(?<![a-z0-9_\-]){re.escape(host.lower())}(?![a-z0-9_\-]|\.[a-z0-9])")
+
+
+def names_host(host: str, lowered: str) -> bool:
+    """Whether lowercased text names the host."""
+    return host.lower() in lowered and _host_pattern(host).search(lowered) is not None
 
 
 def _listing(items: Sequence[str], word: str = "or") -> str:
@@ -186,15 +203,34 @@ def _spelled(term: str, lowered: str) -> bool:
     may also come without its leading slash, quoted ("rest/api/3/search") or right after
     an interpolation that holds the slash ({separator}rest/api/3/search)."""
     term = term.lower()
+    if not term.startswith("/"):
+        return names_host(term, lowered)
     if term in lowered:
         return True
     rest = term[1:]
-    return term.startswith("/") and "/" in rest and any(f"{q}{rest}" in lowered for q in "\"'`}")
+    return "/" in rest and any(f"{q}{rest}" in lowered for q in "\"'`}")
 
 
 def _under(name: str, folders: set[PurePosixPath]) -> bool:
     path = PurePosixPath(name)
     return any(parent in folders for parent in path.parents)
+
+
+def may_hold_code(name: str, ignore: Sequence[str] = ()) -> bool:
+    """Whether a file is worth opening, told from its name alone."""
+    path = PurePosixPath(name)
+    if path.name in LOCK_FILES or path.name in _OWN_FILES:
+        return False
+    if path.suffix.lower() in BINARY_SUFFIXES:
+        return False
+    return is_ours(path) and not is_ignored(name, ignore)
+
+
+def _read_last(name: str) -> bool:
+    """Docs and data tables, which never decide on their own. A requirements file is a
+    doc by its suffix and a manifest by its name: it is read with the code."""
+    listed = fnmatchcase(PurePosixPath(name).name, "*requirements*.txt")
+    return _documentation(name) and not listed
 
 
 def _documentation(name: str) -> bool:
@@ -215,6 +251,11 @@ class RepoIndex:
     ``.venv``, ``.next`` and the like), agents' worktree copies, binaries, large files,
     links and ``fix.ignore`` paths are left out. Docs are kept apart: they only count when
     they are dependency manifests.
+
+    At most ``MAX_FILES`` files are read. The limit counts the files that were read, not
+    the names looked at, so pictures and lock files use none of it. A repository with more
+    text files than that has its code read first, docs and data tables last, and the index
+    says it is ``truncated``: "nothing found" then means "nothing found in what was read".
     """
 
     texts: Mapping[str, str]
@@ -222,16 +263,20 @@ class RepoIndex:
     _paths: Mapping[str, frozenset[str]] = field(default_factory=dict, compare=False)
     _calls: Mapping[str, frozenset[_Call]] = field(default_factory=dict, compare=False)
     _spoken: Mapping[str, str] = field(default_factory=dict, compare=False)
+    truncated: bool = field(default=False, compare=False)
 
     @classmethod
     def read(cls, root: Path, files: Sequence[str], *, ignore: Sequence[str] = ()) -> RepoIndex:
+        wanted = [name for name in files if may_hold_code(name, ignore)]
+        if len(wanted) > MAX_FILES:
+            wanted.sort(key=_read_last)
         texts: dict[str, str] = {}
         docs: set[str] = set()
-        for name in [name for name in files if is_ours(PurePosixPath(name))][:MAX_FILES]:
-            path = PurePosixPath(name)
-            skipped = path.name in LOCK_FILES or path.name in _OWN_FILES
-            if skipped or not is_ours(path) or is_ignored(name, ignore):
-                continue
+        truncated = False
+        for name in wanted:
+            if len(texts) >= MAX_FILES:
+                truncated = True
+                break
             text = read_text(root / name)
             if text is None or _notice_document(name, text):
                 continue
@@ -241,7 +286,7 @@ class RepoIndex:
         spoken = {name: code_only(name, text) for name, text in texts.items() if name not in docs}
         paths = {name: _path_tokens(text) for name, text in spoken.items()}
         calls = {name: frozenset(_calls_in(text)) for name, text in spoken.items()}
-        return cls(texts, frozenset(docs), paths, calls, spoken)
+        return cls(texts, frozenset(docs), paths, calls, spoken, truncated=truncated)
 
     def code(self) -> Iterator[tuple[str, str]]:
         """Every file that is not documentation, with its text."""
@@ -258,13 +303,16 @@ class RepoIndex:
 
     def api_files(self, hosts: Sequence[str], sdks: Sequence[SdkName]) -> frozenset[str]:
         """The code files that mention one of the API's hosts or import one of its SDKs."""
-        lowered = [host.lower() for host in hosts]
         imports = [pattern for sdk in sdks if (pattern := import_pattern(sdk)) is not None]
+
+        def names_the_api(text: str) -> bool:
+            lowered = text.lower()
+            return any(names_host(host, lowered) for host in hosts)
+
         return frozenset(
             name
             for name, text in self.code()
-            if any(host in text.lower() for host in lowered)
-            or any(pattern.search(text) for pattern in imports)
+            if names_the_api(text) or any(pattern.search(text) for pattern in imports)
         )
 
     def calling(self, gone: Gone, api_files: Collection[str]) -> list[str]:
@@ -274,7 +322,7 @@ class RepoIndex:
 
     def _calls_gone(self, gone: Gone, name: str, near: bool) -> bool:
         if gone.only_with_host:
-            return gone.old_host in self.spoken(name).lower()
+            return names_host(gone.old_host, self.spoken(name).lower())
         # Code that keeps the host and version in its configuration spells the rest of the
         # path anywhere: "${baseURL}/artists/${id}/top-tracks". Two literal segments are no
         # app route of its own, the way /markets could be; /v1/markets, with its version,
@@ -345,9 +393,10 @@ _PATH_TOKEN: Final = re.compile(r"(?:/[A-Za-z0-9_\-.{}$:]+)+/?")
 # The same without the leading slash, as code that joins it to a base URL writes it:
 # quoted, "rest/api/3/search", or right after an interpolation that holds the slash,
 # $"{endpoint}{separator}pipeline/feature-extraction/{model}". Two segments at least, so
-# that a plain key is no path.
+# that a plain key is no path. The repeats are bounded: text such as "}a/}a/}a/..." would
+# otherwise be read again from every brace, which takes hours on a large file.
 _QUOTED_PATH: Final = re.compile(
-    r"""(?<=["'`}])[A-Za-z0-9_\-.]+(?:/[A-Za-z0-9_\-.{}$:]+)+(?=/?["'`?])"""
+    r"""(?<=["'`}])[A-Za-z0-9_\-.]{1,100}(?:/[A-Za-z0-9_\-.{}$:]{1,100}){1,16}(?=/?["'`?])"""
 )
 
 
@@ -360,29 +409,64 @@ def _notice_document(name: str, text: str) -> bool:
 # A line that holds nothing but a comment: #, //, /* and the * of a block comment, -- in SQL
 # and Lua. # followed by a preprocessor word or [ is code (#define, #[test]). Lines that open
 # a markup comment are dropped in code_only.
-_COMMENT_LINE: Final = re.compile(
-    r"^[ \t]*(?:#(?!!|\[|(?:define|include|if|ifdef|ifndef|elif|else|endif|pragma|import"
-    r"|region|endregion|undef|error|warning|line)\b)|//|/\*|\*(?=[ \t/]|$)|--[ \t]).*$",
-    re.MULTILINE,
+_HASH_COMMENT: Final = (
+    r"#(?!!|\[|(?:define|include|if|ifdef|ifndef|elif|else|endif|pragma|import"
+    r"|region|endregion|undef|error|warning|line)\b)"
+)
+_OTHER_COMMENTS: Final = r"//|/\*|\*(?=[ \t/]|$)|--[ \t]"
+_COMMENT_LINE: Final = re.compile(rf"^[ \t]*(?:{_HASH_COMMENT}|{_OTHER_COMMENTS}).*$", re.MULTILINE)
+# JavaScript and TypeScript have no # comment: there it names a private member of a class,
+# and "#model = ..." is a line of code like any other.
+_COMMENT_LINE_WITHOUT_HASH: Final = re.compile(rf"^[ \t]*(?:{_OTHER_COMMENTS}).*$", re.MULTILINE)
+_HASH_IS_CODE: Final = (
+    ".js",
+    ".jsx",
+    ".mjs",
+    ".cjs",
+    ".ts",
+    ".tsx",
+    ".mts",
+    ".cts",
+    ".vue",
+    ".svelte",
 )
 # A Python string that stands alone as a statement: a docstring, or code turned off.
 _BARE_STRING: Final = re.compile(r"""^[ \t]*[rRuU]?("{3}|'{3})""")
+_TRIPLE_QUOTE: Final = re.compile(r"""\"{3}|'{3}""")
+
+
+def _left_open(line: str, quote: str | None) -> str | None:
+    """The triple quote of the string still open where the line ends, if any, given the
+    one open where it starts."""
+    for found in _TRIPLE_QUOTE.finditer(line):
+        if quote is None:
+            quote = found.group()
+        elif found.group() == quote:
+            quote = None
+    return quote
 
 
 def code_only(name: str, text: str) -> str:
     """The text without lines that are only comments and, in Python, without docstrings,
-    line for line. A retired model named in a comment or a docstring is not sent."""
-    text = _COMMENT_LINE.sub("", text)
+    line for line. A retired model named in a comment or a docstring is not sent.
+
+    A string that a statement opens and a later line closes, such as a prompt assigned to
+    a name, is code and stays. Its closing quotes, alone on their line, open nothing: read
+    as a docstring, they took the code below with them, up to the next docstring."""
+    pattern = _COMMENT_LINE_WITHOUT_HASH if name.endswith(_HASH_IS_CODE) else _COMMENT_LINE
+    text = pattern.sub("", text)
     text = "\n".join(
         "" if line.lstrip(" \t").startswith("<!--") else line for line in text.split("\n")
     )
     if not name.endswith((".py", ".pyi")):
         return text
     lines = text.split("\n")
+    inside: str | None = None  # the quote of a string that a statement left open
     start = 0
     while start < len(lines):
-        opened = _BARE_STRING.match(lines[start])
+        opened = _BARE_STRING.match(lines[start]) if inside is None else None
         if opened is None:
+            inside = _left_open(lines[start], inside)
             start += 1
             continue
         quote = opened.group(1)
@@ -423,7 +507,9 @@ def _template_pattern(url: str, *, versionless: bool = True) -> re.Pattern[str] 
         body = rf"(?:/{parts[0]})?" + "".join(f"/{part}" for part in parts[1:])
     else:
         body = "".join(f"/{part}" for part in parts)
-    return re.compile(rf"^(?P<hosts>(?:/[^/]*\.[^/]*)*){body}/?$")
+    # A host is a segment with a dot, and [^/.]* stops at its first one: with [^/]* there
+    # the pattern has a way to split a segment per dot, and tries them all when it fails.
+    return re.compile(rf"^(?P<hosts>(?:/[^/.]*\.[^/]*)*){body}/?$")
 
 
 @dataclass(frozen=True, slots=True)
@@ -504,7 +590,7 @@ class Gone:
     def in_line(self, line: str, *, near: bool) -> bool:
         """Whether a line of code calls the endpoint, by :meth:`RepoIndex.calling`'s rules."""
         if self.only_with_host:
-            return self.old_host in line.lower()
+            return names_host(self.old_host, line.lower())
         versionless = near or self.segments >= 2
         if any(self.spelled(path, versionless=versionless) for path in _path_tokens(line)):
             return True
@@ -514,8 +600,10 @@ class Gone:
 # Calls through an SDK, as most SDKs name them: stripe.Subscription.retrieve(...),
 # client.messages.create(...), octokit.rest.pulls.list(...).
 # A step of the chain may be a call without arguments, as in getStripe().subscriptions.
+# Eight steps at most: an unbounded chain is read again from each of its steps, so a long
+# run of "x.x.x." takes time that grows with its square.
 _SDK_CALL: Final = re.compile(
-    r"\b((?:[A-Za-z_]\w*(?:\(\s*\))?\s*\.\s*)*[A-Za-z_]\w*)\s*\.\s*"
+    r"\b((?:[A-Za-z_]\w*(?:\(\s*\))?\s*\.\s*){0,8}[A-Za-z_]\w*)\s*\.\s*"
     r"(retrieve|get|list|create|new|update|modify|delete|del)\s*\(",
     re.IGNORECASE,
 )
@@ -656,7 +744,7 @@ def assess(index: RepoIndex, notice: ApiChangeNotice, *, sdks: Sequence[SdkName]
         index, hosts=hosts, paths=paths, short=short, sdks=names, fields=fields, values=values
     )
     if not impact.affected:
-        return impact
+        return _of_what_was_read(index, impact)
     candidates = [
         Candidate(
             endpoint.url,
@@ -683,12 +771,26 @@ def assess(index: RepoIndex, notice: ApiChangeNotice, *, sdks: Sequence[SdkName]
         chosen = [i for i in removed if i in called] + [i for i in chosen if i not in removed]
         if not chosen:
             terms = [gone[i].term for i in removed]
-            return Impact(
+            never = Impact(
                 affected=False,
                 reason=f"the repository never calls {_listing(terms)}, which the notice removes",
                 anchors=impact.anchors,
             )
+            return _of_what_was_read(index, never)
     return impact.model_copy(update={"endpoints": chosen})
+
+
+UNREAD: Final = (
+    f"; it has more than {MAX_FILES:,} text files and the rest were not read, so this is "
+    "not certain"
+)
+
+
+def _of_what_was_read(index: RepoIndex, impact: Impact) -> Impact:
+    """A "not affected" from an index that could not read every file says so."""
+    if not index.truncated:
+        return impact
+    return impact.model_copy(update={"reason": impact.reason + UNREAD})
 
 
 def _search(
@@ -955,11 +1057,11 @@ def mentions_in_docs(index: RepoIndex, notice: ApiChangeNotice) -> list[Place]:
         hits = [
             value for value, pattern in values.items() if value in text and pattern.search(text)
         ]
-        named = [host for host in hosts if host in lowered]
+        named = [host for host in hosts if names_host(host, lowered)]
         for number, line in enumerate(text.splitlines(), start=1) if hits or named else ():
             low = line.lower()
             value = next((v for v in hits if values[v].search(line)), None)
-            host = next((h for h in named if h in low), None)
+            host = next((h for h in named if names_host(h, low)), None)
             if value is not None:
                 found.append(Place(name, number, line.strip(), "value", value))
             elif host is not None:

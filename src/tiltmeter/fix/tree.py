@@ -51,6 +51,18 @@ LOCK_FILES: Final = frozenset(
 )
 
 
+# Files that hold no text, by suffix: they are told apart without being opened.
+_NO_TEXT: Final = (
+    ".png .jpg .jpeg .gif .bmp .ico .webp .avif .tif .tiff .psd .heic "
+    ".woff .woff2 .ttf .otf .eot "
+    ".mp3 .mp4 .m4a .mov .avi .mkv .webm .wav .ogg .flac "
+    ".zip .gz .tgz .bz2 .xz .7z .rar .tar .jar .war .whl "
+    ".exe .dll .so .dylib .a .o .lib .class .pyc .pyo .wasm "
+    ".pdf .docx .xlsx .pptx .sqlite .sqlite3 .parquet .npy .npz .pkl .onnx"
+)
+BINARY_SUFFIXES: Final = frozenset(_NO_TEXT.split())
+
+
 def is_ours(path: PurePosixPath) -> bool:
     """Whether a repository path is outside installed or generated code and agents' copies."""
     folders = path.parts[:-1]

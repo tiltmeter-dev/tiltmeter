@@ -40,12 +40,16 @@ from tiltmeter.notices.impact import (
     RepoIndex,
     assess,
     locate,
+    may_hold_code,
     mentions_in_docs,
 )
 from tiltmeter.notices.models import ApiChangeNotice, Impact, NoticeChange, printable
 from tiltmeter.notices.reader import LoadedNotice, NoticeReader, _label, bundled_feed
 
 MAX_MATCHES: Final = 50
+# Outside git a folder can be a whole disk: the walk stops after this many names that
+# could hold code, several times what the search then reads.
+MAX_WALKED: Final = 10 * MAX_FILES
 MAX_DOC_MENTIONS: Final = 5
 _LINE_CHARS: Final = 160
 _HEADLINE_CHARS: Final = 120
@@ -189,6 +193,13 @@ class ScanReport(BaseModel):
     catalog: str = Field(description="The catalog read: the bundled one, a file or a URL.")
     bundled: bool
     files: int = Field(default=0, description="Files searched.")
+    truncated: bool = Field(
+        default=False,
+        description=(
+            f"The folder has more text files than the {MAX_FILES:,} a search reads: code "
+            "was read first, and the rest was not searched."
+        ),
+    )
     entries: int = Field(default=0, description="Valid entries in the catalog.")
     error: str | None = Field(default=None, description="Why the catalog could not be read.")
     affected: list[ScanFinding] = Field(default_factory=list)
@@ -208,11 +219,13 @@ class Catalog:
 
 @dataclass(frozen=True, slots=True)
 class Folder:
-    """The files to scan, relative to ``root``, and whether git lists them."""
+    """The files to scan, relative to ``root``, and whether git lists them. ``truncated``
+    when a folder outside git held more names than the walk collects."""
 
     root: Path
     files: Sequence[str]
     git: bool
+    truncated: bool = False
 
 
 def headline(summary: str) -> str:
@@ -254,22 +267,28 @@ def read_folder(path: Path) -> Folder:
         inside = git.run("rev-parse", "--is-inside-work-tree").strip() == "true"
         listed = git.run("ls-files", "-z", "--cached", "--others", "--exclude-standard")
     except FixError:  # not a git checkout, or no git at all
-        return Folder(path, _walk(path), git=False)
+        inside = False
     if not inside:
-        return Folder(path, _walk(path), git=False)
+        walked, truncated = _walk(path)
+        return Folder(path, walked, git=False, truncated=truncated)
     return Folder(path, sorted({name for name in listed.split("\0") if name}), git=True)
 
 
-def _walk(root: Path) -> list[str]:
+def _walk(root: Path, limit: int = MAX_WALKED) -> tuple[list[str], bool]:
+    """The files under ``root`` that could hold code, and whether the walk stopped before
+    the end. Pictures, archives and lock files are not collected, so they use none of the
+    limit."""
     found: list[str] = []
     for folder, dirs, names in os.walk(root):
         here = PurePosixPath(Path(folder).relative_to(root).as_posix())
         dirs[:] = sorted(d for d in dirs if d not in _NOT_WALKED and is_ours(here / d / "x"))
         for name in sorted(names):
+            if not may_hold_code(str(here / name)):
+                continue
+            if len(found) >= limit:
+                return found, True
             found.append(str(here / name))
-            if len(found) > MAX_FILES:
-                return found
-    return found
+    return found, False
 
 
 def scan(folder: Folder, catalog: Catalog, *, label: str) -> ScanReport:
@@ -329,6 +348,7 @@ def scan(folder: Folder, catalog: Catalog, *, label: str) -> ScanReport:
         catalog=catalog.source,
         bundled=catalog.bundled,
         files=len(index.texts) + len(tests.texts),
+        truncated=folder.truncated or index.truncated or tests.truncated,
         entries=len(catalog.entries),
         affected=affected,
         unaffected=unaffected,
