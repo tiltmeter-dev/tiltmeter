@@ -8,7 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from tiltmeter.core.models import ChangeKind, Explanation, NoticeStatus, Severity
 from tiltmeter.llm.explainer import AffectedObject
-from tiltmeter.notices.models import Impact, SdkRelease, SpecInfo
+from tiltmeter.notices.models import ApiVersionPin, Impact, SdkPin, SdkRelease, SpecInfo
 
 
 class FixTarget(BaseModel):
@@ -143,6 +143,14 @@ class NoticeSource(BaseModel):
         default=None, description="The provider's key the signature was checked against."
     )
     sdks: list[SdkRelease] = Field(default_factory=list)
+    sdk_pins: list[SdkPin] = Field(
+        default_factory=list,
+        description="The release of those SDKs that the repository asks for, file by file.",
+    )
+    api_versions: list[ApiVersionPin] = Field(
+        default_factory=list,
+        description="Dated API versions the repository's code pins next to the API.",
+    )
     spec: SpecInfo | None = None
 
 

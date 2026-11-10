@@ -10,6 +10,17 @@ a minor release may include breaking changes.
 
 ### Added
 
+- `tiltmeter scan`, `fix --notice` and `notices apply` read which release of the
+  provider's SDK the code is on, and say it next to the first release that follows the
+  change: "installs stripe 11.6.0 (uv.lock), which is older than 12.0.0", "asks for stripe
+  ^18.1.0 (package.json), which already follows the change", or "may be older" for a
+  requirement such as `>=10`. A lock file wins over the manifest next to it.
+  They also list the dated API versions the code pins next to the API, such as
+  `apiVersion: "2024-06-20"` or a `Stripe-Version` header. The scan's JSON has both as
+  `sdk_pins` and `api_versions`, the fix agent is told them, so it raises only what is
+  older, and the pull request lists them. A repository that reaches a removed endpoint
+  only through an SDK that is already at or past that release is no longer reported as
+  affected.
 - `tiltmeter scan` says how far each change is: "took effect 2026-08-16, 2 months ago" or
   "takes effect 2026-12-04, in 24 days". What already broke is listed first, then what
   breaks soonest, and the JSON has `days_left` and `due` for each change. With
@@ -25,6 +36,8 @@ a minor release may include breaking changes.
 
 ### Security
 
+- The release in a notice's `fixed_in` reaches pull requests as code. Before, it was
+  plain Markdown, so a release named like a web address became a link.
 - `tiltmeter fix` and `notices apply` run no git hook at any step. Before, only
   `pre-commit` and `commit-msg` were skipped, so a hook that the agent edited in a hooks
   folder under version control, or that the tests from `fix.test_command` left in

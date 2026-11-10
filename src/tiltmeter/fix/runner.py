@@ -38,7 +38,7 @@ from tiltmeter.fix.models import (
     UnusedFile,
 )
 from tiltmeter.fix.usage import STALE_DAYS, likely_dead, unused_files
-from tiltmeter.notices.models import SpecInfo
+from tiltmeter.notices.models import SdkPin, SpecInfo
 
 PROJECT_URL: Final = "https://github.com/tiltmeter-dev/tiltmeter"
 DEFAULT_BRANCH_PREFIX: Final = "tiltmeter/fix"
@@ -310,9 +310,32 @@ def _notice_section(request: FixRequest, notice: NoticeSource) -> list[str]:
     if notes:
         lines += ["", noted, "", *_plain_text(notes)]
     if notice.sdks:
-        releases = ", ".join(f"{s.ecosystem} `{s.name}` {s.fixed_in}" for s in notice.sdks)
+        releases = ", ".join(
+            f"{s.ecosystem} {_code(s.name)} {_code(s.fixed_in)}" for s in notice.sdks
+        )
         lines += ["", f"SDK releases that already follow the change: {releases}."]
+    if notice.sdk_pins:
+        lines += ["", "What this repository depends on:", ""]
+        lines += [_pin_line(pin) for pin in notice.sdk_pins]
+    if notice.api_versions:
+        pinned = ", ".join(
+            f"{_code(v.version)} ({_code(f'{v.file}:{v.line}')})" for v in notice.api_versions
+        )
+        lines += ["", f"API versions the code pins next to this API: {pinned}."]
     return lines
+
+
+def _pin_line(pin: SdkPin) -> str:
+    """One release the repository asks for, next to the one that follows the change. The
+    names come from the notice and the repository: all of it is quoted as code."""
+    source = "installed by" if pin.locked else "asked for in"
+    asked = f"{_code(pin.name)} {_code(pin.version)}, {source} {_code(pin.file)}"
+    fixed = _code(pin.fixed_in)
+    if pin.follows is None:
+        return f"- {asked}: may be older than {fixed}"
+    if pin.follows:
+        return f"- {asked}: already at or past {fixed}"
+    return f"- {asked}: older than {fixed}"
 
 
 def _where(api: FixApi, target: FixTarget) -> str:

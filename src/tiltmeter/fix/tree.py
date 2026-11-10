@@ -72,10 +72,11 @@ def is_ours(path: PurePosixPath) -> bool:
     return not pairs.intersection(_AGENT_COPIES)
 
 
-def read_text(path: Path) -> str | None:
-    """A file's text; None for links, binaries, large files and what cannot be read."""
+def read_text(path: Path, limit: int = MAX_FILE_BYTES) -> str | None:
+    """A file's text; None for links, binaries, files over ``limit`` bytes and what cannot
+    be read."""
     try:
-        if path.is_symlink() or not path.is_file() or path.stat().st_size > MAX_FILE_BYTES:
+        if path.is_symlink() or not path.is_file() or path.stat().st_size > limit:
             return None
         data = path.read_bytes()
     except OSError:

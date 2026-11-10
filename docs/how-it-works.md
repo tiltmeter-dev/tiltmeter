@@ -291,7 +291,9 @@ On the customer's side, `tiltmeter notices apply`:
    counts on its own when code spells it whole, and a removed endpoint only where code
    spells its whole path, with no host in front of it or one of the provider's other than
    the one it moved to. Values, removed paths and fields in comment lines and Python
-   docstrings do not count. A repository that does not use them is recorded as not affected;
+   docstrings do not count. A repository that does not use them is recorded as not affected.
+   For one that does, the release of the notice's SDKs in its lock files and manifests and
+   the dated API versions its code pins are read too, for the agent and the pull request;
 4. otherwise turns the notice into the same fix request a check would produce (the
    renames come from `renamed_to`, the severities from the default rules) and runs the
    fix, with the matching files as starting points and the provider's text marked as

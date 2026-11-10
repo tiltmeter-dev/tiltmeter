@@ -34,7 +34,7 @@ from tiltmeter.core.models import ChangeKind
 from tiltmeter.errors import FixError, NoticeError
 from tiltmeter.fix.git import Git
 from tiltmeter.fix.request import field_name
-from tiltmeter.fix.tree import MAX_FILES, NOT_OURS, is_ours
+from tiltmeter.fix.tree import LOCK_FILES, MAX_FILES, NOT_OURS, is_ours
 from tiltmeter.fix.usage import unreferenced
 from tiltmeter.notices.impact import (
     Place,
@@ -44,13 +44,21 @@ from tiltmeter.notices.impact import (
     may_hold_code,
     mentions_in_docs,
 )
-from tiltmeter.notices.models import ApiChangeNotice, Impact, NoticeChange, printable
+from tiltmeter.notices.models import (
+    ApiChangeNotice,
+    ApiVersionPin,
+    Impact,
+    NoticeChange,
+    SdkPin,
+    printable,
+)
 from tiltmeter.notices.reader import LoadedNotice, NoticeReader, _label, bundled_feed
 
 MAX_MATCHES: Final = 50
 # Outside git a folder can be a whole disk: the walk stops after this many names that
 # could hold code, several times what the search then reads.
 MAX_WALKED: Final = 10 * MAX_FILES
+MAX_LOCKS_WALKED: Final = 1_000
 MAX_DOC_MENTIONS: Final = 5
 _LINE_CHARS: Final = 160
 _HEADLINE_CHARS: Final = 120
@@ -169,6 +177,17 @@ class ScanFinding(BaseModel):
     tests: list[ScanMatch] = Field(
         default_factory=list,
         description=f"Places in tests, which are listed apart; at most {MAX_MATCHES}.",
+    )
+    sdk_pins: list[SdkPin] = Field(
+        default_factory=list,
+        description=(
+            "The release of each of the entry's SDKs that the folder asks for, next to the "
+            "first one that follows the change."
+        ),
+    )
+    api_versions: list[ApiVersionPin] = Field(
+        default_factory=list,
+        description="Dated API versions the code pins next to the API, and where.",
     )
     fix_command: str | None = Field(
         default=None, description="The command that fixes it, when one can."
@@ -295,19 +314,23 @@ def read_folder(path: Path) -> Folder:
 
 def _walk(root: Path, limit: int = MAX_WALKED) -> tuple[list[str], bool]:
     """The files under ``root`` that could hold code, and whether the walk stopped before
-    the end. Pictures, archives and lock files are not collected, so they use none of the
-    limit."""
+    the end. Pictures and archives are not collected, so they use none of the limit. Nor
+    do lock files, which come last: they are read only for the release they install."""
     found: list[str] = []
+    locks: list[str] = []
     for folder, dirs, names in os.walk(root):
         here = PurePosixPath(Path(folder).relative_to(root).as_posix())
         dirs[:] = sorted(d for d in dirs if d not in _NOT_WALKED and is_ours(here / d / "x"))
+        # A folder's lock files first, so a walk that stops in it still has them.
+        room = MAX_LOCKS_WALKED - len(locks)
+        locks += [str(here / name) for name in sorted(names) if name in LOCK_FILES][:room]
         for name in sorted(names):
             if not may_hold_code(str(here / name)):
                 continue
             if len(found) >= limit:
-                return found, True
+                return found + locks, True
             found.append(str(here / name))
-    return found, False
+    return found + locks, False
 
 
 def days_until(moment: datetime | None, now: datetime) -> int | None:
@@ -377,6 +400,8 @@ def scan(
                 count=len(places),
                 files=len({place.file for place in places}),
                 tests=[_match(place, notice) for place in in_tests],
+                sdk_pins=impact.sdk_pins,
+                api_versions=impact.api_versions,
                 fix_command=fix_command(loaded, catalog, label),
             )
         )

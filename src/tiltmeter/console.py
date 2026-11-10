@@ -29,17 +29,20 @@ if TYPE_CHECKING:
     )
     from tiltmeter.notices.models import (
         ApiChangeNotice,
+        ApiVersionPin,
         FeedEntry,
         FeedReport,
         Impact,
         NoticeChange,
         NoticeEndpoint,
+        SdkPin,
         SpecInfo,
     )
     from tiltmeter.notices.scan import ScanFinding, ScanMatch, ScanMiss, ScanReport
 
 MAX_DIFF_LINES: Final = 400
 MAX_SCAN_LINES: Final = 5
+MAX_PIN_LINES: Final = 3
 
 SEVERITY_STYLE: Final = {
     Severity.BREAKING: "bold red",
@@ -411,7 +414,29 @@ def impact_line(impact: Impact) -> Text:
         shown = ", ".join(impact.files[:5])
         more = f" (+{len(impact.files) - 5} more)" if len(impact.files) > 5 else ""
         line.append(f"\n{shown}{more}", style="dim")
+    for pinned in pin_lines(impact.sdk_pins, impact.api_versions):
+        line.append("\n")
+        line.append_text(pinned)
     return line
+
+
+def pin_lines(sdk_pins: Sequence[SdkPin], api_versions: Sequence[ApiVersionPin]) -> list[Text]:
+    """What the code depends on, next to a change: the release of the provider's SDK it
+    asks for, and the API versions it pins."""
+    from tiltmeter.notices.versions import standing
+
+    lines: list[Text] = []
+    for pin in sdk_pins[:MAX_PIN_LINES]:
+        verb = "installs" if pin.locked else "asks for"
+        words = f"{verb} {pin.name} {pin.version} ({pin.file}), which {standing(pin)}"
+        lines.append(Text(words, style="yellow" if pin.follows is False else "dim"))
+    rest = len(sdk_pins) - MAX_PIN_LINES
+    if rest > 0:
+        lines.append(Text(f"… and {rest} more place{'' if rest == 1 else 's'}", style="dim"))
+    if api_versions:
+        where = ", ".join(f"{v.version} ({v.file}:{v.line})" for v in api_versions)
+        lines.append(Text(f"pins API version {where}", style="dim"))
+    return lines
 
 
 def _entry_line(entry: FeedEntry) -> Text:
@@ -580,6 +605,8 @@ def render_scan_finding(console: Console, finding: ScanFinding, now: datetime) -
     if finding.tests:
         also = Text(f"also in tests: {_places(finding.tests)}", style="dim")
         console.print(Padding(also, (0, 0, 0, 4)))
+    for pinned in pin_lines(finding.sdk_pins, finding.api_versions):
+        console.print(Padding(pinned, (0, 0, 0, 4)))
     if finding.fix_command is not None:
         # Not wrapped, so the command copies and pastes whole even with a long path.
         command = Text.assemble("    ", ("fix: ", "dim"), (finding.fix_command, "bold"))
