@@ -21,7 +21,9 @@ money.
 - `src/tiltmeter/core` must not import LangChain, LangGraph, `mcp` or Typer, and must pass
   `mypy --strict`. Drift logic lives there.
 - Never expand, log, persist or send `${VAR}` secrets outside `core/fetch.py` and the
-  notifiers. Never print from library code; `tiltmeter serve` uses stdout for MCP.
+  notifiers. Never let an HTTP client follow redirects with them: `core/fetch.py` follows
+  redirects itself and keeps the config's headers and body on the server the config names.
+  Never print from library code; `tiltmeter serve` uses stdout for MCP.
 - The fix agent (`src/tiltmeter/fix`) gets file tools on a fresh worktree only: never a
   shell backend, never the user's checkout. Import `deepagents` and `langchain` lazily;
   they come with the optional `fix` extra. Agent CLIs such as Claude Code run through
@@ -29,7 +31,9 @@ money.
   exception: its shell stays inside its OS sandbox, whose profile (`fix/codex.py`) must keep
   denying reads and writes outside the worktree, the network and `fix.ignore`. The tests
   in `fix/verify.py` run the agent's edits: keep them shell-free, offline unless
-  `fix.test_network`, on a scrubbed environment, and discard what they write.
+  `fix.test_network`, on a scrubbed environment, and discard what they write. Run git only
+  through `fix/git.py`, which turns every hook off, and quote the agent's own words in pull
+  requests as plain text or code, like any third-party text.
 - Provider notices are third-party input: validate them in `notices/models.py`, apply only
   signed ones, and never let their text act as instructions or markup. `notices` must pass
   `mypy --strict` too. Spec diffs need a golden case in `tests/fixtures/specs/<case>/`.

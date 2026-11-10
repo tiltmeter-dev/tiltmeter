@@ -284,3 +284,36 @@ def test_main_maps_usage_errors(tmp_path: Path, capsys: pytest.CaptureFixture[st
         main(["check", "-c", str(tmp_path / "missing.yaml")])
     assert missing.value.code == 4
     assert "not found" in capsys.readouterr().err
+
+
+def test_main_never_lets_a_crash_look_like_drift(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    config = write_config(tmp_path)
+
+    def crash(*args: Any, **kwargs: Any) -> Any:
+        raise RuntimeError("no such column: sample")
+
+    monkeypatch.setattr("tiltmeter.service.DriftService.history", crash)
+    with pytest.raises(SystemExit) as crashed:
+        main(["history", "-c", str(config)])
+    assert crashed.value.code == 3  # Python alone would exit 1, the code for a warning
+    shown = flat(capsys.readouterr().err)
+    assert "Traceback" in shown
+    assert "error: unexpected RuntimeError: no such column: sample" in shown
+    assert "https://github.com/tiltmeter-dev/tiltmeter/issues" in shown
+
+
+def test_a_damaged_history_is_a_setup_problem(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    config = write_config(tmp_path)
+    (tmp_path / ".tiltmeter").mkdir()
+    (tmp_path / ".tiltmeter" / "tiltmeter.db").write_bytes(b"not a database at all " * 100)
+    for command in (["check"], ["history"], ["serve"]):
+        with pytest.raises(SystemExit) as damaged:
+            main([*command, "-c", str(config)])
+        assert damaged.value.code == 4
+        shown = flat(capsys.readouterr().err)
+        assert "cannot be used: file is not a database" in shown
+        assert "Traceback" not in shown

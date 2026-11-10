@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.fix.kit import MODELS, make_repo
+from tests.fix.kit import MODELS, git, make_repo
 from tiltmeter.fix.git import Git
 from tiltmeter.fix.models import TestRun
 from tiltmeter.fix.prompts import render_fix_request
@@ -49,6 +49,39 @@ def test_tests_see_the_edits_and_only_the_edits_are_kept(tmp_path: Path) -> None
     assert (worktree.root / "client.py").read_text(encoding="utf-8") == "EDITED = True\n"
     assert (worktree.root / "models.py").read_text(encoding="utf-8") == MODELS
     assert not (worktree.root / "junk.txt").exists()
+
+
+def test_a_hook_the_tests_leave_behind_does_not_run(tmp_path: Path) -> None:
+    worktree = edited(tmp_path)
+    marker = tmp_path / "hook-ran.txt"
+    hook = f"#!/bin/sh\necho ran >> '{marker.as_posix()}'\n"
+    script = (
+        "import pathlib\n"
+        "hook = pathlib.Path('.git/hooks/post-checkout')\n"
+        "hook.parent.mkdir(exist_ok=True)\n"
+        f"hook.write_text({hook!r})\n"
+        "hook.chmod(0o755)\n"
+    )
+    result = run(worktree, script, tmp_path)
+    assert result.status == "passed", result.output
+    # Putting the edits back is a checkout, with the user's environment and network.
+    assert not marker.exists()
+    git(worktree.root, "checkout", "--", ".")
+    assert marker.exists()  # the hook is real: plain git runs it
+
+
+def test_a_repository_the_tests_create_is_thrown_away(tmp_path: Path) -> None:
+    worktree = edited(tmp_path)
+    script = (
+        "import pathlib, subprocess\n"
+        "subprocess.run(['git', 'init', '--quiet', 'fixture'], check=True)\n"
+        "pathlib.Path('fixture/data.txt').write_text('x')\n"
+    )
+    result = run(worktree, script, tmp_path)
+    assert result.status == "passed", result.output
+    assert not (worktree.root / "fixture").exists()
+    worktree.stage_all()
+    assert worktree.staged_files() == ["client.py"]
 
 
 def test_a_failure_keeps_the_end_of_the_output(tmp_path: Path) -> None:

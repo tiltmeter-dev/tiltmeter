@@ -3,6 +3,11 @@
 The fix happens in a separate worktree, on a new branch created from the current
 HEAD in a temporary folder. The user's checkout, index and uncommitted changes are
 never touched. Commands run without a shell and never prompt for credentials.
+
+No git hook runs, in the checkout or in the worktree. A hook is a program git starts
+with the user's environment and network, and the agent or the tests it wrote can leave
+one behind: in a hooks folder the repository keeps under version control, or in
+``.git/hooks`` itself. ``--no-verify`` would skip only two of them.
 """
 
 from __future__ import annotations
@@ -14,16 +19,22 @@ import subprocess
 from collections.abc import Sequence
 from datetime import datetime
 from pathlib import Path
-from typing import Protocol
+from typing import Final, Protocol
 
 from tiltmeter.errors import FixError
 from tiltmeter.fix._proc import failure_reason, run_tool
+
+# Options for every git command: no folder to look for hooks in, and no file-system
+# monitor, which is a hook under another name.
+NO_HOOKS: Final = ("-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false")
 
 
 def _call(
     command: Sequence[str], *, cwd: Path, stdin: str | None = None
 ) -> subprocess.CompletedProcess[str]:
     env = {**os.environ, "GIT_TERMINAL_PROMPT": "0", "GH_PROMPT_DISABLED": "1"}
+    if command[0] == "git":
+        command = ["git", *NO_HOOKS, *command[1:]]
     return run_tool(command, cwd=cwd, env=env, stdin=stdin)
 
 
@@ -155,7 +166,7 @@ class Git:
         return self.run("diff", "--cached", "--no-color", "--no-ext-diff")
 
     def commit(self, title: str, body: str) -> None:
-        # Local hooks are skipped like any bot commit; CI checks the pull request.
+        # Local hooks are skipped like any bot commit (see NO_HOOKS); CI checks the pull request.
         self.run("commit", "--quiet", "--no-verify", "-m", title, "-m", body)
 
     def push(self, remote: str, branch: str) -> None:

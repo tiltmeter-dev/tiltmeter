@@ -96,6 +96,14 @@ Your config references `${X}` and the variable is missing or empty in the enviro
 that runs Tiltmeter. In CI, add it to the job's `env`; in an MCP client, to the server's
 `env`. Use `${X:-default}` for optional values.
 
+### `redirected to another server (...), which would get the request body; not followed`
+
+The API answered with a redirect to another host or port, or from `https` to `http`, that
+asks for the same request again. Tiltmeter does not send the `body` of an endpoint, which
+may hold a credential, to a server the config does not name. If the other server is the
+right one, put it in `url`. Redirects that need no body are followed without the
+`headers` of the config, so an API that needs them there answers 401 or 403.
+
 ### `unexpected HTTP status 401`
 
 The request reached the API and was rejected. Check the credentials and headers. If the

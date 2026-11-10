@@ -89,7 +89,10 @@ A few rules keep it that way:
   that denies reads outside the worktree, writes outside it, the network and `fix.ignore`.
   Any other CLI that needs a shell must be held to the same standard. A new backend implements the `FixAgent` protocol in
   `fix/agent.py` and is picked in `build_fix_agent`. Git and `gh` run the same way, and
-  only on the worktree's branch.
+  only on the worktree's branch. Git runs through `fix/git.py`, which turns every hook
+  off: a hook would run what the agent or the tests left behind, with the user's
+  environment. The agent's own words are untrusted too, since it read the repository:
+  pull requests quote them as plain text or code.
 
 [How it works](docs/how-it-works.md) explains the design in depth.
 

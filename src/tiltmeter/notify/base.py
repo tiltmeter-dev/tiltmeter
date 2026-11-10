@@ -56,11 +56,18 @@ async def post_json(
     payload: object,
     headers: Mapping[str, str] | None = None,
 ) -> None:
+    """POST ``payload`` to ``url``. A redirect is a failure, not somewhere to go: following
+    it would hand the headers, which may hold a credential, and the check result to
+    whichever server the answer names."""
     try:
-        response = await client.post(url, json=payload, headers=headers, timeout=SEND_TIMEOUT)
+        response = await client.post(
+            url, json=payload, headers=headers, timeout=SEND_TIMEOUT, follow_redirects=False
+        )
     except httpx.TimeoutException:
         raise NotificationError(f"timed out after {SEND_TIMEOUT:g}s") from None
-    except httpx.TransportError as exc:
+    except (httpx.RequestError, httpx.InvalidURL) as exc:
         raise NotificationError(f"request failed ({type(exc).__name__})") from None
+    if 300 <= response.status_code < 400:
+        raise NotificationError(f"HTTP {response.status_code} (redirects are not followed)")
     if response.status_code >= 400:
         raise NotificationError(f"HTTP {response.status_code}")

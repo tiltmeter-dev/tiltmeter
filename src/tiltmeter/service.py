@@ -47,6 +47,7 @@ from tiltmeter.notices.spec import Chooser, SpecFollow, follow_spec
 from tiltmeter.notify import Notifier, build_notifiers
 
 DEFAULT_DRIFT_WINDOW: Final = timedelta(days=7)
+_MAX_ERROR: Final = 300
 
 
 def by_severity(
@@ -88,7 +89,9 @@ class DriftService:
         self.state_dir = state_dir
         self.store = store if store is not None else Store.in_dir(state_dir)
         self._owns_http = http is None
-        self.http = http if http is not None else httpx.AsyncClient(follow_redirects=True)
+        # Redirects are never left to the client: core.fetch follows them one hop at a
+        # time, keeping credentials on the server the config names, and notifiers refuse them.
+        self.http = http if http is not None else httpx.AsyncClient()
         self._explainer = explainer
         self._detect_explainer = detect_explainer and explainer is None
         self.notifiers: list[Notifier] = (
@@ -167,24 +170,48 @@ class DriftService:
 
         async def run(endpoint_id: str) -> CheckResult:
             async with limit:
-                state = await self._graph.ainvoke(
-                    {
-                        "endpoint_id": endpoint_id,
-                        "use_llm": use_llm,
-                        "send_notifications": notify,
-                        "notes": [],
-                    },
-                    config={
-                        "run_name": f"tiltmeter check {endpoint_id}",
-                        "tags": ["tiltmeter"],
-                        "metadata": {"endpoint_id": endpoint_id},
-                    },
-                    context=context,
-                )
+                try:
+                    state = await self._graph.ainvoke(
+                        {
+                            "endpoint_id": endpoint_id,
+                            "use_llm": use_llm,
+                            "send_notifications": notify,
+                            "notes": [],
+                        },
+                        config={
+                            "run_name": f"tiltmeter check {endpoint_id}",
+                            "tags": ["tiltmeter"],
+                            "metadata": {"endpoint_id": endpoint_id},
+                        },
+                        context=context,
+                    )
+                except Exception as exc:
+                    return await self._stopped(endpoint_id, exc, notify=notify)
                 result: CheckResult = state["result"]
                 return result
 
         return list(await asyncio.gather(*(run(endpoint.id) for endpoint in endpoints)))
+
+    async def _stopped(self, endpoint_id: str, exc: Exception, *, notify: bool) -> CheckResult:
+        """The result of a check that raised: a failed check like any other, so one
+        endpoint cannot take down the run, or ``tiltmeter watch``, for the others.
+
+        It is recorded and notified as far as that still works. The message is not one
+        of a request: those end in :mod:`tiltmeter.core.fetch`, the only place that holds
+        expanded ``${VAR}`` values, which reports every failure itself and scrubs it."""
+        reason = f"unexpected error ({type(exc).__name__}): {exc}".removesuffix(": ")
+        result = CheckResult(
+            endpoint_id=endpoint_id, checked_at=to_iso(self._clock()), error=reason[:_MAX_ERROR]
+        )
+        try:
+            check_id = self.store.save_check(result)
+        except Exception:
+            return result  # the history is what failed
+        result = result.model_copy(update={"check_id": check_id})
+        if notify:
+            wanted = [notifier for notifier in self.notifiers if notifier.wants(result)]
+            await asyncio.gather(*(n.send(result) for n in wanted), return_exceptions=True)
+        return result
 
     async def check_endpoint(
         self, endpoint_id: str, *, explain: bool = True, notify: bool = True

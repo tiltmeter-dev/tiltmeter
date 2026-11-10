@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import sqlite3
 from pathlib import Path
+from typing import Any
 
 import httpx
 import pytest
@@ -162,6 +164,42 @@ async def test_many_endpoints_keep_their_order() -> None:
         assert [r.endpoint_id for r in await service.check(["b"])] == ["b"]
         with pytest.raises(UnknownEndpointError):
             await service.check(["nope"])
+
+
+@respx.mock
+async def test_a_check_that_raises_does_not_take_the_others_down(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    for name in ("a", "b", "c"):
+        respx.get(f"{API}/{name}").respond(200, json={"name": name})
+    endpoints = [make_endpoint(id=name, url=f"{API}/{name}") for name in ("a", "b", "c")]
+    notifier = RecordingNotifier(on_error=True)
+    async with make_service(*endpoints, notifier=notifier) as service:
+        load = service.store.load_baseline
+
+        def broken(endpoint_id: str, **kwargs: Any) -> Any:
+            if endpoint_id == "b":
+                raise sqlite3.OperationalError("disk I/O error")
+            return load(endpoint_id, **kwargs)
+
+        monkeypatch.setattr(service.store, "load_baseline", broken)
+        first, failed, last = await service.check()
+        assert (first.outcome, last.outcome) == ("baseline", "baseline")
+        assert failed.error == "unexpected error (OperationalError): disk I/O error"
+        assert service.history("b") == [failed]
+        assert notifier.sent == [failed]
+        [quiet] = await service.check(["b"], notify=False)
+        assert quiet.error == failed.error
+        assert notifier.sent == [failed]
+
+        def full(*args: Any, **kwargs: Any) -> Any:
+            raise sqlite3.OperationalError("database or disk is full")
+
+        # When the history is what fails, the result is still reported.
+        monkeypatch.setattr(service.store, "save_check", full)
+        [unsaved] = await service.check(["a"])
+        assert unsaved.error == "unexpected error (OperationalError): database or disk is full"
+        assert unsaved.check_id is None
 
 
 @respx.mock

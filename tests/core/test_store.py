@@ -11,6 +11,7 @@ from tests.helpers import explanation
 from tiltmeter.core.models import Change, ChangeKind, CheckResult, Severity
 from tiltmeter.core.shape import Shape
 from tiltmeter.core.store import _NOTICES_SCHEMA, _SCHEMA, SCHEMA_VERSION, Store, StoreError
+from tiltmeter.errors import TiltmeterError
 
 
 def result(
@@ -178,6 +179,17 @@ def test_refuses_a_newer_schema(tmp_path: Path) -> None:
         Store(path)
 
 
+def test_a_history_that_cannot_be_opened_is_a_store_error(tmp_path: Path) -> None:
+    damaged = tmp_path / "tiltmeter.db"
+    damaged.write_bytes(b"this is not a database, and it is long enough to be read as one" * 20)
+    with pytest.raises(StoreError, match=r"tiltmeter\.db cannot be used: file is not a database"):
+        Store(damaged)
+    (tmp_path / "state").write_text("a file where the state folder goes\n", encoding="utf-8")
+    with pytest.raises(StoreError, match="cannot be used"):
+        Store.in_dir(tmp_path / "state")
+    assert issubclass(StoreError, TiltmeterError)  # the CLI and the MCP server report those
+
+
 def test_runs_that_open_a_new_history_at_once_all_get_it(tmp_path: Path) -> None:
     path = tmp_path / "tiltmeter.db"
     start = threading.Barrier(8)
@@ -232,7 +244,7 @@ def test_a_migration_that_fails_leaves_the_history_as_it_was(tmp_path: Path) -> 
     connection.execute("PRAGMA user_version = 1")
     connection.commit()
     connection.close()
-    with pytest.raises(sqlite3.OperationalError, match="spec_changes already exists"):
+    with pytest.raises(StoreError, match="spec_changes already exists"):
         Store(path)
     connection = sqlite3.connect(path)
     tables = {row[0] for row in connection.execute("SELECT name FROM sqlite_master")}

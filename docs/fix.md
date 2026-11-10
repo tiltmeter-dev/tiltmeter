@@ -147,8 +147,12 @@ removed as if nothing happened.
    opens a pull request with `gh`. When every edit is in old code that nothing uses, no
    pull request goes out unless you ask for it. The title follows the repository's convention, such as
    `fix(billing): ...`, when the agent found one in the contribution rules or the latest
-   commit titles. Otherwise Tiltmeter writes its own. Local git hooks are skipped, as for any bot commit; your
-   CI runs on the pull request instead. Each step that fails leaves what was already done in
+   commit titles. Otherwise Tiltmeter writes its own. No git hook runs at any step, as for any bot commit; your
+   CI runs on the pull request instead. That covers every hook, not only the two that
+   `--no-verify` skips, and a hooks folder the repository keeps under version control:
+   a hook is a program that git starts with your environment and network, and the agent
+   or the tests may have changed one. Git LFS uploads through a hook, so a fix that
+   changes an LFS file needs a `git lfs push` by hand. Each step that fails leaves what was already done in
    place and tells you what to run by hand.
 7. **Clean up.** The worktree is always removed. The branch is kept only if it holds a
    commit, and the check's notes record the pull request (`tiltmeter show <id>`).
@@ -340,7 +344,11 @@ to your LangSmith project as `tiltmeter.fix`, with the same content. Claude Code
 ## Reviewing the pull request
 
 The pull request lists the API changes, the agent's summary, the files it touched and a
-"Left for a human" section. Review it like any other change:
+"Left for a human" section. The agent's own words are shown as plain text, in a code
+block: it wrote them after reading files and notices it cannot vouch for, so they must
+not be able to link, mention someone, embed an image or close an issue. Its summary goes
+into the commit message only when it is plain prose, with none of that in it. Review the
+pull request like any other change:
 
 - Read the "Left for a human" items first. They are the questions the agent would not guess.
 - When the pull request opens with **This change affects only some callers**, check
