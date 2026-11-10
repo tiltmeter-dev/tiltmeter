@@ -617,6 +617,14 @@ def render_scan(
         name = problem.id or "(no id)"
         console.print(Text.assemble(("✗ ", "red"), name, (f"  rejected: {problem.problem}", "red")))
     console.print(scan_summary(report, show_all=show_all), soft_wrap=True)
+    if report.truncated:
+        console.print(
+            Text(
+                f"note: {report.path} has more text files than a scan reads. Code was read "
+                "first; scan its folders one by one to cover the rest.",
+                style="yellow",
+            )
+        )
     if not report.affected and report.bundled and not report.error:
         console.print(
             Text(

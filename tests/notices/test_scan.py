@@ -24,7 +24,7 @@ from tiltmeter.cli import app
 from tiltmeter.fix.agent import DeepFixAgent
 from tiltmeter.notices import scan
 from tiltmeter.notices.models import MAX_FEED_NOTICES, NoticeFeed
-from tiltmeter.notices.scan import headline, is_test
+from tiltmeter.notices.scan import _walk, headline, is_test
 
 GROQ = "groq-retired-models-2026-08"
 
@@ -413,3 +413,31 @@ def test_a_move_to_another_host_names_the_new_host(tmp_path: Path) -> None:
     assert found["matches"][0]["detail"] == (
         "removed; moved to POST router.huggingface.co/v1/chat/completions"
     )
+
+
+def test_scan_says_when_a_folder_has_more_files_than_it_reads(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    for name in ("a/one.py", "b/two.py", "c/three.py"):
+        (tmp_path / name).parent.mkdir()
+        (tmp_path / name).write_text("x = 1\n", encoding="utf-8")
+    code, report = scanned(str(tmp_path))
+    assert (code, report["truncated"], report["files"]) == (0, False, 3)
+    assert "more text files than a scan reads" not in flat(invoke("scan", str(tmp_path)).output)
+
+    monkeypatch.setattr("tiltmeter.notices.impact.MAX_FILES", 2)
+    code, report = scanned(str(tmp_path), "--all")
+    assert (code, report["truncated"], report["files"]) == (0, True, 2)
+    assert all(miss["reason"].endswith("so this is not certain") for miss in report["unaffected"])
+    text = flat(invoke("scan", str(tmp_path)).output)
+    assert "has more text files than a scan reads. Code was read first" in text
+
+
+def test_a_walk_outside_git_stops_at_its_limit_and_skips_what_holds_no_text(
+    tmp_path: Path,
+) -> None:
+    for name in ("a.png", "b.py", "c.zip", "d.py", "e.py", "uv.lock"):
+        (tmp_path / name).write_text("x", encoding="utf-8")
+    assert _walk(tmp_path) == (["b.py", "d.py", "e.py"], False)
+    assert _walk(tmp_path, limit=3) == (["b.py", "d.py", "e.py"], False)
+    assert _walk(tmp_path, limit=2) == (["b.py", "d.py"], True)

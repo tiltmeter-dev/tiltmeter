@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -19,7 +20,9 @@ from tiltmeter.notices.impact import (
     locate,
     mentions_in_docs,
     name_variants,
+    names_host,
     path_anchors,
+    sdk_pattern,
 )
 from tiltmeter.notices.models import ApiChangeNotice, Impact, SdkName
 
@@ -663,3 +666,147 @@ def test_mentions_in_docs(tmp_path: Path) -> None:
     assert not assess(index, model).affected
     [place] = mentions_in_docs(index, model)
     assert (place.file, place.line, place.term) == ("README.md", 3, "billing-3-5-20240620")
+
+
+# -- what was missed, and what took hours ----------------------------------------------
+
+RETIRED = "billing-3-5-20240620"
+
+
+def test_the_closing_quotes_of_a_string_open_no_docstring(tmp_path: Path) -> None:
+    code = (
+        'PROMPT = """\nYou are a helpful assistant.\n"""\n'
+        f'MODEL = "{RETIRED}"\n\n\n'
+        'def ask():\n    """Ask the model."""\n    return MODEL\n'
+    )
+    assert check(tmp_path, {"llm.py": code}, **retired_model()).affected
+    kept = code_only("llm.py", code).split("\n")
+    assert kept[1] == "You are a helpful assistant."  # a prompt is code: it is sent
+    assert kept[3] == f'MODEL = "{RETIRED}"'
+    assert kept[7] == ""  # the docstring is still gone
+    assert kept[8] == "    return MODEL"
+
+
+@pytest.mark.parametrize(
+    "code",
+    [
+        f'ask("""\nBe brief.\n""", model="{RETIRED}")\n',
+        f"SQL = '''\nselect 1\n'''\nMODEL = \"{RETIRED}\"\n\ndef f():\n    '''Doc.'''\n",
+        f'A = """\nit\'s \'\'\' fine\n"""\nMODEL = "{RETIRED}"\n\ndef f():\n    """Doc."""\n',
+        f'A = """one""" + """\ntwo\n"""\nMODEL = "{RETIRED}"\n\ndef f():\n    """Doc."""\n',
+    ],
+    ids=["code after the close", "single quotes", "other quotes inside", "two on a line"],
+)
+def test_strings_that_span_lines_keep_the_code_after_them(tmp_path: Path, code: str) -> None:
+    assert check(tmp_path, {"llm.py": code}, **retired_model()).affected
+
+
+@pytest.mark.parametrize("name", ["chat.js", "chat.ts", "chat.mjs", "Chat.vue"])
+def test_a_private_member_is_no_comment(tmp_path: Path, name: str) -> None:
+    code = f'class Chat {{\n  #model = "{RETIRED}";\n  // was "{RETIRED}-old"\n}}\n'
+    assert check(tmp_path, {name: code}, **retired_model()).affected
+    assert code_only(name, code).split("\n")[1:3] == [f'  #model = "{RETIRED}";', ""]
+
+
+@pytest.mark.parametrize(
+    ("text", "named"),
+    [
+        ("https://slack.com/api/chat.postMessage", True),
+        ("https://hooks.slack.com/services/x", True),  # a host of the provider's
+        ('host = "slack.com"', True),
+        ("see slack.com.", True),
+        ("slack.com:443", True),
+        ("https://myslack.com/api", False),
+        ("https://slack.community/", False),
+        ("https://slack.com.evil.test/api", False),
+        ("import slack.commands", False),
+        ("my_slack.com", False),
+    ],
+)
+def test_a_host_is_named_whole(text: str, named: bool) -> None:
+    assert names_host("slack.com", text) is named
+    assert names_host("Slack.com", text) is named
+
+
+def test_a_look_alike_host_is_another_api(tmp_path: Path) -> None:
+    ours = 'r = get("https://eu.api.billing.test/v1/customers/1")\nprint(r["phone"])\n'
+    assert check(tmp_path / "ours", {"client.py": ours}).affected
+    other = ours.replace("eu.api.billing.test", "api.billing.testing")
+    impact = check(tmp_path / "other", {"client.py": other})
+    assert not impact.affected
+    assert impact.anchors == ["/v1/customers"]
+    assert impact.reason == (
+        "the repository mentions /v1/customers, but never api.billing.test or billing-sdk, "
+        "so those may belong to another API"
+    )
+
+
+def test_a_go_module_is_listed_with_its_major_version(tmp_path: Path) -> None:
+    sdk = SdkName(ecosystem="go", name="github.com/billing/billing-go")
+    pattern = sdk_pattern(sdk)
+    assert pattern.search("require github.com/billing/billing-go v1.4.0")
+    assert pattern.search("\tgithub.com/billing/billing-go/v81 v81.2.0")
+    assert not pattern.search("github.com/billing/billing-go-extras v1.0.0")
+    assert not pattern.search("github.com/billing/billing-go/v81x v1.0.0")
+    files = {
+        "go.mod": "module app\n\nrequire github.com/billing/billing-go/v81 v81.2.0\n",
+        "billing/sync.go": "func phone(c Customer) string { return c.Phone }\n",
+    }
+    release = {"ecosystem": "go", "name": sdk.name, "fixed_in": "82.0.0"}
+    impact = check(tmp_path, files, sdks=[release])
+    assert impact.affected
+    assert impact.anchors == [sdk.name]
+
+
+def test_text_made_to_be_slow_is_read_in_no_time(tmp_path: Path) -> None:
+    # Each of these took minutes to hours: the search read them again from every step.
+    files = {
+        "chain.py": "x." * 100_000,
+        "braces.js": "}a/" * 70_000,
+        "blank.py": "\n" * 200_000,
+        "dots.ts": 'const u = "' + "/........" * 40 + '/zzz";\n',
+        "requirements.txt": "billing-sdk\n",
+    }
+    for name, text in files.items():
+        (tmp_path / name).write_text(text, encoding="utf-8")
+    started = time.perf_counter()
+    index = RepoIndex.read(tmp_path, sorted(files))
+    removed = {**removed_search(), "sdks": notice()["sdks"]}
+    for overrides in ({}, removed, retired_model()):
+        assess(index, ApiChangeNotice.model_validate(notice(**overrides)))
+    assert time.perf_counter() - started < 20
+
+
+def test_the_file_limit_counts_what_is_read_and_code_comes_first(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("tiltmeter.notices.impact.MAX_FILES", 3)
+    files = {
+        **{f"assets/{i}.png": "not a picture, but named like one" for i in range(4)},
+        **{f"docs/{i}.md": "notes\n" for i in range(4)},
+        "uv.lock": 'name = "billing-sdk"\n',
+        "src/client.py": CLIENT,
+        "src/models.py": MODELS,
+    }
+    for name, text in files.items():
+        (tmp_path / name).parent.mkdir(exist_ok=True)
+        (tmp_path / name).write_text(text, encoding="utf-8")
+    # Pictures and lock files use none of the limit, and code is read before the docs.
+    index = RepoIndex.read(tmp_path, sorted(files))
+    assert sorted(index.texts) == ["docs/0.md", "src/client.py", "src/models.py"]
+    assert index.truncated
+    model = ApiChangeNotice.model_validate(notice())
+    assert assess(index, model).affected
+
+    code_only_ = RepoIndex.read(tmp_path, ["src/client.py", "src/models.py", "uv.lock"])
+    assert not code_only_.truncated
+    assert assess(code_only_, model).reason == assess(index, model).reason
+
+    docs = RepoIndex.read(tmp_path, sorted(name for name in files if name.startswith("docs/")))
+    assert docs.truncated
+    missed = assess(docs, model)
+    assert not missed.affected
+    assert missed.reason == (
+        "no tracked file mentions api.billing.test, /v1/customers, /customers or billing-sdk; "
+        "it has more than 20,000 text files and the rest were not read, so this is not certain"
+    )

@@ -37,6 +37,22 @@ a minor release may include breaking changes.
 
 ### Fixed
 
+- `tiltmeter scan` and `notices apply` no longer miss code in these cases:
+  - Python code below a string that spans lines, such as a prompt assigned to a name. The
+    closing quotes were read as the start of a docstring, and everything down to the next
+    docstring was left out of the search.
+  - A private member of a JavaScript or TypeScript class, such as `#model = "gpt-4"`,
+    which was read as a comment.
+  - A repository with more than 20,000 files whose first 20,000, by name, were pictures,
+    lock files or docs. The limit now counts the text files that are read, code is read
+    first, and when files are left out the scan says so (`truncated` in the JSON) and a
+    "not affected" says it is not certain.
+  - A Go module required with its major version, `github.com/stripe/stripe-go/v81`.
+- A host is matched whole. `slack.com` used to match `myslack.com`, `slack.community`
+  and `import slack.commands`, which made other code look like a use of the API.
+- A file written to be slow can no longer stall a scan. Four of the search's patterns
+  took minutes to hours on a few kilobytes of crafted text, such as a long run of `x.x.x.`
+  or of blank lines; they now read a megabyte in well under a second.
 - A query string written in an endpoint's `url` is sent. It was dropped without a word,
   so `https://api.example.com/items?expand=data` was checked as `/items`. `params` join
   it, and a parameter of the same name replaces the one in the URL.
