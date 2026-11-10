@@ -292,3 +292,13 @@ The catalog is meant to grow. To add a change that already shipped:
 5. Run `uv run tiltmeter scan --all` on a repository that uses the old API and on one that
    does not, check the places it lists, and run `uv run pytest -q`:
    `tests/notices/test_scan.py` checks that every entry is valid, unsigned and unique.
+
+Retired models are found for you. `uv run python scripts/watch.py` reads the deprecation
+pages of OpenAI, Anthropic and Groq, which publish them as Markdown tables, and lists the
+values they retire that the catalog lacks: what shuts down ahead first, then what shut
+down within the last year. A workflow runs it every Monday and keeps one issue, labelled
+`catalog-watch`, up to date with the list. `--drafts DIR` writes an unsigned notice per
+provider and date to start step 1 from; it holds only what the page's table says, so the
+notes and the endpoints are still yours to write. To watch another page, add it to
+`scripts/watch-sources.json`; a value on a page that is no retirement goes in that
+source's `ignore`.
