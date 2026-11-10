@@ -10,6 +10,12 @@ a minor release may include breaking changes.
 
 ### Added
 
+- The catalog `tiltmeter scan` reads knows five more changes, four of them still ahead:
+  Claude Sonnet 4.5 retires on November 30, 2026; OpenAI shuts down `gpt-image-1.5` and
+  its siblings on December 1, `gpt-5`, `gpt-5-mini`, `gpt-5-nano`, `gpt-5-pro`, `o3` and
+  `o3-pro` on December 11, and five dated GPT-4o and GPT-4.1 snapshots on January 14,
+  2027; and Groq stopped serving eight more models between December 2025 and September
+  2026. A scan lists the ones ahead with the days left.
 - `tiltmeter hunt NOTICE` finds the public repositories that still use what a notice
   changes, and where. It builds code-search queries from the notice (each retired value,
   each removed endpoint's path, each changed field next to the provider's domain or an SDK
