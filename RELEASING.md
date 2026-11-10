@@ -57,6 +57,19 @@ a laptop, and there is no PyPI token to leak.
    mcp-publisher login http --domain tiltmeter.dev --private-key "$TILTMETER_REGISTRY_KEY"
    mcp-publisher publish
    ```
+9. Copy what the website serves from the release. The notice schemas under
+   `https://tiltmeter.dev/schemas/` and the catalog at
+   `https://tiltmeter.dev/catalog/api-changes.json` are copies kept in the
+   [website repository](https://github.com/tiltmeter-dev/website). When they fall behind,
+   notices and catalog entries that use what the release added fail against the published
+   schema. From a checkout of the tag, with the website repository next to this one:
+
+   ```bash
+   cp -r docs/schemas/. ../website/schemas/
+   cp src/tiltmeter/catalog/api-changes.json ../website/catalog/api-changes.json
+   ```
+
+   Commit and push there: the website's `main` branch is what is deployed.
 
 ## Rehearsing on TestPyPI
 
