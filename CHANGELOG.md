@@ -10,6 +10,13 @@ a minor release may include breaking changes.
 
 ### Added
 
+- `tiltmeter scan --sarif FILE` also writes what was found as SARIF 2.1.0, the format
+  GitHub code scanning reads: uploaded with `github/codeql-action/upload-sarif`, each line
+  that uses a known change becomes an alert in the Security tab and an annotation on the
+  pull request. An entry is a rule and a line a result: `error` once the change is in
+  effect, `warning` while it is ahead, `note` when it is further away than `--within`.
+  Paths start at the repository's root, the entry's text is escaped so that none of it
+  turns into a link, and the terminal output and the exit code stay the same.
 - A notice can name the methods of the provider's SDKs that reach an endpoint, in a new
   optional `sdk_calls` member of the endpoint: `{"ecosystem": "pypi", "name":
   "slack-sdk", "call": "files_upload"}`. Code that goes through an SDK never spells the
