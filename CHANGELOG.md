@@ -8,6 +8,14 @@ a minor release may include breaking changes.
 
 ## [Unreleased]
 
+### Added
+
+- The Tiltmeter Action 1.8.0 has `mode: scan`, which runs `tiltmeter scan` on a
+  repository with no config, annotates each use of a known API change on its line and,
+  with `code-scanning: true`, files it as a code scanning alert. `docs/ci.md` describes
+  it, `examples/scan-workflow.yml` is ready to copy, and this repository runs it on
+  itself every week.
+
 ## [0.10.0] - 2026-11-11
 
 ### Added
