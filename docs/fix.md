@@ -400,6 +400,11 @@ $ tiltmeter fix --notice groq-retired-models-2026-08 --allow-unsigned \
 When nobody asked for anything and no check failed, there is nothing to answer and no agent
 runs. A pull request that is merged or closed is refused.
 
+To see which of your pull requests wait for an answer, run [`tiltmeter prs`](prs.md). It
+lists the pull requests Tiltmeter opened on GitHub, puts first the ones with changes
+requested, a comment nobody answered, failed checks or a branch to update, and prints
+this command for each one it can take up again. It only reads.
+
 ## Configuration
 
 The `fix` section of `tiltmeter.yaml` is optional:

@@ -8,6 +8,7 @@
 | [Agents and MCP](agents.md) | Connect Claude Code, Cursor, Claude Desktop or a LangChain agent. |
 | [CI and scheduling](ci.md) | Run checks from GitHub Actions, GitLab CI, cron or systemd. |
 | [Fixing code](fix.md) | Let an agent, the built-in one, Claude Code or Codex, adapt your code to drift and open a pull request. |
+| [Following your pull requests](prs.md) | See which of the pull requests Tiltmeter opened need you, with `tiltmeter prs`, and know what it asks GitHub and what it cannot see. |
 | [Provider notices](notices.md) | Publish API changes as a provider, and get them applied to your code as a customer. |
 | [Hunting for affected repositories](hunt.md) | Find the public repositories that still use what a notice changes, with `tiltmeter hunt`, and know what it sends to GitHub. |
 | [API change notices, v1](notice-spec.md) | Read the open format: notices, feeds, signatures and the rules for readers. |

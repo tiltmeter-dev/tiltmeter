@@ -137,7 +137,9 @@ Anthropic with the changes and the field names and types of the affected objects
 LangSmith tracing turned on, traces go to LangSmith. `tiltmeter fix` also sends the change
 list and the files its agent reads to Anthropic (see the [fix guide](fix.md#what-leaves-your-machine)).
 `tiltmeter hunt` sends code-search queries built from a notice to GitHub, through your own
-`gh` login (see the [hunt guide](hunt.md#what-it-sends-to-github)). Nothing else.
+`gh` login (see the [hunt guide](hunt.md#what-it-sends-to-github)), and `tiltmeter prs`
+asks GitHub the same way for the pull requests Tiltmeter opened (see the
+[prs guide](prs.md#what-it-asks-github)). Nothing else.
 
 ### What is stored?
 

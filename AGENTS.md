@@ -50,7 +50,7 @@ money.
 ## Layout
 
 `core/` (diff, shapes, OpenAPI shapes, store, fetch), `graph/` (LangGraph pipeline), `llm/` (Claude
-explainer), `fix/` (`tiltmeter fix`: Deep Agent, Claude Code or Codex, worktree, pull request),
+explainer), `fix/` (`tiltmeter fix`: Deep Agent, Claude Code or Codex, worktree, pull request; `tiltmeter prs`: the read-only inbox of those pull requests, in `inbox.py`),
 `notices/` (provider mode: notice format, signatures, feeds, the affected-repo search, `tiltmeter scan`, `tiltmeter hunt`),
 `catalog/` (the known API changes `scan` reads, unsigned drafts added with `scripts/catalog.py`, gaps found by `scripts/watch.py`), `notify/` (Slack,
 webhook), `mcp_server/` (MCP tools), `har.py` (`init --from-har`), `service.py` (shared by CLI and MCP), `cli.py` and `console.py` (Typer and rich), `scripts/` (demo and release

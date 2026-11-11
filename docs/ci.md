@@ -244,6 +244,7 @@ call it, but the Tiltmeter Action only does it for provider notices so far. See 
 | `tiltmeter scan --json` | The known API changes the folder uses, with every matching line and the command that fixes each. |
 | `tiltmeter scan --sarif FILE` | The same findings as [SARIF 2.1.0](scan.md#in-github-code-scanning), for GitHub code scanning and other CI systems. |
 | `tiltmeter hunt --json` | The public repositories checked for one notice, with the queries sent to GitHub, why others were left out and every matching line. |
+| `tiltmeter prs --json` | The pull requests Tiltmeter opened on GitHub, each with its state, what an open one waits for, who spoke last and the command that answers it. |
 | `tiltmeter notices apply --json` | The feeds, and what was done about each new notice, including the fix outcome. |
 
 A check result has the same fields as the `result` object of the
