@@ -8,6 +8,8 @@ a minor release may include breaking changes.
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-11-11
+
 ### Added
 
 - The MCP server has a `scan_code` tool: what `tiltmeter scan` finds, for agents. It
