@@ -6,6 +6,7 @@ never touched from two threads at once.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import sys
 from collections.abc import AsyncIterator, Callable
@@ -27,6 +28,9 @@ from tiltmeter.core.models import (
     StoredChange,
 )
 from tiltmeter.errors import TiltmeterError
+from tiltmeter.notices.reader import NoticeReader
+from tiltmeter.notices.scan import ScanReport, read_catalog, read_folder
+from tiltmeter.notices.scan import scan as search
 from tiltmeter.service import DriftService
 
 INSTRUCTIONS: Final = """\
@@ -34,7 +38,10 @@ Tiltmeter watches the HTTP APIs listed in its config and learns the shape of the
 responses. Before you rely on one of those APIs, call has_drifted to learn whether its \
 responses changed recently, and get_schema to see which fields to expect. Use check_api to \
 probe an API right now and get_changes to read its change history. Paths use JSONPath-like \
-notation: $ is the response body and [*] means every item of an array.\
+notation: $ is the response body and [*] means every item of an array. Before you add or \
+change code that calls a third-party API, call scan_code: it tells whether the project's \
+code still uses something a provider retired or removed, such as a model id or an \
+endpoint, with the file and line of each use.\
 """
 
 READ_ONLY: Final = ToolAnnotations(
@@ -54,8 +61,26 @@ def _guard[T](call: Callable[[], T]) -> T:
         raise ToolError(str(exc)) from exc
 
 
-def create_server(service: DriftService, *, close_service: bool = False) -> MCPServer:
-    """Build the MCP server around a service. ``close_service`` closes it on shutdown."""
+def _inside(root: Path, path: str) -> Path:
+    """The folder ``path`` names under ``root``, links followed. A tool reads no folder
+    but the project's own, whatever a prompt asks for."""
+    try:
+        target = (root / path).resolve()
+    except (OSError, ValueError) as exc:
+        raise ToolError(f"{path!r} is not a path") from exc
+    if target != root and root not in target.parents:
+        raise ToolError(f"{path!r} is outside the project folder")
+    if not target.is_dir():
+        raise ToolError(f"{path!r} is not a folder")
+    return target
+
+
+def create_server(
+    service: DriftService, *, close_service: bool = False, root: Path | None = None
+) -> MCPServer:
+    """Build the MCP server around a service. ``close_service`` closes it on shutdown.
+    ``root`` is the project's folder, the only one ``scan_code`` may read: without it the
+    tool is not offered."""
 
     @asynccontextmanager
     async def lifespan(_: MCPServer) -> AsyncIterator[None]:
@@ -138,6 +163,40 @@ def create_server(service: DriftService, *, close_service: bool = False) -> MCPS
         """Check every configured API now and return one result per API."""
         return await service.check(explain=explain)
 
+    if root is not None:
+        project = root.resolve()
+
+        @server.tool(annotations=READ_ONLY)
+        async def scan_code(
+            path: str = ".", within_days: int | None = None, include_unaffected: bool = False
+        ) -> ScanReport:
+            """Search the project's code for known API changes it still uses.
+
+            Checks every entry of the catalog bundled with Tiltmeter, such as retired
+            model ids, removed endpoints and renamed fields, each drafted from the
+            provider's public documentation. `affected` lists the entries the code uses,
+            what broke already first, each with the file, line and text of every use,
+            what the change does to it, the days left until it takes effect and the
+            command that fixes it. Nothing is fetched, sent or changed.
+
+            `path` is a folder inside the project, the whole project by default.
+            `within_days` leaves out of the count (`due`) the changes that take effect
+            later than that. `include_unaffected` also lists the entries the code does
+            not use, and why.
+            """
+            target = _inside(project, path)
+            if within_days is not None and within_days < 0:
+                raise ToolError("within_days cannot be negative")
+            try:
+                catalog = await read_catalog(NoticeReader(service.http))
+            except TiltmeterError as exc:
+                raise ToolError(str(exc)) from exc
+            # Reading thousands of files would hold the event loop, and touches no history.
+            report = await asyncio.to_thread(
+                lambda: search(read_folder(target), catalog, label=path, within=within_days)
+            )
+            return report if include_unaffected else report.model_copy(update={"unaffected": []})
+
     @server.resource(
         "tiltmeter://endpoints",
         mime_type="application/json",
@@ -167,4 +226,5 @@ def run_stdio(config_path: Path) -> None:
     """Serve over stdio. stdout carries the protocol, so logs go to stderr."""
     logging.basicConfig(stream=sys.stderr, level=logging.WARNING)
     service = DriftService.from_config_file(config_path)
-    create_server(service, close_service=True).run("stdio")
+    root = config_path.resolve().parent
+    create_server(service, close_service=True, root=root).run("stdio")

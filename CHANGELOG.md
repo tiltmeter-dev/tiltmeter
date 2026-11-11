@@ -10,6 +10,14 @@ a minor release may include breaking changes.
 
 ### Added
 
+- The MCP server has a `scan_code` tool: what `tiltmeter scan` finds, for agents. It
+  searches the project's code (the folder of the config file, or a folder inside it) for
+  the known API changes in the bundled catalog and returns the scan's report: each entry
+  the code uses, with the file, line and text of every use, the days left and the fix
+  command. It is annotated as read-only, fetches nothing, and refuses a path outside the
+  project, links included. `within_days` and `include_unaffected` work like `--within`
+  and `--all`. The server's instructions tell agents to call it before they add or change
+  code that calls a third-party API.
 - `tiltmeter scan --sarif FILE` also writes what was found as SARIF 2.1.0, the format
   GitHub code scanning reads: uploaded with `github/codeql-action/upload-sarif`, each line
   that uses a known change becomes an alert in the Security tab and an annotation on the
