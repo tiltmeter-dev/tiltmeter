@@ -1,0 +1,37 @@
+name: Known API changes
+
+# Tiltmeter on itself: every week, the action's scan mode searches this repository for
+# the known API changes in the catalog and uploads what it finds to code scanning. It
+# needs no config and no secret. Tests, docs and the catalog itself name retired models
+# on purpose and never count, so a finding here is code that would break.
+on:
+  schedule:
+    - cron: "41 7 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: api-changes
+  cancel-in-progress: false
+
+jobs:
+  scan:
+    name: Scan for known API changes
+    # Forks have no use for the alerts.
+    if: github.repository == 'tiltmeter-dev/tiltmeter'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      security-events: write # upload the findings to code scanning
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: tiltmeter-dev/tiltmeter-action@555718162ae58e4d98e776605990b3271d6b40ab # scan mode
+        with:
+          mode: scan
+          within: 30
+          code-scanning: true
