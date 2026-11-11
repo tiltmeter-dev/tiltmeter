@@ -1,0 +1,28 @@
+# Fail the job, and file a code scanning alert on the line, when the code still uses an
+# API change that already shipped or is about to: a retired model, a removed endpoint.
+# No tiltmeter.yaml, no API key and no baseline are needed. Save this as
+# .github/workflows/api-changes.yml.
+name: API changes
+
+on:
+  schedule:
+    - cron: "23 7 * * 1"
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write # for code-scanning; drop both to only annotate
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: tiltmeter-dev/tiltmeter-action@v1
+        with:
+          mode: scan
+          within: 30 # a change still ahead counts in its last 30 days
+          code-scanning: true

@@ -283,6 +283,17 @@ on drift:
     STRIPE_API_KEY: ${{ secrets.STRIPE_API_KEY }}
 ```
 
+With `mode: scan` it needs no config at all: it runs `tiltmeter scan` on the repository,
+annotates each use of a known API change on its line and, with `code-scanning: true`,
+files it as a code scanning alert:
+
+```yaml
+- uses: tiltmeter-dev/tiltmeter-action@v1
+  with:
+    mode: scan
+    within: 30 # a change still ahead counts in its last 30 days
+```
+
 Anywhere else, keep `.tiltmeter/` between runs. The [CI guide](docs/ci.md) has
 ready-to-copy jobs for GitHub Actions, GitLab CI and cron.
 

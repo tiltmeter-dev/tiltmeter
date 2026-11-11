@@ -163,6 +163,70 @@ Restart=on-failure
 WantedBy=multi-user.target
 ```
 
+## Known API changes
+
+`mode: scan` runs [`tiltmeter scan`](scan.md) on the repository: no `tiltmeter.yaml`, no
+API key, no baseline. It fails the job when the code still uses a change the catalog
+knows, such as a model a provider retired or an endpoint it removed, and annotates each
+use on its line. It needs the Tiltmeter Action 1.8.0 or later and Tiltmeter 0.10.0 or
+later. [`examples/scan-workflow.yml`](../examples/scan-workflow.yml):
+
+```yaml
+name: API changes
+
+on:
+  schedule:
+    - cron: "23 7 * * 1"
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: tiltmeter-dev/tiltmeter-action@v1
+        with:
+          mode: scan
+          within: 30
+          code-scanning: true
+```
+
+- **`within: 30`** counts a change that has not taken effect yet only in its last 30
+  days, [like `--within`](scan.md#before-a-change-takes-effect). Before that it is listed
+  and does not fail the job.
+- **`code-scanning: true`** uploads the findings as
+  [SARIF](scan.md#in-github-code-scanning), so each use is an alert in the Security tab
+  until the code stops using it. It needs `security-events: write`. Without it, drop the
+  permission: the annotations and the job summary stay.
+- **`fix: true`** also opens one pull request per change that counts, once, on the branch
+  `tiltmeter/scan-<change id>`. It needs what [provider notices](#provider-notices) need:
+  `contents: write`, `pull-requests: write` and an agent.
+- **`path`** scans one folder. The outputs are `result` (`clean`, `affected`, `failed`),
+  `json` and `sarif`.
+- The catalog comes with the Tiltmeter release the action runs, its `version` input: a
+  newer release knows newer changes.
+
+This repository runs it on itself every week, in
+[`.github/workflows/api-changes.yml`](../.github/workflows/api-changes.yml).
+
+Without the action, the same is two steps:
+
+```yaml
+      - run: uvx tiltmeter scan --within 30 --sarif tiltmeter.sarif
+        continue-on-error: true
+      - uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: tiltmeter.sarif
+          category: tiltmeter
+```
+
 ## Provider notices
 
 When the APIs you call publish [change notices](notices.md), the Action can apply them on a

@@ -165,14 +165,17 @@ permissions:
   contents: read
   security-events: write
 steps:
-  - uses: actions/checkout@v4
+  - uses: actions/checkout@v7
   - run: uvx tiltmeter scan --within 30 --sarif tiltmeter.sarif
     continue-on-error: true   # the alerts carry the result; drop this to also fail the job
-  - uses: github/codeql-action/upload-sarif@v3
+  - uses: github/codeql-action/upload-sarif@v4
     with:
       sarif_file: tiltmeter.sarif
       category: tiltmeter
 ```
+
+The [Tiltmeter Action](ci.md#known-api-changes) does both steps with `mode: scan` and
+`code-scanning: true`, and annotates each use on its line.
 
 | In the scan | In SARIF |
 |---|---|
