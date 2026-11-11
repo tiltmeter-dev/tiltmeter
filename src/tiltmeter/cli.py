@@ -16,6 +16,8 @@ for a human, 3 when the agent, a git step or a feed failed, 4 for usage errors.
 ``tiltmeter scan`` when the folder uses a change in the catalog; both exit 3 when
 a feed or the catalog cannot be read. ``tiltmeter hunt`` exits 1 when a repository it
 checked uses what the notice changes, and 3 when GitHub could not be searched.
+``tiltmeter prs`` exits 1 when a pull request Tiltmeter opened needs its author, and 3
+when GitHub could not be asked.
 """
 
 from __future__ import annotations
@@ -31,7 +33,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from functools import partial
 from pathlib import Path
-from typing import TYPE_CHECKING, Annotated, Any, Final, NoReturn
+from typing import TYPE_CHECKING, Annotated, Any, Final, Literal, NoReturn
 
 import typer
 from rich.console import Console
@@ -51,6 +53,7 @@ if TYPE_CHECKING:
     from tiltmeter.config import FixConfig
     from tiltmeter.fix.agent import FixAgent
     from tiltmeter.fix.git import Git, GitHub
+    from tiltmeter.fix.inbox import InboxReport
     from tiltmeter.fix.models import (
         AppliedNotice,
         FixOutcome,
@@ -1139,6 +1142,98 @@ def hunt(
 
         render_hunt(out, report)
     raise typer.Exit(hunt_exit_code(report))
+
+
+# -- the pull requests Tiltmeter opened, and which ones need their author ----------
+
+PullStateChoice = Literal["open", "merged", "closed", "all"]
+
+
+def prs_exit_code(report: InboxReport) -> int:
+    """GitHub that could not be asked beats a pull request that needs its author, which
+    beats none. When no open pull request could be read, nothing was asked either."""
+    counts = report.counts
+    if report.error or (counts.open and counts.unread == counts.open):
+        return EXIT_CHECK_FAILED
+    return EXIT_WARNING if counts.need_you else EXIT_OK
+
+
+@app.command()
+def prs(
+    author: Annotated[
+        str | None,
+        typer.Option(
+            "--author",
+            metavar="LOGIN",
+            help="Whose pull requests (default: the login the GitHub CLI holds).",
+        ),
+    ] = None,
+    state: Annotated[
+        PullStateChoice | None,
+        typer.Option(
+            "--state",
+            help=(
+                "Look only for pull requests in this state, and list them. By default all "
+                "are counted and only the open ones are listed."
+            ),
+        ),
+    ] = None,
+    repo: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--repo",
+            metavar="OWNER/NAME",
+            help="Only pull requests to this repository (repeatable).",
+        ),
+    ] = None,
+    limit: Annotated[
+        int,
+        typer.Option(
+            "--limit",
+            "-n",
+            min=1,
+            max=1000,
+            help="Read at most this many pull requests, the newest first.",
+        ),
+    ] = 200,
+    as_json: JsonOption = False,
+) -> None:
+    """List the pull requests Tiltmeter opened on GitHub, and which ones need you.
+
+    Asks GitHub, through the GitHub CLI (gh), for the pull requests whose description
+    ends with Tiltmeter's footer, and says what each open one waits for. Changes a review
+    requested, a person to answer, failed checks and a branch that is behind or
+    conflicting are yours, each with the `tiltmeter fix --follow-up` command to run; the
+    others wait for the maintainers. It only reads: nothing is commented, pushed, merged
+    or closed. Exit code 0: nothing needs you; 1: at least one pull request does; 3:
+    GitHub could not be asked.
+    """
+    from tiltmeter.fix.inbox import LOGIN, GhPulls, InboxFilters
+    from tiltmeter.fix.inbox import inbox as read
+    from tiltmeter.notices.hunt import FULL_NAME
+
+    if author is not None and not LOGIN.fullmatch(author):
+        _fail(f"--author takes a GitHub login, which {author!r} is not")
+    for name in repo or []:
+        if not FULL_NAME.fullmatch(name):
+            _fail(f"--repo takes a repository as OWNER/NAME, which {name!r} is not")
+    filters = InboxFilters(
+        author=author, state=state or "all", repositories=repo or [], limit=limit
+    )
+
+    def progress(message: str) -> None:
+        if not as_json:
+            err.print(Text(message, style="dim"))
+
+    report = read(GhPulls(), filters=filters, progress=progress)
+    if as_json:
+        _print_json(report.model_dump(mode="json"))
+    else:
+        from tiltmeter.console import render_inbox
+
+        # Merged and closed ones are listed only when --state asked for them.
+        render_inbox(out, report, show_all=state not in (None, "open"))
+    raise typer.Exit(prs_exit_code(report))
 
 
 # -- provider notices, as a subscriber --------------------------------------------

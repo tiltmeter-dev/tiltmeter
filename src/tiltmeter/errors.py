@@ -41,3 +41,8 @@ class NoticeError(TiltmeterError):
 
 class HuntError(TiltmeterError):
     """``tiltmeter hunt`` cannot search GitHub: no CLI, no login, a rate limit."""
+
+
+class InboxError(TiltmeterError):
+    """``tiltmeter prs`` cannot ask GitHub for pull requests: no CLI, no login, a rate
+    limit, a search GitHub refuses."""

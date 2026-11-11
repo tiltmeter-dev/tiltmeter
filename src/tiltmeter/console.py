@@ -20,6 +20,7 @@ from rich.text import Text
 from tiltmeter.core.models import Change, CheckResult, Severity
 
 if TYPE_CHECKING:
+    from tiltmeter.fix.inbox import InboxPull, InboxReport, LastWord
     from tiltmeter.fix.models import (
         AppliedNotice,
         FixOutcome,
@@ -45,6 +46,7 @@ MAX_DIFF_LINES: Final = 400
 MAX_SCAN_LINES: Final = 5
 MAX_PIN_LINES: Final = 3
 MAX_HUNT_LINES: Final = 3
+MAX_INBOX_CHECKS: Final = 3
 
 SEVERITY_STYLE: Final = {
     Severity.BREAKING: "bold red",
@@ -899,5 +901,191 @@ def render_hunt(console: Console, report: HuntReport, *, now: datetime | None = 
                 "The code search is a heuristic over default branches: a repository it did "
                 "not name can still use the change.",
                 style="dim",
+            )
+        )
+
+
+# -- prs --------------------------------------------------------------------------
+
+
+def _since(moment: datetime | None, now: datetime) -> str:
+    return _ago((now - moment).days) if moment is not None else "at an unknown time"
+
+
+def _waits(pull: InboxPull) -> str:
+    """What an open pull request waits for, in a few words."""
+    draft = " (draft)" if pull.draft else ""
+    # A branch to update is worth saying next to a surer reason: answering does not fix it.
+    branch = f"; {pull.detail}" if pull.detail else ""
+    match pull.waits_for:
+        case "changes_requested":
+            return f"changes requested{branch}{draft}"
+        case "answer":
+            return f"waits for an answer{branch}{draft}"
+        case "checks_failed":
+            shown = pull.failed_checks[:MAX_INBOX_CHECKS]
+            rest = len(pull.failed_checks) - len(shown)
+            names = ", ".join(shown) + (f" and {rest} more" if rest else "")
+            return f"checks failed{': ' + names if names else ''}{branch}{draft}"
+        case "behind_or_conflicting":
+            return f"{pull.detail or 'behind or conflicting'}{draft}"
+        case "ready":
+            return f"ready{': ' + pull.detail if pull.detail else ''}{draft}"
+        case "maintainers":
+            return f"waiting for the maintainers{': ' + pull.detail if pull.detail else ''}{draft}"
+        case _:
+            return f"could not be read: {pull.error}"
+
+
+def _last_word(said: LastWord, now: datetime) -> Text:
+    """Who spoke last on a pull request, when, and the start of what they wrote. Their
+    words are plain text, whatever they hold."""
+    if said.kind == "comment":
+        did = "commented"
+    else:
+        stances = {"approved": "approved", "changes_requested": "requested changes"}
+        did = stances.get(said.stance or "", "reviewed")
+    role = f" ({said.role})" if said.role != "none" else ""
+    text = Text.assemble(
+        ("last word: ", "dim"), f"{said.author}{role} {did} {_since(said.at, now)}"
+    )
+    if said.excerpt:
+        text.append(f": {said.excerpt}", style="dim")
+    return text
+
+
+def render_inbox_pull(console: Console, pull: InboxPull, now: datetime) -> None:
+    """One pull request that needs its author: what it waits for, who spoke last, and
+    the command that takes it up again."""
+    name = (f"{pull.repository}#{pull.number}", "bold")
+    console.print(Text.assemble(("! ", "yellow"), name, "  ", pull.title))
+    console.print(Padding(Text(_waits(pull), style="yellow"), (0, 0, 0, 4)))
+    if pull.last_word is not None:
+        console.print(Padding(_last_word(pull.last_word, now), (0, 0, 0, 4)))
+    if pull.follow_up is not None:
+        # Not wrapped, so the command copies and pastes whole.
+        console.print(Text.assemble("    ", (pull.follow_up, "bold")), soft_wrap=True)
+    else:
+        by_hand = "update its branch by hand: `tiltmeter fix --follow-up` does not rebase or merge"
+        console.print(Padding(Text(by_hand, style="dim"), (0, 0, 0, 4)))
+        console.print(Text(f"    {pull.url}", style="dim"), soft_wrap=True)
+
+
+def inbox_line(pull: InboxPull, now: datetime) -> Text:
+    """One pull request that does not need its author, in a line."""
+    name = (f"{pull.repository}#{pull.number}", "bold")
+    if pull.state != "open":
+        day = f" {pull.closed_at:%Y-%m-%d}" if pull.closed_at is not None else ""
+        icon = ("✓ ", "green") if pull.state == "merged" else ("× ", "dim")
+        return Text.assemble(icon, name, "  ", pull.title, (f"  {pull.state}{day}", "dim"))
+    updated = f" · updated {_since(pull.updated_at, now)}"
+    if pull.waits_for == "ready":
+        return Text.assemble(
+            ("✓ ", "green"),
+            name,
+            "  ",
+            pull.title,
+            (f"  {_waits(pull)}", "green"),
+            (updated, "dim"),
+        )
+    if pull.waits_for is None:
+        return Text.assemble(
+            ("! ", "yellow"), name, "  ", pull.title, (f"  {_waits(pull)}", "yellow")
+        )
+    return Text.assemble(
+        ("- ", "dim"), name, "  ", pull.title, (f"  {_waits(pull)}{updated}", "dim")
+    )
+
+
+def inbox_summary(report: InboxReport) -> Text:
+    """How many pull requests Tiltmeter opened, by state, and how many need their author."""
+    counts, state = report.counts, report.filters.state
+    if not counts.opened:
+        who = report.filters.author or "the login the GitHub CLI holds"
+        what = "pull request" if state == "all" else f"{state} pull request"
+        where = " in the repositories named" if report.filters.repositories else ""
+        return Text(
+            f"No {what} that ends with Tiltmeter's footer was found for {who}{where}.",
+            style="yellow",
+        )
+    need = "none needs you"
+    if counts.need_you:
+        need = f"{counts.need_you} need{'s' if counts.need_you == 1 else ''} you"
+    waiting = f"{counts.open:,} open ({need})"
+    match state:
+        case "open":
+            words = waiting
+        case "merged":
+            words = f"{counts.merged:,} merged"
+        case "closed":
+            words = f"{counts.closed:,} closed"
+        case _:
+            words = (
+                f"{counts.opened:,} opened: {counts.merged:,} merged, {counts.closed:,} closed, "
+                f"{waiting}"
+            )
+    return Text(f"{words}.", style="bold" if counts.need_you else "green")
+
+
+def render_inbox(
+    console: Console, report: InboxReport, *, show_all: bool = False, now: datetime | None = None
+) -> None:
+    """The pull requests that need their author, each with what it waits for, who spoke
+    last and the command to run; then the other open ones in a line each, and a summary.
+    With ``show_all``, the merged and closed ones are listed too."""
+    from tiltmeter.fix.inbox import MAX_RESULTS, NOTICE
+
+    if report.error:
+        console.print(Text(f"✗ cannot ask GitHub: {report.error}", style="red"))
+        return
+    moment = now or datetime.now(UTC)
+    urgent = [pull for pull in report.pulls if pull.needs_you]
+    others = [pull for pull in report.pulls if not pull.needs_you]
+    for pull in urgent:
+        render_inbox_pull(console, pull, moment)
+        console.print()
+    listed = [pull for pull in others if show_all or pull.state == "open"]
+    for pull in listed:
+        console.print(inbox_line(pull, moment))
+    if listed:
+        console.print()
+    console.print(inbox_summary(report), soft_wrap=True)
+    commands = [pull.follow_up for pull in urgent if pull.follow_up is not None]
+    if commands:
+        how = (
+            "Run a command in a checkout of that repository that has the pull request's "
+            "branch in a remote, such as your fork."
+        )
+        if any(f" --notice {NOTICE} " in command for command in commands):
+            how += (
+                f" {NOTICE} is the notice the fix was made from, as `tiltmeter fix --notice` "
+                "takes it: a file, a URL, FEED#ID or the id of a catalog entry."
+            )
+        console.print(Text(how, style="dim"), soft_wrap=True)
+    unsure = sum(1 for pull in others if pull.waits_for is not None and pull.mergeable is None)
+    if unsure:
+        console.print(
+            Text(
+                f"GitHub has not worked out yet whether {unsure} of the open ones "
+                f"merge{'s' if unsure == 1 else ''} without conflicts; a later run will know.",
+                style="dim",
+            ),
+            soft_wrap=True,
+        )
+    if report.not_read:
+        more = (
+            "raise --limit to read them"
+            if report.filters.limit < MAX_RESULTS
+            else "GitHub serves the first 1,000 results of a search, so narrow it with "
+            "--state or --repo"
+        )
+        results = f"{report.not_read:,} more result{'' if report.not_read == 1 else 's'}"
+        verb = "was" if report.not_read == 1 else "were"
+        console.print(Text(f"note: {results} {verb} not read: {more}.", style="yellow"))
+    if report.incomplete:
+        console.print(
+            Text(
+                "note: GitHub's search timed out, so results are missing; run it again.",
+                style="yellow",
             )
         )

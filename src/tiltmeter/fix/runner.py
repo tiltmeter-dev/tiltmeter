@@ -41,6 +41,10 @@ from tiltmeter.fix.usage import STALE_DAYS, likely_dead, unused_files
 from tiltmeter.notices.models import SdkPin, SpecInfo
 
 PROJECT_URL: Final = "https://github.com/tiltmeter-dev/tiltmeter"
+# How the last paragraph of every pull request starts. `tiltmeter prs` searches GitHub for
+# the first and tells Tiltmeter's own pull requests by the second (tiltmeter.fix.inbox).
+GENERATED_BY: Final = "This pull request was generated automatically by"
+FOOTER: Final = f"{GENERATED_BY} [Tiltmeter]({PROJECT_URL})"
 DEFAULT_BRANCH_PREFIX: Final = "tiltmeter/fix"
 MAX_SLUG: Final = 80
 PLAIN_WIDTH: Final = 100
@@ -481,7 +485,7 @@ def pull_request_body(request: FixRequest, preview: FixPreview, *, model_name: s
     lines += [
         "",
         "---",
-        f"This pull request was generated automatically by [Tiltmeter]({PROJECT_URL}) {origin}. "
+        f"{FOOTER} {origin}. "
         f"An AI agent ({model_name}) wrote these edits; review them like any other change.",
     ]
     return "\n".join(lines) + "\n"

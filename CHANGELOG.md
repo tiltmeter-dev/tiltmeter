@@ -38,6 +38,23 @@ a minor release may include breaking changes.
   and Ruby SDKs, so `scan` now finds `files.upload` behind them. Readers older than this
   release reject a notice that uses `sdk_calls`, as they reject any member they do not
   know; notices without it are unchanged.
+- `tiltmeter prs` lists the pull requests Tiltmeter opened on GitHub and says which ones
+  need you. It finds your pull requests whose description ends with Tiltmeter's footer,
+  through the GitHub CLI, and tells what each open one waits for, the surest sign first:
+  changes a review requested and no commit answered, a person (not a bot) who commented or
+  reviewed after your last comment and commit, checks that failed on the latest commit, a
+  branch that conflicts with its base or is behind one that must be up to date, a merge
+  (approved and green), or the maintainers. The first four need you: they come first, each
+  with who spoke last and when, the start of what they wrote, and the
+  `tiltmeter fix --follow-up` command to run, with the check or the catalog entry the
+  footer names. The other open ones take a line each, and a summary counts them all:
+  "84 opened: 21 merged, 5 closed, 58 open (3 need you)". `--state` narrows it to open,
+  merged or closed ones and lists them, `--repo OWNER/NAME` to repositories, `--author` to
+  another login, `--limit` caps how many are read and `--json` prints it all. Exit code 0:
+  nothing needs you; 1: at least one pull request does; 3: GitHub could not be asked, with
+  what to do, such as `gh auth login`. It only reads: nothing is commented, pushed, merged,
+  closed or rerun. `docs/prs.md` says what it asks GitHub and what it cannot see, such as
+  a fix a maintainer carried into their own pull request.
 - The catalog `tiltmeter scan` reads knows five more changes, four of them still ahead:
   Claude Sonnet 4.5 retires on November 30, 2026; OpenAI shuts down `gpt-image-1.5` and
   its siblings on December 1, `gpt-5`, `gpt-5-mini`, `gpt-5-nano`, `gpt-5-pro`, `o3` and
