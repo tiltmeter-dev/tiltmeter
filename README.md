@@ -208,15 +208,16 @@ type-checks against Stripe's SDK. Tiltmeter fixed it and 14 others we checked by
 the pull requests are open: [the fix for Stripe's sample](https://github.com/stripe-samples/subscription-use-cases/pull/1229).
 
 Since then Tiltmeter has opened 84 pull requests for changes at Stripe, Jira, Spotify, OpenAI,
-Anthropic, Groq, Slack, OpenWeatherMap, Hugging Face and HubSpot. So far 21 have landed: 17 were
-merged as Tiltmeter wrote them, and 4 were adopted by maintainers who landed the fix themselves.
+Anthropic, Groq, Slack, OpenWeatherMap, Hugging Face and HubSpot. So far 23 have landed: 18 were
+merged as Tiltmeter wrote them, and 5 were adopted by maintainers who landed the fix themselves.
 [inbox-zero](https://github.com/elie222/inbox-zero/pull/4406) and
 [QOwnNotes](https://github.com/pbek/QOwnNotes/commit/03e9ed23e3976d67a5728fd8ea8ba65ebed92499)
 carried Tiltmeter's commit into changes of their own, and
 [aicommits](https://github.com/Nutlope/aicommits/commit/98e9c4e4ea025053d4ede2ed4ee08aed9b7e0419)
-made the same change in its own commit. OpenMetadata merged Tiltmeter's commit in
-[its own pull request](https://github.com/open-metadata/OpenMetadata/pull/37039) for its 2.1
-release.
+made the same change in its own commit. OpenMetadata
+([#37039](https://github.com/open-metadata/OpenMetadata/pull/37039), for its 2.1 release) and
+future-agi ([#3842](https://github.com/future-agi/future-agi/pull/3842)) merged Tiltmeter's
+commit in pull requests of their own.
 [Serenity BDD](https://github.com/serenity-bdd/serenity-core/pull/3756),
 [AiSOC](https://github.com/beenuar/AiSOC/pull/1524),
 [utopia](https://github.com/deeplethe/utopia/pull/1453) and KodeRover's
@@ -225,9 +226,13 @@ release.
 [ruflo](https://github.com/ruvnet/ruflo/pull/4512),
 [radare2's r2ai](https://github.com/radareorg/r2ai/pull/249),
 [mcp-chat](https://github.com/Flux159/mcp-chat/pull/46), ByteDance's
-[deer-flow](https://github.com/bytedance/deer-flow/pull/7585) and
-[learn-claude-code](https://github.com/shareAI-lab/learn-claude-code/pull/602) moved their
-defaults off Claude models Anthropic has retired.
+[deer-flow](https://github.com/bytedance/deer-flow/pull/7585),
+[learn-claude-code](https://github.com/shareAI-lab/learn-claude-code/pull/602),
+[daily_stock_analysis](https://github.com/ZhuLinsen/daily_stock_analysis/pull/2435) and
+[waymap](https://github.com/TrixSec/waymap/pull/7) moved their defaults off Claude models
+Anthropic has retired, and
+[awesome-llm-apps](https://github.com/Shubhamsaboo/awesome-llm-apps/pull/1266) moved off the
+models OpenAI shut down.
 [Harvard's Machine Learning Systems book](https://github.com/harvard-edge/cs249r_book/pull/2163)
 and [KindleEar](https://github.com/cdhigh/KindleEar/pull/747) moved off the Groq models Groq shut
 down. [Share-The-Link](https://github.com/Joseyosei/Share-The-Link/pull/112) and
@@ -235,9 +240,11 @@ down. [Share-The-Link](https://github.com/Joseyosei/Share-The-Link/pull/112) and
 periods from subscription items, as Stripe's API has required since 2025-03-31.
 [Tencent's AI-Infra-Guard](https://github.com/Tencent/AI-Infra-Guard/pull/728) and SciSharp's
 [BotSharp](https://github.com/SciSharp/BotSharp/pull/1464) moved their Hugging Face calls off
-`api-inference.huggingface.co`, which no longer resolves. Six were closed: anything-llm asks for
-a linked issue first, three touched code their projects no longer use, PraisonAI kept Groq's
-models because enterprise contracts still have them, and Irene Voice Assistant gave no reason.
+`api-inference.huggingface.co`, which no longer resolves. Seven were closed: anything-llm asks
+for a linked issue first, three touched code their projects no longer use, PraisonAI kept Groq's
+models because enterprise contracts still have them, LeanType found that Groq's replacement, a
+reasoning model, spent its token budget before answering, and Irene Voice Assistant gave no
+reason.
 One repository was deleted. The [migration tracker](https://tiltmeter.dev/migrations/) shows
 every pull request and its status, by provider.
 
