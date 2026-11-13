@@ -208,7 +208,7 @@ type-checks against Stripe's SDK. Tiltmeter fixed it and 14 others we checked by
 the pull requests are open: [the fix for Stripe's sample](https://github.com/stripe-samples/subscription-use-cases/pull/1229).
 
 Since then Tiltmeter has opened 84 pull requests for changes at Stripe, Jira, Spotify, OpenAI,
-Anthropic, Groq, Slack, OpenWeatherMap, Hugging Face and HubSpot. So far 23 have landed: 18 were
+Anthropic, Groq, Slack, OpenWeatherMap, Hugging Face and HubSpot. So far 24 have landed: 19 were
 merged as Tiltmeter wrote them, and 5 were adopted by maintainers who landed the fix themselves.
 [inbox-zero](https://github.com/elie222/inbox-zero/pull/4406) and
 [QOwnNotes](https://github.com/pbek/QOwnNotes/commit/03e9ed23e3976d67a5728fd8ea8ba65ebed92499)
@@ -233,9 +233,11 @@ commit in pull requests of their own.
 Anthropic has retired, and
 [awesome-llm-apps](https://github.com/Shubhamsaboo/awesome-llm-apps/pull/1266) moved off the
 models OpenAI shut down.
-[Harvard's Machine Learning Systems book](https://github.com/harvard-edge/cs249r_book/pull/2163)
-and [KindleEar](https://github.com/cdhigh/KindleEar/pull/747) moved off the Groq models Groq shut
-down. [Share-The-Link](https://github.com/Joseyosei/Share-The-Link/pull/112) and
+[Harvard's Machine Learning Systems book](https://github.com/harvard-edge/cs249r_book/pull/2163),
+[KindleEar](https://github.com/cdhigh/KindleEar/pull/747) and
+[opencommit](https://github.com/di-sukharev/opencommit/pull/593) moved off the Groq models Groq
+shut down; opencommit merged after `fix --follow-up` answered its owner's review.
+[Share-The-Link](https://github.com/Joseyosei/Share-The-Link/pull/112) and
 [nestjs-saas-starter](https://github.com/DahboorSa/nestjs-saas-starter/pull/1) read subscription
 periods from subscription items, as Stripe's API has required since 2025-03-31.
 [Tencent's AI-Infra-Guard](https://github.com/Tencent/AI-Infra-Guard/pull/728) and SciSharp's
