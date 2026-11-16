@@ -208,7 +208,7 @@ type-checks against Stripe's SDK. Tiltmeter fixed it and 14 others we checked by
 the pull requests are open: [the fix for Stripe's sample](https://github.com/stripe-samples/subscription-use-cases/pull/1229).
 
 Since then Tiltmeter has opened 84 pull requests for changes at Stripe, Jira, Spotify, OpenAI,
-Anthropic, Groq, Slack, OpenWeatherMap, Hugging Face and HubSpot. So far 24 have landed: 19 were
+Anthropic, Groq, Slack, OpenWeatherMap, Hugging Face and HubSpot. So far 25 have landed: 20 were
 merged as Tiltmeter wrote them, and 5 were adopted by maintainers who landed the fix themselves.
 [inbox-zero](https://github.com/elie222/inbox-zero/pull/4406) and
 [QOwnNotes](https://github.com/pbek/QOwnNotes/commit/03e9ed23e3976d67a5728fd8ea8ba65ebed92499)
@@ -242,12 +242,15 @@ shut down; opencommit merged after `fix --follow-up` answered its owner's review
 periods from subscription items, as Stripe's API has required since 2025-03-31.
 [Tencent's AI-Infra-Guard](https://github.com/Tencent/AI-Infra-Guard/pull/728) and SciSharp's
 [BotSharp](https://github.com/SciSharp/BotSharp/pull/1464) moved their Hugging Face calls off
-`api-inference.huggingface.co`, which no longer resolves. Seven were closed: anything-llm asks
-for a linked issue first, three touched code their projects no longer use, PraisonAI kept Groq's
-models because enterprise contracts still have them, LeanType found that Groq's replacement, a
-reasoning model, spent its token budget before answering, and Irene Voice Assistant gave no
-reason.
-One repository was deleted. The [migration tracker](https://tiltmeter.dev/migrations/) shows
+`api-inference.huggingface.co`, which no longer resolves. Raycast's
+[script-commands](https://github.com/raycast/script-commands/pull/1044) moved its weather
+scripts to One Call API 3.0, since OpenWeatherMap closed 2.5. Eight were closed: anything-llm
+asks for a linked issue first, three touched code their projects no longer use, PraisonAI kept
+Groq's models because enterprise contracts still have them, LeanType found that Groq's
+replacement, a reasoning model, spent its token budget before answering, Irene Voice Assistant
+gave no reason, and Airbyte made the same migration in
+[a pull request of its own](https://github.com/airbytehq/airbyte/pull/90251) first.
+Two repositories were deleted or made private. The [migration tracker](https://tiltmeter.dev/migrations/) shows
 every pull request and its status, by provider.
 
 Subscribe with a few lines of `tiltmeter.yaml`; the [notices guide](docs/notices.md)
