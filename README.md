@@ -208,7 +208,7 @@ type-checks against Stripe's SDK. Tiltmeter fixed it and 14 others we checked by
 the pull requests are open: [the fix for Stripe's sample](https://github.com/stripe-samples/subscription-use-cases/pull/1229).
 
 Since then Tiltmeter has opened 84 pull requests for changes at Stripe, Jira, Spotify, OpenAI,
-Anthropic, Groq, Slack, OpenWeatherMap, Hugging Face and HubSpot. So far 25 have landed: 20 were
+Anthropic, Groq, Slack, OpenWeatherMap, Hugging Face and HubSpot. So far 26 have landed: 21 were
 merged as Tiltmeter wrote them, and 5 were adopted by maintainers who landed the fix themselves.
 [inbox-zero](https://github.com/elie222/inbox-zero/pull/4406) and
 [QOwnNotes](https://github.com/pbek/QOwnNotes/commit/03e9ed23e3976d67a5728fd8ea8ba65ebed92499)
@@ -219,6 +219,7 @@ made the same change in its own commit. OpenMetadata
 future-agi ([#3842](https://github.com/future-agi/future-agi/pull/3842)) merged Tiltmeter's
 commit in pull requests of their own.
 [Serenity BDD](https://github.com/serenity-bdd/serenity-core/pull/3756),
+[Huginn](https://github.com/huginn/huginn/pull/3816),
 [AiSOC](https://github.com/beenuar/AiSOC/pull/1524),
 [utopia](https://github.com/deeplethe/utopia/pull/1453) and KodeRover's
 [zadig](https://github.com/koderover/zadig/pull/5049) moved their Jira calls off
